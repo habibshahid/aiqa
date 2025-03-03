@@ -12,12 +12,13 @@ const sanitize = require('express-mongo-sanitize');
 const { pool, testConnection } = require('./config/database');
 const { connectMongoDB } = require('./config/mongodb');
 const routes = require('./routes');
+const schedulerService = require('./services/schedulerService');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-/*const options = {
+const options = {
   key: fs.readFileSync(process.env.SSL_KEY),
   cert: fs.readFileSync(process.env.SSL_CERTIFICATE)
-};*/
+};
 
 const app = express();
 
@@ -157,6 +158,9 @@ async function startServer() {
       process.exit(1);
     }
 
+    await schedulerService.initializeSchedules();
+    console.log('Scheduler service initialized');
+
     const PORT = process.env.PORT || 50000;
     const SSL_PORT = process.env.SSL_PORT || 50001;
 
@@ -172,7 +176,7 @@ async function startServer() {
       `);
     });
 
-    /*https.createServer(options, app).listen(SSL_PORT, () => {
+    https.createServer(options, app).listen(SSL_PORT, () => {
       console.log(`
 =======================================================
   Server running on port ${SSL_PORT}
@@ -182,7 +186,7 @@ async function startServer() {
   Time: ${new Date().toISOString()}
 =======================================================
       `);
-    });*/
+    });
   } catch (error) {
     console.error('Error starting server:', error);
     process.exit(1);

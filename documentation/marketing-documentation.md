@@ -217,7 +217,7 @@ Qualify for our 30-day pilot program to experience the full capabilities of AIQA
 ### Contact Information
 
 - **Website**: www.aiqa.io
-- **Email**: sales@aiqa.io
+- **Email**: sales@intellicon.io
 - **Phone**: +1 (800) 555-AIQA
 - **LinkedIn**: linkedin.com/company/aiqa
 

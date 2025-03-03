@@ -375,10 +375,6 @@ const NewEvaluations = () => {
 
   return (
     <div className="container-fluid py-4">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h1 className="h3 mb-0">New Evaluations</h1>
-      </div>
-
       {error && (
         <div className="alert alert-danger" role="alert">
           {error}
@@ -635,7 +631,11 @@ const NewEvaluations = () => {
                           className="form-check-input"
                           type="checkbox"
                           checked={selectedInteractions.includes(interaction._id)}
-                          onChange={() => handleSelectionChange(interaction._id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleSelectionChange(interaction._id);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
                         />
                       </div>
                     </td>

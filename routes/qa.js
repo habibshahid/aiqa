@@ -82,4 +82,25 @@ router.get('/evaluation/by-interaction/:interactionId', authenticateToken, async
   }
 });
 
+router.get('/evaluation/:id/transcription', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+    
+    // Convert to numbers
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    
+    // Get transcription with pagination
+    const result = await transcriptionService.getPaginatedTranscription(
+      id, pageNum, limitNum
+    );
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching paginated transcription:', error);
+    res.status(500).json({ message: 'Error fetching transcription' });
+  }
+});
+
 module.exports = router;

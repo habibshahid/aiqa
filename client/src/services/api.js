@@ -261,7 +261,32 @@ export const api = {
   },
 
   getDashboardFilters: () =>
-    request('/dashboard/filters')
+    request('/dashboard/filters'),
+
+  getSchedulerSettings: (profileId) =>
+    request(`/scheduler/profile/${profileId}`),
+
+  // Update scheduler settings for a criteria profile
+  updateSchedulerSettings: (profileId, schedulerConfig) =>
+    request(`/scheduler/profile/${profileId}`, {
+      method: 'PUT',
+      body: JSON.stringify(schedulerConfig)
+    }),
+
+  // Run a scheduled evaluation manually
+  runScheduledEvaluation: (profileId, maxEvaluations) =>
+    request(`/scheduler/run/${profileId}`, {
+      method: 'POST',
+      body: JSON.stringify({ maxEvaluations })
+    }),
+
+  // Get scheduler history for a profile
+  getSchedulerHistory: (profileId, limit = 10) =>
+    request(`/scheduler/history/${profileId}?limit=${limit}`),
+
+  // Get all active scheduled profiles
+  getActiveSchedules: () =>
+    request('/scheduler/active')
 };
 
 export default api;

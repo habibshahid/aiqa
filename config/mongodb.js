@@ -231,6 +231,46 @@ const qaFormSchema = new mongoose.Schema({
 // Create model
 const QAForm = mongoose.model('AIQAForm', qaFormSchema);
 
+
+const schedulerSchema = new mongoose.Schema({
+  enabled: {
+    type: Boolean,
+    default: false
+  },
+  cronExpression: {
+    type: String,
+    default: '0 17 * * *'  // Default to 5:00 PM daily
+  },
+  maxEvaluations: {
+    type: Number,
+    default: 50,
+    min: 1,
+    max: 1000
+  },
+  evaluatorId: {
+    type: String,
+    default: 'system'
+  },
+  evaluatorName: {
+    type: String,
+    default: 'Automated System'
+  },
+  lastRun: {
+    type: Date
+  },
+  lastRunStatus: {
+    type: String,
+    enum: ['success', 'partial', 'failed', null],
+    default: null
+  },
+  lastRunSummary: {
+    interactionsFound: Number,
+    interactionsProcessed: Number,
+    error: String
+  }
+});
+
+// Update the existing criteriaProfileSchema by adding the scheduler field
 const criteriaProfileSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -275,6 +315,10 @@ const criteriaProfileSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  scheduler: {
+    type: schedulerSchema,
+    default: () => ({})
+  },
   createdBy: {
     type: String,
     required: true
@@ -288,7 +332,42 @@ const criteriaProfileSchema = new mongoose.Schema({
   collection: 'criteriaprofiles'
 });
 
+// Add new model for scheduler job history
+const schedulerHistorySchema = new mongoose.Schema({
+  profileId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'CriteriaProfile',
+    required: true
+  },
+  profileName: String,
+  startTime: {
+    type: Date,
+    default: Date.now
+  },
+  endTime: Date,
+  status: {
+    type: String,
+    enum: ['success', 'partial', 'failed'],
+    required: true
+  },
+  interactionsFound: {
+    type: Number,
+    default: 0
+  },
+  interactionsProcessed: {
+    type: Number,
+    default: 0
+  },
+  jobIds: [String],
+  error: String
+}, {
+  timestamps: true,
+  collection: 'schedulerhistory'
+});
+
+// Create the model for scheduler history
 const CriteriaProfile = mongoose.model('CriteriaProfile', criteriaProfileSchema);
+const SchedulerHistory = mongoose.model('SchedulerHistory', schedulerHistorySchema);
 
 module.exports = {
   connectMongoDB,
@@ -296,5 +375,6 @@ module.exports = {
   InteractionTranscription,
   Interactions,
   QAForm,
-  CriteriaProfile
+  CriteriaProfile,
+  SchedulerHistory
 };

@@ -21,8 +21,11 @@ import ReportsExport from './pages/ReportsExport';
 import GroupsList from './pages/GroupManagement/GroupsList';
 import GroupEditor from './pages/GroupManagement/GroupEditor';
 import GroupUsers from './pages/GroupManagement/GroupUsers';
+import SchedulerDashboard from './pages/SchedulerDashboard';
+import TourProvider from './components/tour/TourProvider'; // Import TourProvider
 
 import 'bootstrap/dist/css/bootstrap.min.css';
+import 'shepherd.js/dist/css/shepherd.css'; // Import Shepherd.js styles
 
 const PrivateLayout = ({ children }) => {
   const token = localStorage.getItem('token');
@@ -52,205 +55,217 @@ const PrivateLayout = ({ children }) => {
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Login />} />
-      <Route
-        path="/dashboard"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="dashboard.read">
-              <Dashboard />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/evaluations"
-        element={
-          <PrivateLayout>
-            <RecentEvaluations />
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/new-evaluations"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="qa-forms.write">
-              <NewEvaluations />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/evaluation/:id"
-        element={
-          <PrivateLayout>
-            <QADetail />
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/change-password"
-        element={
-          <PrivateLayout>
-            <ChangePassword />
-          </PrivateLayout>
-        }
-      />
-      {/* Add QA Forms routes */}
-      <Route
-        path="/qa-forms"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="qa-forms.read">
-              <QAFormsList />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/qa-forms/new"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="qa-forms.write">
-              <QAFormEditor />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/qa-forms/edit/:id"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="qa-forms.write">
-              <QAFormEditor />
-            </WithPermission>      
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/criteria"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="qa-forms.read">
-              <CriteriaList />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/criteria/new"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="qa-forms.write">
-              <CriteriaEditor />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/criteria/edit/:id"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="qa-forms.write">
-              <CriteriaEditor />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/queue-monitor"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="qa-forms.read">
-              <QueueMonitor />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/agent-coaching/:agentId"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="qa-forms.read">
-              <AgentCoaching />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/agent-comparison"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="qa-forms.read">
-              <AgentComparison />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/trend-analysis"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="qa-forms.read">
-              <TrendAnalysis />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/exports"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="qa-forms.read">
-              <ReportsExport />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/groups"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="groups.read">
-              <GroupsList />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/groups/new"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="groups.write">
-              <GroupEditor />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/groups/edit/:id"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="groups.write">
-              <GroupEditor />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route
-        path="/groups/:id/users"
-        element={
-          <PrivateLayout>
-            <WithPermission permission="groups.write">
-              <GroupUsers />
-            </WithPermission>
-          </PrivateLayout>
-        }
-      />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+    <TourProvider>
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route
+          path="/dashboard"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="dashboard.read">
+                <Dashboard />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/evaluations"
+          element={
+            <PrivateLayout>
+              <RecentEvaluations />
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/new-evaluations"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.write">
+                <NewEvaluations />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/evaluation/:id"
+          element={
+            <PrivateLayout>
+              <QADetail />
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/change-password"
+          element={
+            <PrivateLayout>
+              <ChangePassword />
+            </PrivateLayout>
+          }
+        />
+        {/* Add QA Forms routes */}
+        <Route
+          path="/qa-forms"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.read">
+                <QAFormsList />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/qa-forms/new"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.write">
+                <QAFormEditor />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/qa-forms/edit/:id"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.write">
+                <QAFormEditor />
+              </WithPermission>      
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/criteria"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.read">
+                <CriteriaList />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/criteria/new"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.write">
+                <CriteriaEditor />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/criteria/edit/:id"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.write">
+                <CriteriaEditor />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/queue-monitor"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.read">
+                <QueueMonitor />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/agent-coaching/:agentId"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.read">
+                <AgentCoaching />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/agent-comparison"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.read">
+                <AgentComparison />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/trend-analysis"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.read">
+                <TrendAnalysis />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/exports"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.read">
+                <ReportsExport />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/groups"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="groups.read">
+                <GroupsList />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/groups/new"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="groups.write">
+                <GroupEditor />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/groups/edit/:id"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="groups.write">
+                <GroupEditor />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/groups/:id/users"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="groups.write">
+                <GroupUsers />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/scheduler"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.write">
+                <SchedulerDashboard />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </TourProvider>
   );
 }
 

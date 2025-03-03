@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import './index.css';
+import './styles/tour.css'; 
 import App from './App';
 import config from './config';
 

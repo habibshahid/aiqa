@@ -1,20 +1,47 @@
 // src/components/TopBar.js
 import React, { useState, useEffect } from 'react';
-import { Bell, User, ChevronDown, Settings, Info, LogOut, Key } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { 
+  Bell, User, ChevronDown, Settings, Info, LogOut, Key,
+  Home, ClipboardCheck, PlusCircle, ClipboardList, Filter,
+  UserCheck, TrendingUp, FileDown, AlarmClock, FileText, Pencil,
+  HelpCircle, UsersRound
+} from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { ListChecks } from 'lucide-react';
+import { useTour } from './tour/TourProvider';
+import TourButton from './tour/TourButton';
+
+// Map of routes to page titles and icons
+const pageTitles = {
+  '/dashboard': { title: 'Dashboard', icon: Home },
+  '/evaluations': { title: 'QA Evaluations', icon: ClipboardCheck },
+  '/new-evaluations': { title: 'New Evaluations', icon: PlusCircle },
+  '/qa-forms': { title: 'QA Forms', icon: ClipboardList },
+  '/criteria': { title: 'QA Criteria', icon: Filter },
+  '/scheduler': { title: 'Scheduler Dashboard', icon: AlarmClock },
+  '/agent-comparison': { title: 'Agent Comparison', icon: UserCheck },
+  '/trend-analysis': { title: 'Trend Analysis', icon: TrendingUp },
+  '/exports': { title: 'Export Reports', icon: FileDown },
+  '/agent-coaching': { title: 'Agent Coaching', icon: UserCheck },
+  '/queue-monitor': { title: 'Queue Monitor', icon: ListChecks },
+  '/change-password': { title: 'Change Password', icon: Key },
+  '/groups': { title: 'Groups Management', icon: UsersRound },
+};
 
 export default function TopBar() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { logout } = useApp();
+  const { resetTour, startMainTour } = useTour();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [notifications] = useState([]);
   const [user, setUser] = useState(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
+  const [pageTitle, setPageTitle] = useState({ title: 'AIQA', icon: Home });
   
   useEffect(() => {
     loadUserData();
@@ -40,6 +67,38 @@ export default function TopBar() {
     
     return () => clearInterval(intervalId);
   }, []);
+
+  // Update page title based on current route
+  useEffect(() => {
+    // For exact route matches
+    if (pageTitles[location.pathname]) {
+      setPageTitle(pageTitles[location.pathname]);
+      document.title = `${pageTitles[location.pathname].title} | AIQA`;
+      return;
+    }
+
+    // For dynamic routes that start with a specific path
+    const dynamicRoutes = [
+      { prefix: '/evaluation/', title: 'Evaluation Details', icon: FileText },
+      { prefix: '/agent-coaching/', title: 'Agent Coaching', icon: UserCheck },
+      { prefix: '/qa-forms/edit/', title: 'Edit QA Form', icon: ClipboardList },
+      { prefix: '/qa-forms/new', title: 'New QA Form', icon: ClipboardList },
+      { prefix: '/criteria/edit/', title: 'Edit Criteria Profile', icon: Filter },
+      { prefix: '/criteria/new', title: 'New Criteria Profile', icon: Filter },
+    ];
+
+    for (const route of dynamicRoutes) {
+      if (location.pathname.startsWith(route.prefix)) {
+        setPageTitle(route);
+        document.title = `${route.title} | AIQA`;
+        return;
+      }
+    }
+
+    // Default fallback
+    setPageTitle({ title: 'AIQA', icon: Home });
+    document.title = 'AIQA';
+  }, [location.pathname]);
 
   const loadUserData = async () => {
     try {
@@ -68,14 +127,23 @@ export default function TopBar() {
     }
   };
 
+  // Get the current page icon component
+  const PageIcon = pageTitle.icon;
+
   return (
     <div className="bg-white border-bottom">
       <div className="d-flex justify-content-between align-items-center px-4 py-2">
         <div className="d-flex align-items-center">
-          <h5 className="mb-0 me-4">AIQA</h5>
+          <h5 className="mb-0 d-flex align-items-center">
+            {PageIcon && <PageIcon size={18} className="me-2" />}
+            {pageTitle.title}
+          </h5>
         </div>
 
         <div className="d-flex align-items-center gap-3">
+          {/* Tour Button */}
+          <TourButton />
+
           {/* Notifications */}
           <div className="position-relative">
             <button 
@@ -156,6 +224,18 @@ export default function TopBar() {
                   >
                     <Settings size={16} />
                     Settings
+                  </button>
+                  
+                  <button 
+                    onClick={() => {
+                      resetTour();
+                      startMainTour();
+                      setShowUserMenu(false);
+                    }}
+                    className="dropdown-item d-flex align-items-center gap-2"
+                  >
+                    <HelpCircle size={16} />
+                    Restart Tour
                   </button>
                   
                   <div className="dropdown-divider"></div>

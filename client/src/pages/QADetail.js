@@ -21,6 +21,25 @@ const ScoreCard = ({ title, value, bgColor = 'bg-primary' }) => (
 // Original format Transcription Row (for 'realtime' version)
 const TranscriptionRow = ({ message, timestamp }) => {
   try {
+    const formatTimestamp = (timestamp) => {
+      if (!timestamp) return 'N/A';
+      
+      // Check if timestamp is a valid number (epoch time in milliseconds)
+      const timestampNum = parseInt(timestamp);
+      if (!isNaN(timestampNum)) {
+        try {
+          // Format the date into a human-readable time format
+          const date = new Date(timestampNum);
+          return date.toLocaleTimeString();
+        } catch (e) {
+          console.error('Error parsing timestamp as integer:', e);
+        }
+      }
+      
+      // Return the original timestamp if parsing fails
+      return timestamp;
+    };
+
     // Ensure data exists
     if (!message || !message[timestamp]) {
       console.log('Invalid message data for timestamp:', timestamp);
@@ -33,6 +52,7 @@ const TranscriptionRow = ({ message, timestamp }) => {
       );
     }
     const data = message[timestamp];
+    
     return (
       <tr>
         <td className="text-nowrap">
@@ -92,10 +112,29 @@ const TranscriptionRow = ({ message, timestamp }) => {
 
 // New format Transcription Row (for 'recorded' version)
 const RecordedTranscriptionRow = ({ entry }) => {
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    
+    // Check if timestamp is a valid number (epoch time in milliseconds)
+    const timestampNum = parseInt(timestamp);
+    if (!isNaN(timestampNum)) {
+      try {
+        // Format the date into a human-readable time format
+        const date = new Date(timestampNum);
+        return date.toLocaleTimeString();
+      } catch (e) {
+        console.error('Error parsing timestamp as integer:', e);
+      }
+    }
+    
+    // Return the original timestamp if parsing fails
+    return timestamp;
+  };
+  console.log(entry)
   return (
     <tr>
       <td className="text-nowrap">
-        {entry.timestamp}
+        {formatTimestamp(entry.timestamp)}
       </td>
       <td>
         <span className={`badge bg-${entry.speaker_id.includes('agent') ? 'primary' : 'success'}`}>
@@ -137,25 +176,6 @@ const RecordedTranscriptionRow = ({ entry }) => {
       </td>
     </tr>
   );
-};
-
-const formatTimestamp = (timestamp) => {
-  if (!timestamp) return 'N/A';
-  
-  // Check if timestamp is a valid number (epoch time in milliseconds)
-  const timestampNum = parseInt(timestamp);
-  if (!isNaN(timestampNum)) {
-    try {
-      // Format the date into a human-readable time format
-      const date = new Date(timestampNum);
-      return date.toLocaleTimeString();
-    } catch (e) {
-      console.error('Error parsing timestamp as integer:', e);
-    }
-  }
-  
-  // Return the original timestamp if parsing fails
-  return timestamp;
 };
 
 const QADetail = () => {
@@ -240,6 +260,25 @@ const QADetail = () => {
     );
   };
 
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    
+    // Check if timestamp is a valid number (epoch time in milliseconds)
+    const timestampNum = parseInt(timestamp);
+    if (!isNaN(timestampNum)) {
+      try {
+        // Format the date into a human-readable time format
+        const date = new Date(timestampNum);
+        return date.toLocaleTimeString();
+      } catch (e) {
+        console.error('Error parsing timestamp as integer:', e);
+      }
+    }
+    
+    // Return the original timestamp if parsing fails
+    return timestamp;
+  };
+
   const formatDurationHumanReadable = (seconds) => {
     if (!seconds || isNaN(seconds)) return 'N/A';
     
@@ -275,13 +314,12 @@ const QADetail = () => {
 
     if (Array.isArray(evaluation.transcription) && evaluation.transcription.length > 0) {
       // If transcription is an array of objects with timestamps
-      //return evaluation.transcription.map(message => {
-        //const timestamp = Object.keys(message)[0];
-        //return message[timestamp];
-      //});
-      if (Array.isArray(evaluation.transcription) && evaluation.transcription.length > 0) {
-        return evaluation.transcription;
-      }
+      return evaluation.transcription.map(message => {
+        const timestamp = Object.keys(message)[0];
+        let msg = message[timestamp];
+        msg.timestamp = formatTimestamp(timestamp);
+        return msg;
+      });
     }
 
     return [];
@@ -724,88 +762,49 @@ const QADetail = () => {
                       <th>Message</th>
                       <th>Language</th>
                       <th>Sentiment</th>
-                      <th>Intent</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Add debug information */}
-                    {console.log('Transcription Data:', evaluation.transcription)}
-                    {console.log('Transcription Version:', evaluation.transcriptionVersion)}
-                    
-                    {/* Simplified rendering logic */}
-                    {evaluation.transcription && evaluation.transcription.length > 0 ? (
-                      evaluation.transcription.map((message, index) => {
-                        // Get the timestamp key
-                        const timestamp = Object.keys(message)[0];
-                        console.log('Message:', message, 'Timestamp:', timestamp);
-                        
-                        if (!message || !timestamp) {
-                          return (
-                            <tr key={index}>
-                              <td colSpan="6" className="text-center text-muted">
-                                Invalid message data
-                              </td>
-                            </tr>
-                          );
-                        }
-                        
-                        // Get the data for this timestamp
-                        const data = message[timestamp];
-                        
-                        // Render the row directly instead of using TranscriptionRow component
-                        return (
-                          <tr key={index}>
-                            <td className="text-nowrap">
-                              {formatTimestamp(timestamp)}
-                            </td>
-                            <td>
-                              <span className={`badge bg-${data.speaker_id?.includes('agent') ? 'primary' : 'success'}`}>
-                                {data.speaker_id?.includes('agent') ? 'Agent' : 'Customer'}
-                              </span>
-                            </td>
-                            <td>
-                              <div>{data.translated_text || data.original_text}</div>
-                              {data.translated_text && data.original_text !== data.translated_text && (
-                                <small className="text-muted d-block">
-                                  Original: {data.original_text}
-                                </small>
-                              )}
-                            </td>
-                            <td>
-                              <span className="badge bg-info">
-                                {data.language?.toUpperCase()}
-                              </span>
-                            </td>
-                            <td>
-                              <div className={`badge bg-${
-                                data.sentiment?.sentiment === 'positive' ? 'success' :
-                                data.sentiment?.sentiment === 'negative' ? 'danger' : 'warning'
-                              }`}>
-                                {data.sentiment?.sentiment || 'neutral'}
-                              </div>
-                              {data.sentiment?.score && (
-                                <small className="d-block text-muted mt-1">
-                                  {(data.sentiment.score * 100).toFixed(0)}%
-                                </small>
-                              )}
-                            </td>
-                            <td>
-                              {data.intent?.map((intent, i) => (
-                                <span key={i} className="badge bg-secondary d-block mb-1">
-                                  {intent}
-                                </span>
-                              ))}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td colSpan="6" className="text-center py-3">
-                          No transcription data available
+                    {getTranscriptionData().map((entry, index) => (
+                      <tr key={index}>
+                        <td className="text-nowrap">
+                          {entry.timestamp || 'N/A'}
+                        </td>
+                        <td>
+                          <span className={`badge bg-${
+                            entry.speaker_id?.includes('agent') ? 'primary' : 'success'
+                          }`}>
+                            {entry.speaker_id?.includes('agent') ? 'Agent' : 'Customer'}
+                          </span>
+                        </td>
+                        <td>
+                          <div>{getTranslatedText(entry)}</div>
+                          {entry.original_text && getTranslatedText(entry) !== entry.original_text && (
+                            <small className="text-muted d-block">
+                              Original: {entry.original_text}
+                            </small>
+                          )}
+                        </td>
+                        <td>
+                          <span className="badge bg-info">
+                            {entry.language?.toUpperCase() || 'N/A'}
+                          </span>
+                        </td>
+                        <td>
+                          <div className={`badge bg-${
+                            entry.sentiment?.sentiment === 'positive' ? 'success' :
+                            entry.sentiment?.sentiment === 'negative' ? 'danger' : 'warning'
+                          }`}>
+                            {entry.sentiment?.sentiment || 'neutral'}
+                          </div>
+                          {entry.sentiment?.score && (
+                            <small className="d-block text-muted mt-1">
+                              {(entry.sentiment.score * 100).toFixed(0)}%
+                            </small>
+                          )}
                         </td>
                       </tr>
-                    )}
+                    ))}
                   </tbody>
                 </table>
               </div>

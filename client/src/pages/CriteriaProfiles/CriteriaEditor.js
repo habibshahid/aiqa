@@ -1,10 +1,11 @@
-// src/pages/CriteriaProfiles/CriteriaEditor.js
+// src/pages/CriteriaProfiles/CriteriaEditor.js - Updated with scheduler
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import Select from 'react-select';
 import { api } from '../../services/api';
 import _ from 'lodash';
+import SchedulerSettings from '../../components/scheduler/SchedulerSettings';
 
 export default function CriteriaEditor() {
   const navigate = useNavigate();
@@ -28,7 +29,14 @@ export default function CriteriaEditor() {
     minCallDuration: 0,
     direction: 'all',
     evaluationForm: null,
-    isActive: true
+    isActive: true,
+    scheduler: {
+      enabled: false,
+      cronExpression: '0 17 * * *', // Default to 5:00 PM daily
+      maxEvaluations: 50,
+      evaluatorId: 'system',
+      evaluatorName: 'Automated System'
+    }
   });
 
   useEffect(() => {
@@ -92,7 +100,8 @@ export default function CriteriaEditor() {
         minCallDuration: formData.minCallDuration,
         direction: formData.direction,
         evaluationForm: formData.evaluationForm,
-        isActive: formData.isActive
+        isActive: formData.isActive,
+        scheduler: formData.scheduler // Include scheduler settings
     };
   
     console.log('Submitting payload:', payload);
@@ -116,6 +125,17 @@ export default function CriteriaEditor() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSchedulerChange = (schedulerData) => {
+    setFormData(prev => ({
+      ...prev,
+      scheduler: {
+        ...schedulerData,
+        // Add profile ID for API calls if we're editing
+        profileId: id || undefined
+      }
+    }));
   };
 
   if (loading) {
@@ -307,6 +327,16 @@ export default function CriteriaEditor() {
             </div>
           </div>
         </div>
+
+        {/* Scheduler Settings */}
+        <SchedulerSettings 
+          value={{
+            ...formData.scheduler,
+            profileId: id // Pass profile ID for API calls
+          }}
+          onChange={handleSchedulerChange}
+          isNewProfile={!id}
+        />
 
         <div className="d-flex justify-content-end gap-2">
           <button 

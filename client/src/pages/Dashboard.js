@@ -4,6 +4,7 @@ import { LineChart, Line, BarChart, CartesianGrid, Bar, XAxis, YAxis, Tooltip, L
 import { format } from 'date-fns';
 import { PhoneIncoming, PhoneOutgoing } from 'lucide-react';
 import Select from 'react-select';
+import WelcomeTourDialog from '../components/tour/WelcomeTourDialog';
 
 // Updated StatsCard Component with optional subtitle and icon color
 const StatsCard = ({ 
@@ -631,6 +632,7 @@ const Dashboard = () => {
 
   return (
     <div className="container-fluid py-4">
+      <WelcomeTourDialog />
       {/* Filters */}
       <div className="card mb-4">
         <div className="card-body">

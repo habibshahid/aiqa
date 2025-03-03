@@ -236,9 +236,6 @@ const TrendAnalysis = () => {
           </div>
         </div>
       )}
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2 className="mb-0">Performance Trend Analysis</h2>
-      </div>
       
       {/* Filters */}
       <div className="card mb-4">

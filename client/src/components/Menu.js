@@ -13,7 +13,8 @@ import {
   UserCheck, 
   TrendingUp, 
   FileDown,
-  UsersRound
+  UsersRound,
+  AlarmClock
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -47,6 +48,12 @@ const menuConfig = [
     path: '/criteria', 
     label: 'QA Criteria',
     permission: 'qa-forms.read'
+  },
+  {
+    icon: AlarmClock,
+    path: '/scheduler',
+    label: 'Scheduler',
+    permission: 'qa-forms.write'
   },
   { 
     icon: UserCheck, // Import this from lucide-react

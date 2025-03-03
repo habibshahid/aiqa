@@ -2,6 +2,25 @@
 const { InteractionAIQA, InteractionTranscription, Interactions } = require('../config/mongodb');
 const mongoose = require('mongoose');
 
+/**
+ * Normalizes intent data to handle both string and object formats
+ * @param {Array} intents - Array of intents which might contain strings or objects
+ * @returns {Array} - Array of string intents
+ */
+const normalizeIntents = (intents) => {
+  if (!intents || !Array.isArray(intents)) return [];
+  
+  return intents.map(intent => {
+    if (typeof intent === 'string') {
+      return intent;
+    } else if (intent && typeof intent === 'object' && intent.intent) {
+      return intent.intent; // Extract the string from the object
+    } else {
+      return 'unknown'; // Fallback for any other unexpected format
+    }
+  });
+};
+
 const qaDetailService = {
   async getQAEvaluationDetail(id) {
     try {
@@ -62,6 +81,51 @@ const qaDetailService = {
 
       console.log('Interaction found:', !!interaction);
 
+      // Normalize intent data for transcriptionAnalysis
+      let transcriptionAnalysis = null;
+      if (transcription?.transcriptionAnalysis) {
+        transcriptionAnalysis = { ...transcription.transcriptionAnalysis };
+        
+        // Normalize intents in transcriptionAnalysis
+        if (transcriptionAnalysis.intents) {
+          transcriptionAnalysis.intents = normalizeIntents(transcriptionAnalysis.intents);
+        }
+      }
+
+      // Normalize transcription data
+      let normalizedTranscription = [];
+      if (transcription?.transcription && Array.isArray(transcription.transcription)) {
+        normalizedTranscription = transcription.transcription.map(message => {
+          const timestamp = Object.keys(message)[0];
+          if (timestamp && message[timestamp]) {
+            const data = { ...message[timestamp] };
+            
+            // Normalize intent data in each message
+            if (data.intent) {
+              data.intent = normalizeIntents(data.intent);
+            }
+            
+            return { [timestamp]: data };
+          }
+          return message;
+        });
+      }
+
+      // Normalize recorded transcription if it exists
+      let normalizedRecordedTranscription = [];
+      if (transcription?.recordedTranscription && Array.isArray(transcription.recordedTranscription)) {
+        normalizedRecordedTranscription = transcription.recordedTranscription.map(entry => {
+          const newEntry = { ...entry };
+          
+          // Normalize intent data in each entry
+          if (newEntry.intent) {
+            newEntry.intent = normalizeIntents(newEntry.intent);
+          }
+          
+          return newEntry;
+        });
+      }
+
       // Process the evaluation data
       const processed = {
         id: evaluation._id,
@@ -87,7 +151,7 @@ const qaDetailService = {
           whatTheAgentDidWell: evaluation.evaluationData?.evaluation?.whatTheAgentDidWell || [], 
           problemAreas: evaluation.evaluationData?.evaluation?.problemAreas || [],
           summary: evaluation.evaluationData?.evaluation?.summary, // Updated path
-          intent: evaluation.evaluationData?.evaluation?.intent || [], // Updated path
+          intent: normalizeIntents(evaluation.evaluationData?.evaluation?.intent || []), // Normalize intent
           customerSentiment: evaluation.evaluationData?.evaluation?.customerSentiment || [], // Updated path
           agentSentiment: evaluation.evaluationData?.evaluation?.agentSentiment || [], // Updated path
           silencePeriods: evaluation.evaluationData?.evaluation?.silencePeriods || [] // Updated path
@@ -107,10 +171,12 @@ const qaDetailService = {
           recording: interaction?.extraPayload?.callRecording || null,
           channel: evaluation.interactionData?.channel || 'call'
         },
-        transcription: transcription?.transcription || [],
+        transcription: normalizedTranscription,
         transcriptionVersion: transcription?.transcriptionVersion || 'realtime',
-        recordedTranscription: transcription?.recordedTranscription || [],
-        // Add new structure that matches our frontend expectations
+        recordedTranscription: normalizedRecordedTranscription,
+        // Add normalized transcription analysis
+        transcriptionAnalysis: transcriptionAnalysis,
+        // Add original data structure
         evaluationData: evaluation.evaluationData || {},
         interactionData: evaluation.interactionData || {}
       };

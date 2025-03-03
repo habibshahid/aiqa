@@ -46,8 +46,7 @@ export default function CriteriaList() {
 
   return (
     <div className="container-fluid py-4">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h1 className="h3 mb-0">Criteria Profiles</h1>
+      <div className="d-flex justify-content-end mb-4">
         <button 
           className="btn btn-primary d-flex align-items-center"
           onClick={() => navigate('/criteria/new')}

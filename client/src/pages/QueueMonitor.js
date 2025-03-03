@@ -4,6 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { RefreshCw, CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
 
 const QueueMonitor = () => {
+  const [nextRefreshTime, setNextRefreshTime] = useState(0);
+  const [isAutoRefreshEnabled, setIsAutoRefreshEnabled] = useState(true);
+  const [countdown, setCountdown] = useState(0);
+  const refreshInterval = 60000; // 1 minute refresh interval
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -43,13 +47,44 @@ const QueueMonitor = () => {
   };
 
   useEffect(() => {
+    // Initial fetch
     fetchJobs();
     
-    // Set up polling to refresh job status every 10 seconds
-    const intervalId = setInterval(fetchJobs, 10000);
+    let intervalId = null;
     
-    return () => clearInterval(intervalId);
-  }, []);
+    // Only set up interval if auto-refresh is enabled
+    if (isAutoRefreshEnabled) {
+      // Set next refresh time
+      setNextRefreshTime(Date.now() + refreshInterval);
+      
+      // Set up polling at reduced frequency
+      intervalId = setInterval(() => {
+        // Only fetch if we're past the next refresh time
+        if (Date.now() >= nextRefreshTime) {
+          fetchJobs();
+          setNextRefreshTime(Date.now() + refreshInterval);
+        }
+      }, refreshInterval);
+    }
+    
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isAutoRefreshEnabled]);
+
+  useEffect(() => {
+    if (!isAutoRefreshEnabled) {
+      setCountdown(0);
+      return;
+    }
+    
+    const countdownInterval = setInterval(() => {
+      const remaining = Math.max(0, Math.floor((nextRefreshTime - Date.now()) / 1000));
+      setCountdown(remaining);
+    }, 1000);
+    
+    return () => clearInterval(countdownInterval);
+  }, [nextRefreshTime, isAutoRefreshEnabled]);
 
   // Set up job completion notifications
   useEffect(() => {

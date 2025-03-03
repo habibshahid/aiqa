@@ -16,6 +16,7 @@ const couchingRoutes = require('./coaching');
 const analyticsRoutes = require('./analytics');
 const exportsRoutes = require('./exports');
 const groupsRoutes = require('./groups');
+const schedulerRoutes = require('./scheduler');
 
 const { authenticateToken } = require('../middleware/auth');
 // Public routes
@@ -36,5 +37,6 @@ router.use('/coaching', authenticateToken, couchingRoutes);
 router.use('/analytics', authenticateToken, analyticsRoutes);
 router.use('/exports', authenticateToken, exportsRoutes);
 router.use('/groups', authenticateToken, groupsRoutes);
+router.use('/scheduler', authenticateToken, schedulerRoutes); 
 
 module.exports = router;

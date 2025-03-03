@@ -215,11 +215,7 @@ const ReportsExport = () => {
   };
 
   return (
-    <div className="container-fluid py-4">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2 className="mb-0">Export Reports</h2>
-      </div>
-      
+    <div className="container-fluid py-4">      
       <div className="row">
         <div className="col-md-8">
           {/* Filters */}

@@ -84,6 +84,20 @@ const transcriptionService = {
         }
       });
 
+      const normalizeIntents = (intents) => {
+        if (!intents || !Array.isArray(intents)) return [];
+        
+        return intents.map(intent => {
+          if (typeof intent === 'string') {
+            return intent;
+          } else if (intent && typeof intent === 'object' && intent.intent) {
+            return intent.intent; // Extract the string from the object
+          } else {
+            return 'unknown'; // Fallback for any other unexpected format
+          }
+        });
+      };
+      
       // Calculate averages and format for response
       const formatAnalysis = {
         sentimentDistribution: {
@@ -98,7 +112,7 @@ const transcriptionService = {
           averageSentiment: stats.messageCount ? stats.totalSentiment / stats.messageCount : 0,
           languages: Array.from(stats.languages)
         })),
-        intents: Array.from(analysis.intents),
+        intents: normalizeIntents(Array.from(analysis.intents)),
         averageProfanityLevel: analysis.messageCount ? analysis.profanityLevel / analysis.messageCount : 0,
         totalTokens: analysis.totalTokens,
         messageCount: analysis.messageCount
@@ -147,5 +161,62 @@ const transcriptionService = {
     }
   }
 };
+
+async function getPaginatedTranscription(evaluationId, page, limit) {
+  const skip = (page - 1) * limit;
+  
+  // First find the interaction ID from the evaluation
+  const evaluation = await InteractionAIQA.findById(evaluationId)
+    .select('interactionId')
+    .lean();
+    
+  if (!evaluation) {
+    throw new Error('Evaluation not found');
+  }
+  
+  // Then find the transcription
+  const transcription = await InteractionTranscription.findOne({
+    interactionId: evaluation.interactionId
+  });
+  
+  if (!transcription) {
+    return { 
+      items: [], 
+      totalItems: 0,
+      page,
+      totalPages: 0
+    };
+  }
+  
+  // Get total count
+  const totalItems = transcription.transcription?.length || 0;
+  const totalPages = Math.ceil(totalItems / limit);
+  
+  // Get subset of transcription with pagination
+  const items = transcription.transcription
+    .slice(skip, skip + limit)
+    .map(message => {
+      // Normalize data here
+      const timestamp = Object.keys(message)[0];
+      if (timestamp && message[timestamp]) {
+        const data = { ...message[timestamp] };
+        
+        // Normalize intent data
+        if (data.intent) {
+          data.intent = normalizeIntents(data.intent);
+        }
+        
+        return { [timestamp]: data };
+      }
+      return message;
+    });
+  
+  return {
+    items,
+    totalItems,
+    page,
+    totalPages
+  };
+}
 
 module.exports = transcriptionService;
