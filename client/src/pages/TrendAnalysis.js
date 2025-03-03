@@ -3,6 +3,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { format, subMonths } from 'date-fns';
 import Select from 'react-select';
+import { Lock } from 'lucide-react';
+import { api } from '../services/api';
 
 const TrendAnalysis = () => {
   const [agents, setAgents] = useState([]);
@@ -12,6 +14,8 @@ const TrendAnalysis = () => {
   const [error, setError] = useState(null);
   const [forms, setForms] = useState([]);
   const [formsLoading, setFormsLoading] = useState(true);
+  const [isRestrictedView, setIsRestrictedView] = useState(false);
+  const [userInfo, setUserInfo] = useState(null);
   const [filters, setFilters] = useState({
     startDate: format(subMonths(new Date(), 3), 'yyyy-MM-dd'),
     endDate: format(new Date(), 'yyyy-MM-dd'),
@@ -21,54 +25,28 @@ const TrendAnalysis = () => {
     selectedForm: null
   });
 
-  // Define fetchTrends function with useCallback
-  const fetchTrends = useCallback(async () => {
-    try {
-      // Check if form is selected when multiple forms exist
-      if (!filters.selectedForm && forms.length > 1) {
-        setTrends([]);
-        setLoading(false);
-        return;
+  // Get user profile to determine if agent or admin
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        const userInfo = await api.getUserProfile();
+        setUserInfo(userInfo);
+        
+        // Check if user has isAdmin property
+        const isAdmin = userInfo?.isAdmin === true;
+        setIsRestrictedView(!isAdmin && !!userInfo?.agentId);
+        
+        // If not admin and has agent ID, pre-select their agent
+        if (!isAdmin && userInfo?.agentId) {
+          // We'll handle this after agents are loaded
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
       }
-      
-      setLoading(true);
-      
-      const params = new URLSearchParams({
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        interval: filters.interval.value
-      });
-      
-      if (filters.selectedForm) {
-        params.append('formId', filters.selectedForm.value);
-      }
-
-      if (filters.selectedAgent) {
-        params.append('agentId', filters.selectedAgent.value);
-      }
-      
-      if (filters.selectedQueue) {
-        params.append('queueId', filters.selectedQueue.value);
-      }
-      
-      const response = await fetch(`/api/analytics/trends?${params}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch trend data');
-      }
-      
-      const data = await response.json();
-      setTrends(data);
-      setError(null);
-    } catch (error) {
-      console.error('Error fetching trends:', error);
-      setError(error.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters, forms.length]);
+    };
+    
+    fetchUserInfo();
+  }, []);
 
   // Define fetchForms function with useCallback
   const fetchForms = useCallback(async () => {
@@ -123,6 +101,22 @@ const TrendAnalysis = () => {
         
         setAgents(agentsData);
         setQueues(queuesData);
+        
+        // If in restricted view and user is not admin, filter agents and auto-select
+        if (isRestrictedView && userInfo?.agentId) {
+          // Find the agent object for the current user
+          const userAgent = agentsData.find(a => a.id.toString() === userInfo.agentId.toString());
+          if (userAgent) {
+            // Pre-select the user's agent
+            setFilters(prev => ({ 
+              ...prev, 
+              selectedAgent: { 
+                value: userAgent.id,
+                label: userAgent.name
+              }
+            }));
+          }
+        }
       } catch (error) {
         console.error('Error fetching options:', error);
         setError('Failed to load filter options');
@@ -130,7 +124,7 @@ const TrendAnalysis = () => {
     };
     
     fetchOptions();
-  }, []);
+  }, [userInfo, isRestrictedView]);
 
   // Fetch forms on component mount
   useEffect(() => {
@@ -140,9 +134,73 @@ const TrendAnalysis = () => {
   // Fetch trends when filters change
   useEffect(() => {
     fetchTrends();
-  }, [fetchTrends]);
+  }, [filters]);
+
+  const fetchTrends = async () => {
+    try {
+      // Only proceed if a form is selected when multiple forms exist
+      if (!filters.selectedForm && forms.length > 1) {
+        setTrends([]);
+        setLoading(false);
+        return;
+      }
+  
+      // Start loading
+      setLoading(true);
+      setError(null);
+  
+      // Prepare query parameters
+      const params = new URLSearchParams({
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        interval: filters.interval.value
+      });
+      
+      if (filters.selectedForm) {
+        params.append('formId', filters.selectedForm.value);
+      }
+
+      if (filters.selectedAgent) {
+        params.append('agentId', filters.selectedAgent.value);
+      }
+      
+      if (filters.selectedQueue) {
+        params.append('queueId', filters.selectedQueue.value);
+      }
+      
+      const response = await fetch(`/api/analytics/trends?${params}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      
+      // Check if this is a restricted view
+      const isRestricted = response.headers.get('X-Restricted-View') === 'agent-only';
+      setIsRestrictedView(isRestricted);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch trend data');
+      }
+      
+      const rawData = await response.json();
+      
+      // Handle different response formats (array or object with data property)
+      const data = Array.isArray(rawData) ? rawData : (rawData.data || []);
+      
+      setTrends(data);
+      setError(null);
+    } catch (error) {
+      console.error('Error fetching trends:', error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleFilterChange = (name, value) => {
+    // If in restricted view, don't allow changing the agent
+    if (isRestrictedView && name === 'selectedAgent') {
+      return;
+    }
+    
     setFilters(prev => ({ ...prev, [name]: value }));
   };
 
@@ -160,6 +218,16 @@ const TrendAnalysis = () => {
 
   return (
     <div className="container-fluid py-4">
+      {/* Restricted View Notice */}
+      {isRestrictedView && (
+        <div className="alert alert-info d-flex align-items-center mb-4">
+          <Lock size={18} className="me-2" />
+          <div>
+            <strong>Agent View:</strong> You can only see your own performance data.
+          </div>
+        </div>
+      )}
+      
       {!filters.selectedForm && forms.length > 1 && !loading && (
         <div className="alert alert-info">
           <div className="d-flex align-items-center">
@@ -210,7 +278,7 @@ const TrendAnalysis = () => {
             </div>
             
             <div className="col-md-3">
-              <label className="form-label">Agent (Optional)</label>
+              <label className="form-label">Agent</label>
               <Select
                 options={agents.map(agent => ({
                   value: agent.id,
@@ -218,13 +286,17 @@ const TrendAnalysis = () => {
                 }))}
                 value={filters.selectedAgent}
                 onChange={(selected) => handleFilterChange('selectedAgent', selected)}
-                isClearable
-                placeholder="All Agents"
+                isClearable={!isRestrictedView}
+                placeholder={isRestrictedView ? "Your data only" : "All Agents"}
+                isDisabled={isRestrictedView}
               />
+              {isRestrictedView && (
+                <small className="text-muted">You can only view your own data</small>
+              )}
             </div>
             
             <div className="col-md-3">
-              <label className="form-label">Queue (Optional)</label>
+              <label className="form-label">Queue</label>
               <Select
                 options={queues.map(queue => ({
                   value: queue.id,

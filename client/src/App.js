@@ -18,6 +18,9 @@ import AgentCoaching from './pages/AgentCoaching';
 import AgentComparison from './pages/AgentComparison';
 import TrendAnalysis from './pages/TrendAnalysis';
 import ReportsExport from './pages/ReportsExport';
+import GroupsList from './pages/GroupManagement/GroupsList';
+import GroupEditor from './pages/GroupManagement/GroupEditor';
+import GroupUsers from './pages/GroupManagement/GroupUsers';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -202,6 +205,46 @@ function App() {
           <PrivateLayout>
             <WithPermission permission="qa-forms.read">
               <ReportsExport />
+            </WithPermission>
+          </PrivateLayout>
+        }
+      />
+      <Route
+        path="/groups"
+        element={
+          <PrivateLayout>
+            <WithPermission permission="groups.read">
+              <GroupsList />
+            </WithPermission>
+          </PrivateLayout>
+        }
+      />
+      <Route
+        path="/groups/new"
+        element={
+          <PrivateLayout>
+            <WithPermission permission="groups.write">
+              <GroupEditor />
+            </WithPermission>
+          </PrivateLayout>
+        }
+      />
+      <Route
+        path="/groups/edit/:id"
+        element={
+          <PrivateLayout>
+            <WithPermission permission="groups.write">
+              <GroupEditor />
+            </WithPermission>
+          </PrivateLayout>
+        }
+      />
+      <Route
+        path="/groups/:id/users"
+        element={
+          <PrivateLayout>
+            <WithPermission permission="groups.write">
+              <GroupUsers />
             </WithPermission>
           </PrivateLayout>
         }

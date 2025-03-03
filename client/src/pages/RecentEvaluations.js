@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { PhoneIncoming, PhoneOutgoing } from 'lucide-react';
+import { PhoneIncoming, PhoneOutgoing, Lock } from 'lucide-react';
+import { api } from '../services/api';
 
 const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
   const totalPages = Math.ceil(totalItems / itemsPerPage);
@@ -55,6 +56,7 @@ const RecentEvaluations = () => {
   const itemsPerPage = 10;
   const [forms, setForms] = useState([]);
   const [formsLoading, setFormsLoading] = useState(true);
+  const [isRestrictedView, setIsRestrictedView] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState({
     agentId: '',
     queueId: '',
@@ -64,6 +66,7 @@ const RecentEvaluations = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [userInfo, setUserInfo] = useState(null);
 
   const fetchForms = useCallback(async () => {
     try {
@@ -90,6 +93,20 @@ const RecentEvaluations = () => {
     } finally {
       setFormsLoading(false);
     }
+  }, []);
+
+  // Get user profile to determine if agent or admin
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        const userInfo = await api.getUserProfile();
+        setUserInfo(userInfo);
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      }
+    };
+    
+    fetchUserInfo();
   }, []);
 
   const formatDurationHumanReadable = (seconds) => {
@@ -141,6 +158,10 @@ const RecentEvaluations = () => {
         })
       ]);
 
+      // Check if we're in a restricted view
+      const isRestricted = metricsResponse.headers.get('X-Restricted-View') === 'agent-only';
+      setIsRestrictedView(isRestricted);
+
       if (!filtersResponse.ok || !metricsResponse.ok) {
         throw new Error('Failed to fetch evaluations data');
       }
@@ -153,13 +174,22 @@ const RecentEvaluations = () => {
       console.log('Metrics Data:', metricsData);
       setFilters(filtersData);
       setMetrics(metricsData);
+      
+      // If we're in a restricted view and this is the first load
+      if (isRestricted && !selectedFilters.agentId && userInfo && userInfo.agentId) {
+        // Auto-select the current user's agent ID
+        setSelectedFilters(prev => ({
+          ...prev,
+          agentId: userInfo.agentId
+        }));
+      }
     } catch (err) {
       console.error('Evaluations error:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [selectedFilters, forms.length]);
+  }, [selectedFilters, forms.length, userInfo]);
 
   // Fetch forms on mount
   useEffect(() => {
@@ -173,6 +203,12 @@ const RecentEvaluations = () => {
   
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
+    
+    // If in restricted view, don't allow changing the agent
+    if (isRestrictedView && name === 'agentId' && userInfo && userInfo.agentId) {
+      return;
+    }
+    
     setSelectedFilters(prev => ({
       ...prev,
       [name]: value
@@ -208,6 +244,16 @@ const RecentEvaluations = () => {
 
   return (
     <div className="container-fluid py-4">
+      {/* Restricted View Notice */}
+      {isRestrictedView && (
+        <div className="alert alert-info d-flex align-items-center mb-4">
+          <Lock size={18} className="me-2" />
+          <div>
+            <strong>Agent View:</strong> You can only see your own evaluations.
+          </div>
+        </div>
+      )}
+      
       {/* Filters */}
       {!selectedFilters.formId && forms.length > 1 && !loading && (
         <div className="alert alert-info">
@@ -245,6 +291,7 @@ const RecentEvaluations = () => {
                 name="agentId"
                 value={selectedFilters.agentId}
                 onChange={handleFilterChange}
+                disabled={isRestrictedView}
               >
                 <option value="">All Agents</option>
                 {filters?.agents?.map(agent => (
@@ -253,6 +300,9 @@ const RecentEvaluations = () => {
                   </option>
                 ))}
               </select>
+              {isRestrictedView && (
+                <small className="text-muted">You can only view your own evaluations</small>
+              )}
             </div>
 
             <div className="col-md-3">

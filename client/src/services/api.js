@@ -84,6 +84,52 @@ export const api = {
     }
   },
 
+  // Group Management
+  getGroups: () =>
+    request('/groups'),
+
+  getGroup: (id) =>
+    request(`/groups/${id}`),
+
+  createGroup: (groupData) =>
+    request('/groups', {
+      method: 'POST',
+      body: JSON.stringify(groupData)
+    }),
+
+  updateGroup: (id, groupData) =>
+    request(`/groups/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(groupData)
+    }),
+
+  deleteGroup: (id) =>
+    request(`/groups/${id}`, {
+      method: 'DELETE'
+    }),
+
+  reassignAndDeleteGroup: (id, newGroupId) =>
+    request(`/groups/${id}/reassign-and-delete`, {
+      method: 'POST',
+      body: JSON.stringify({ newGroupId })
+    }),
+
+  getGroupUsers: (id) =>
+    request(`/groups/${id}/users`),
+
+  getAvailableUsers: (id) =>
+    request(`/groups/${id}/available-users`),
+
+  addUserToGroup: (groupId, userId) =>
+    request(`/groups/${groupId}/users`, {
+      method: 'POST',
+      body: JSON.stringify({ userId })
+    }),
+
+  removeUserFromGroup: (groupId, userId) =>
+    request(`/groups/${groupId}/users/${userId}`, {
+      method: 'DELETE'
+    }), 
   // Auth related methods
   login: (credentials) => 
     request('auth/login', {

@@ -12,6 +12,14 @@ router.get('/metrics', async (req, res) => {
   try {
     const { agentId, queueId, startDate, endDate, formId } = req.query;
     
+    // If user is not admin, restrict to their agent data only
+    if (!req.user.isAdmin && req.user.agentId) {
+      agentId = req.user.agentId;
+      
+      // Inform frontend that this is a restricted view
+      res.set('X-Restricted-View', 'agent-only');
+    }
+
     const filters = {
       ...(agentId && { agentId }),
       ...(queueId && { queueId }),
@@ -27,7 +35,8 @@ router.get('/metrics', async (req, res) => {
       qa: qaMetrics,
       totalEvaluations: qaMetrics?.totalEvaluations || 0,
       bestPerformer: qaMetrics?.bestPerformer || null,
-      areasNeedingFocus: qaMetrics?.areasOfImprovement?.slice(0, 3) || []
+      areasNeedingFocus: qaMetrics?.areasOfImprovement?.slice(0, 3) || [],
+      isRestrictedView: !req.user.isAdmin && !!req.user.agentId
     };
 
     res.json(response);
@@ -56,6 +65,15 @@ router.get('/metrics', async (req, res) => {
 router.get('/filters', async (req, res) => {
   try {
     const options = await analyticsService.getFilterOptions();
+    if (!req.user.isAdmin && req.user.agentId) {
+      // If user is an agent, only show their own data in the agent filter
+      options.agents = options.agents.filter(agent => 
+        agent.id.toString() === req.user.agentId.toString()
+      );
+      
+      // Inform frontend that this is a restricted view
+      res.set('X-Restricted-View', 'agent-only');
+    }
     res.json(options);
   } catch (error) {
     console.error('Filter options error:', error);
@@ -76,6 +94,17 @@ router.get('/evaluation/:id', async (req, res) => {
         message: 'QA evaluation not found',
         data: null
       });
+    }
+    if (!req.user.isAdmin && req.user.agentId) {
+      // Check if this evaluation belongs to this agent
+      const evaluationAgentId = qaDetail.agent?.id?.toString();
+      
+      if (evaluationAgentId !== req.user.agentId.toString()) {
+        return res.status(403).json({ 
+          message: 'You do not have permission to view this evaluation',
+          data: null
+        });
+      }
     }
     res.json(qaDetail);
   } catch (error) {

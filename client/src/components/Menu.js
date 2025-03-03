@@ -12,7 +12,8 @@ import {
   PlusCircle, 
   UserCheck, 
   TrendingUp, 
-  FileDown 
+  FileDown,
+  UsersRound
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -64,7 +65,13 @@ const menuConfig = [
     path: '/exports', 
     label: 'Export Reports',
     permission: 'qa-forms.read'
-  }
+  },
+  { 
+    icon: UsersRound, 
+    path: '/groups', 
+    label: 'Group Management',
+    permission: 'groups.read'
+  },
 ];
 
 const hasPermission = (permissions, requiredPermission) => {

@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import { format } from 'date-fns';
 import Select from 'react-select';
+import { Lock } from 'lucide-react';
+import { api } from '../services/api';
 
 const AgentComparison = () => {
   const navigate = useNavigate();
@@ -14,6 +16,8 @@ const AgentComparison = () => {
   const [error, setError] = useState(null);
   const [forms, setForms] = useState([]);
   const [formsLoading, setFormsLoading] = useState(true);
+  const [isRestrictedView, setIsRestrictedView] = useState(false);
+  const [userInfo, setUserInfo] = useState(null);
   const [filters, setFilters] = useState({
     startDate: format(new Date(new Date().setDate(new Date().getDate() - 30)), 'yyyy-MM-dd'),
     endDate: format(new Date(), 'yyyy-MM-dd'),
@@ -21,6 +25,29 @@ const AgentComparison = () => {
     selectedParameters: [],
     selectedForm: null
   });
+
+  // Get user profile to determine if agent or admin
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        const userInfo = await api.getUserProfile();
+        setUserInfo(userInfo);
+        
+        // Check if user has isAdmin property
+        const isAdmin = userInfo?.isAdmin === true;
+        setIsRestrictedView(!isAdmin && !!userInfo?.agentId);
+        
+        // If not admin and has agent ID, pre-select their agent
+        if (!isAdmin && userInfo?.agentId) {
+          // We'll handle this after agents are loaded
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      }
+    };
+    
+    fetchUserInfo();
+  }, []);
 
   // Define fetchForms as a useCallback at the top level
   const fetchForms = useCallback(async () => {
@@ -74,6 +101,22 @@ const AgentComparison = () => {
         
         setAgents(agentsData);
         
+        // If in restricted view and user is not admin, filter agents
+        if (isRestrictedView && userInfo?.agentId) {
+          // Find the agent object for the current user
+          const userAgent = agentsData.find(a => a.id.toString() === userInfo.agentId.toString());
+          if (userAgent) {
+            // Pre-select the user's agent
+            setFilters(prev => ({ 
+              ...prev, 
+              selectedAgents: [{ 
+                value: userAgent.id,
+                label: userAgent.name
+              }]
+            }));
+          }
+        }
+        
         // Extract parameters from QA forms
         const params = [];
         formsData.forEach(form => {
@@ -95,7 +138,7 @@ const AgentComparison = () => {
     };
     
     fetchOptions();
-  }, []);
+  }, [userInfo, isRestrictedView]);
 
   useEffect(() => {
     fetchForms();
@@ -103,10 +146,10 @@ const AgentComparison = () => {
 
   // Fetch comparison data when filters change
   useEffect(() => {
-    if (filters.selectedAgents.length === 0) return;
+    if (filters.selectedAgents.length === 0 && !isRestrictedView) return;
     
     fetchComparison();
-  }, [filters]);
+  }, [filters, isRestrictedView]);
 
   const fetchComparison = async () => {
     try {
@@ -136,11 +179,19 @@ const AgentComparison = () => {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       
+      // Check if this is a restricted view
+      const isRestricted = response.headers.get('X-Restricted-View') === 'agent-only';
+      setIsRestrictedView(isRestricted);
+      
       if (!response.ok) {
         throw new Error('Failed to fetch comparison data');
       }
       
-      const data = await response.json();
+      const rawData = await response.json();
+      
+      // Handle different response formats (array or object with data property)
+      const data = Array.isArray(rawData) ? rawData : (rawData.data || []);
+      
       setComparison(data);
       setError(null);
     } catch (error) {
@@ -152,6 +203,11 @@ const AgentComparison = () => {
   };
 
   const handleFilterChange = (name, value) => {
+    // If restricted view, don't allow changing agents
+    if (isRestrictedView && name === 'selectedAgents') {
+      return;
+    }
+    
     setFilters(prev => ({ ...prev, [name]: value }));
   };
 
@@ -183,6 +239,17 @@ const AgentComparison = () => {
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h2 className="mb-0">Agent Performance Comparison</h2>
       </div>
+      
+      {/* Restricted View Notice */}
+      {isRestrictedView && (
+        <div className="alert alert-info d-flex align-items-center mb-4">
+          <Lock size={18} className="me-2" />
+          <div>
+            <strong>Agent View:</strong> You can only see your own performance data.
+          </div>
+        </div>
+      )}
+      
       {!filters.selectedForm && forms.length > 1 && !loading && (
         <div className="alert alert-info">
           <div className="d-flex align-items-center">
@@ -239,7 +306,11 @@ const AgentComparison = () => {
                 value={filters.selectedAgents}
                 onChange={(selected) => handleFilterChange('selectedAgents', selected)}
                 placeholder="Select agents to compare"
+                isDisabled={isRestrictedView}
               />
+              {isRestrictedView && (
+                <small className="text-muted">You can only view your own performance data</small>
+              )}
             </div>
             
             <div className="col-md-6">
@@ -257,7 +328,7 @@ const AgentComparison = () => {
               <button
                 className="btn btn-primary"
                 onClick={fetchComparison}
-                disabled={loading || filters.selectedAgents.length === 0}
+                disabled={loading || (filters.selectedAgents.length === 0 && !isRestrictedView)}
               >
                 {loading ? (
                   <>
@@ -361,34 +432,36 @@ const AgentComparison = () => {
           </div>
           
           {/* Radar Chart for Parameter Comparison */}
-          <div className="card mb-4">
-            <div className="card-header">
-              <h5 className="card-title mb-0">Parameter Comparison</h5>
-            </div>
-            <div className="card-body">
-              <div style={{ height: 500 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart outerRadius={150} data={prepareRadarData()}>
-                    <PolarGrid />
-                    <PolarAngleAxis dataKey="parameter" />
-                    <PolarRadiusAxis domain={[0, 5]} />
-                    {comparison.map((agent, index) => (
-                      <Radar
-                        key={agent.id}
-                        name={agent.name}
-                        dataKey={agent.name}
-                        stroke={index === 0 ? '#8884d8' : index === 1 ? '#82ca9d' : '#ffc658'}
-                        fill={index === 0 ? '#8884d8' : index === 1 ? '#82ca9d' : '#ffc658'}
-                        fillOpacity={0.6}
-                      />
-                    ))}
-                    <Legend />
-                    <Tooltip />
-                  </RadarChart>
-                </ResponsiveContainer>
+          {comparison.length > 1 && (
+            <div className="card mb-4">
+              <div className="card-header">
+                <h5 className="card-title mb-0">Parameter Comparison</h5>
+              </div>
+              <div className="card-body">
+                <div style={{ height: 500 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart outerRadius={150} data={prepareRadarData()}>
+                      <PolarGrid />
+                      <PolarAngleAxis dataKey="parameter" />
+                      <PolarRadiusAxis domain={[0, 5]} />
+                      {comparison.map((agent, index) => (
+                        <Radar
+                          key={agent.id}
+                          name={agent.name}
+                          dataKey={agent.name}
+                          stroke={index === 0 ? '#8884d8' : index === 1 ? '#82ca9d' : '#ffc658'}
+                          fill={index === 0 ? '#8884d8' : index === 1 ? '#82ca9d' : '#ffc658'}
+                          fillOpacity={0.6}
+                        />
+                      ))}
+                      <Legend />
+                      <Tooltip />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
             </div>
-          </div>
+          )}
           
           {/* Parameter-specific Bar Charts */}
           <div className="row">

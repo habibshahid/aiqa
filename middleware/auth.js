@@ -2,7 +2,8 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const db = require('../config/database');
-const tablePrefix = process.env.TABLE_PREFIX;
+const { determineUserRole } = require('./userRole');
+const tablePrefix = process.env.TABLE_PREFIX || 'yovo_tbl_';
 
 const generateToken = async (user, req) => {
   try {
@@ -134,8 +135,9 @@ const authenticateToken = async (req, res, next) => {
 
     req.user = user;
     req.tokenId = decoded.jti;
-    next();
-
+    
+    // Determine if user is admin or agent and add role information
+    await determineUserRole(req, res, next);
   } catch (error) {
     console.error('Auth error:', error);
     if (error.name === 'TokenExpiredError') {

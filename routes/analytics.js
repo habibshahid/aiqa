@@ -11,6 +11,13 @@ router.use(authenticateToken);
 router.get('/agent-comparison', async (req, res) => {
   try {
     const { startDate, endDate, agents, parameters, formId } = req.query;
+
+    if (!req.user.isAdmin && req.user.agentId) {
+      agents = req.user.agentId.toString();
+      
+      // Inform frontend that this is a restricted view
+      res.set('X-Restricted-View', 'agent-only');
+    }
     
     console.log('Agent Comparison Request:', { startDate, endDate, agents, parameters });
     
@@ -164,7 +171,20 @@ router.get('/agent-comparison', async (req, res) => {
       ? { warning: "No evaluations matched your filters. Showing all evaluations instead.", data: response }
       : response;
     
-    res.json(result);
+    if (!req.user.isAdmin && req.user.agentId) {
+      if (Array.isArray(result)) {
+        res.json({
+          data: result,
+          isRestrictedView: true
+        });
+      } else {
+        result.isRestrictedView = true;
+        res.json(result);
+      }
+    } else {
+      res.json(result);
+    }
+    //res.json(result);
   } catch (error) {
     console.error('Error getting agent comparison:', error);
     res.status(500).json({ message: 'Error getting agent comparison', error: error.message });
@@ -176,6 +196,13 @@ router.get('/trends', async (req, res) => {
   try {
     const { startDate, endDate, agentId, queueId, interval = 'day', formId } = req.query;
     
+    if (!req.user.isAdmin && req.user.agentId) {
+      agentId = req.user.agentId.toString();
+      
+      // Inform frontend that this is a restricted view
+      res.set('X-Restricted-View', 'agent-only');
+    }
+
     console.log('Trend Analysis Request:', { startDate, endDate, agentId, queueId, interval: 'day', formId });
     
     const query = {};
@@ -325,7 +352,19 @@ router.get('/trends', async (req, res) => {
       ? { warning: "No evaluations matched your filters. Showing recent evaluation trends instead.", data: result }
       : result;
     
-    res.json(response);
+    if (!req.user.isAdmin && req.user.agentId) {
+      if (Array.isArray(response)) {
+        res.json({
+          data: response,
+          isRestrictedView: true
+        });
+      } else {
+        response.isRestrictedView = true;
+        res.json(response);
+      }
+    } else {
+      res.json(response);
+    }
   } catch (error) {
     console.error('Error getting trend data:', error);
     res.status(500).json({ message: 'Error getting trend data', error: error.message });
