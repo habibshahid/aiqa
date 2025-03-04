@@ -14,7 +14,8 @@ import {
   TrendingUp, 
   FileDown,
   UsersRound,
-  AlarmClock
+  AlarmClock,
+  FileText
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -78,7 +79,7 @@ const menuConfig = [
     path: '/groups', 
     label: 'Group Management',
     permission: 'groups.read'
-  },
+  }
 ];
 
 const hasPermission = (permissions, requiredPermission) => {

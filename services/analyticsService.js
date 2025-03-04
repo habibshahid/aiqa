@@ -133,10 +133,14 @@ const getEvaluationMetrics = async (filters = {}) => {
     
     // Format evaluations for recent list
     const recentEvaluations = evaluations.map(eval => {
+      let score = eval.evaluationData?.evaluation?.totalScore || 0;
+      let maxScore = eval.evaluationData?.evaluation?.maxScore || 0;
+      let scorePerc = (score/maxScore * 100) || 0;
       return {
         id: eval._id,
-        score: eval.evaluationData?.evaluation?.totalScore || 0,
-        maxScore: eval.evaluationData?.evaluation?.maxScore || 0,
+        score: score,
+        maxScore: maxScore,
+        scorePerc: scorePerc,
         createdAt: eval.createdAt,
         summary: eval.evaluationData?.evaluation?.summary || '',
         areasOfImprovement: eval.evaluationData?.evaluation?.areasOfImprovements || [],

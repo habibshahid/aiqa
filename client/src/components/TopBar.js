@@ -4,7 +4,7 @@ import {
   Bell, User, ChevronDown, Settings, Info, LogOut, Key,
   Home, ClipboardCheck, PlusCircle, ClipboardList, Filter,
   UserCheck, TrendingUp, FileDown, AlarmClock, FileText, Pencil,
-  HelpCircle, UsersRound
+  HelpCircle, UsersRound 
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../services/api';
@@ -28,6 +28,7 @@ const pageTitles = {
   '/queue-monitor': { title: 'Queue Monitor', icon: ListChecks },
   '/change-password': { title: 'Change Password', icon: Key },
   '/groups': { title: 'Groups Management', icon: UsersRound },
+  '/documentation': { title: 'Documentation', icon: FileText },
 };
 
 export default function TopBar() {
@@ -227,6 +228,14 @@ export default function TopBar() {
                   </button>
                   
                   <button 
+                    onClick={() => navigate('/documentation')}
+                    className="dropdown-item d-flex align-items-center gap-2"
+                  >
+                    <FileText size={16} />
+                    Documentation
+                  </button>
+                  
+                  <button 
                     onClick={() => {
                       resetTour();
                       startMainTour();
@@ -246,6 +255,8 @@ export default function TopBar() {
                       Version 1.0.0
                     </div>
                   </div>
+
+                  
                   
                   <div className="dropdown-divider"></div>
                   

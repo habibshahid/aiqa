@@ -1,14 +1,14 @@
 // src/components/SessionTimeoutModal.js
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../context/AppContext'; // Add this import
+import { useApp } from '../context/AppContext';
 
 export default function SessionTimeoutModal({ isOpen, onClose, onLogin }) {
   const [credentials, setCredentials] = useState({ username: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const { login } = useApp(); // Get the login function from context
+  const { login } = useApp();
 
   if (!isOpen) return null;
 
@@ -26,7 +26,7 @@ export default function SessionTimeoutModal({ isOpen, onClose, onLogin }) {
       }
       
       // If we get here, login was successful
-      // onLogin will be called by the AppContext when login succeeds
+      // Don't navigate away or close the modal - the AppContext will handle it
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {
@@ -36,8 +36,33 @@ export default function SessionTimeoutModal({ isOpen, onClose, onLogin }) {
 
   return (
     <>
-      <div className="modal-backdrop show" />
-      <div className="modal d-block" tabIndex="-1">
+      {/* Use a non-destructive overlay that doesn't remove content */}
+      <div 
+        className="modal-backdrop show" 
+        style={{ 
+          opacity: 0.5,  // Make it semi-transparent
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 1040
+        }} 
+      />
+      <div 
+        className="modal" 
+        style={{ 
+          display: 'block', 
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 1050,
+          overflow: 'auto'
+        }}
+        tabIndex="-1"
+      >
         <div className="modal-dialog modal-dialog-centered">
           <div className="modal-content">
             <div className="modal-header">

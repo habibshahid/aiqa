@@ -394,8 +394,8 @@ const RecentEvaluations = () => {
                       </td>
                       <td>
                         <div className={`badge bg-${
-                          evaluation.score >= 90 ? 'success' : 
-                          evaluation.score >= 70 ? 'warning' : 'danger'
+                          evaluation.scorePerc >= 90 ? 'success' : 
+                          evaluation.scorePerc >= 70 ? 'warning' : 'danger'
                         }`}>
                           {evaluation.score || 0}
                           {evaluation.maxScore ? ` / ${evaluation.maxScore}` : ''}

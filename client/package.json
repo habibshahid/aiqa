@@ -18,19 +18,28 @@
     "path": "^0.12.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-markdown": "^10.0.1",
     "react-router-dom": "^6.22.0",
     "react-scripts": "5.0.1",
     "react-select": "^5.9.0",
     "recharts": "^2.15.0",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1",
     "shadcn-ui": "^0.9.4",
+    "shepherd.js": "^11.2.0",
     "sip.js": "^0.21.2",
-    "web-vitals": "^2.1.4",
-    "shepherd.js": "^11.1.1"
+    "web-vitals": "^2.1.4"
+  },
+  "devDependencies": {
+    "react-app-rewired": "^2.2.1",
+    "customize-cra": "^1.0.0",
+    "raw-loader": "^4.0.2"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "set GENERATE_SOURCEMAP=true && react-scripts build",
-    "test": "react-scripts test",
+    "start": "react-app-rewired start",
+    "build": "set GENERATE_SOURCEMAP=true && react-app-rewired build",
+    "test": "react-app-rewired test",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

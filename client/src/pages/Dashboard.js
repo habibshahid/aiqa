@@ -50,7 +50,7 @@ const AreasOfImprovement = ({ areas }) => {
   if (!areas?.length) return null;
 
   return (
-    <div className="mb-4">
+    <div className="mb-2">
       <h5 className="mb-3">Areas Needing Focus</h5>
       <ul className="list-group">
         {areas.map((area, index) => (
@@ -69,7 +69,7 @@ const AgentStrengths = ({ strengths }) => {
   if (!strengths?.length) return null;
 
   return (
-    <div className="mb-4">
+    <div className="mb-2">
       <h5 className="mb-3">Agent Strengths</h5>
       <ul className="list-group">
         {strengths.map((strength, index) => (
@@ -88,7 +88,7 @@ const IntentsChart = ({ data }) => {
   if (!data || data.length === 0) return null;
   
   return (
-    <div className="card mb-4">
+    <div className="card mb-2">
       <div className="card-header bg-white">
         <h5 className="card-title mb-0">Call Intents</h5>
       </div>
@@ -117,7 +117,7 @@ const QAFormsChart = ({ data }) => {
   if (!data || data.length === 0) return null;
   
   return (
-    <div className="card mb-4">
+    <div className="card mb-2">
       <div className="card-header bg-white">
         <h5 className="card-title mb-0">Evaluations by Form</h5>
       </div>
@@ -146,7 +146,7 @@ const AgentPerformanceChart = ({ data }) => {
   if (!data?.length) return null;
 
   return (
-    <div className="card mb-4">
+    <div className="card mb-2">
       <div className="card-header bg-white">
         <h5 className="card-title mb-0">Agent Performance</h5>
       </div>
@@ -239,7 +239,7 @@ const ParameterBarChart = ({ parameters, dateRange }) => {
   };
 
   return (
-    <div className="card mb-4">
+    <div className="card mb-2">
       <div className="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 className="card-title mb-0">Parameter Score Analysis</h5>
         <div className="text-muted small">
@@ -719,7 +719,7 @@ const Dashboard = () => {
       </div>
 
       {/* Summary Stats */}
-      <div className="row mb-4">
+      <div className="row mb-2">
         <StatsCard
           title="Total Evaluations"
           value={metrics?.qa?.totalEvaluations || 0}
@@ -746,9 +746,9 @@ const Dashboard = () => {
       </div>
 
       {/* Performance Cards */}
-      <div className="row mb-4">
+      <div className="row mb-2">
         <div className="col-md-6">
-          <div className="card mb-4">
+          <div className="card mb-2">
             <div className="card-header bg-white">
               <h5 className="card-title mb-0">Best Performer</h5>
             </div>
@@ -776,7 +776,7 @@ const Dashboard = () => {
         </div>
         
         <div className="col-md-6">
-          <div className="card mb-4">
+          <div className="card mb-2">
             <div className="card-header bg-white">
               <h5 className="card-title mb-0">Needs Improvement</h5>
             </div>
@@ -805,9 +805,9 @@ const Dashboard = () => {
       </div>
 
       {/* Score Highlight Cards */}
-      <div className="row mb-4">
+      <div className="row mb-2">
         <div className="col-md-6">
-          <div className="card mb-4">
+          <div className="card mb-2">
             <div className="card-header bg-white">
               <h5 className="card-title mb-0">Highest Score</h5>
             </div>
@@ -829,7 +829,7 @@ const Dashboard = () => {
         </div>
         
         <div className="col-md-6">
-          <div className="card mb-4">
+          <div className="card mb-2">
             <div className="card-header bg-white">
               <h5 className="card-title mb-0">Lowest Score</h5>
             </div>
@@ -852,7 +852,7 @@ const Dashboard = () => {
       </div>
 
       {/* Call Intents and QA Forms Row */}
-      <div className="row mb-4">
+      <div className="row mb-2">
         <div className="col-md-6">
           <IntentsChart data={metrics?.qa?.intentData} />
         </div>
@@ -891,7 +891,7 @@ const Dashboard = () => {
         </>
       )}
 
-      <div className="row mb-4">
+      <div className="row mb-2">
         {/* Areas of Improvement Section */}
         <div className="col-md-6">
           <AreasOfImprovement areas={metrics?.qa?.areasNeedingFocus || metrics?.areasNeedingFocus} />
@@ -945,8 +945,8 @@ const Dashboard = () => {
                       </td>
                       <td>
                         <div className={`badge bg-${
-                          evaluation.score >= 90 ? 'success' : 
-                          evaluation.score >= 70 ? 'warning' : 'danger'
+                          evaluation.scorePerc >= 90 ? 'success' : 
+                          evaluation.scorePerc >= 70 ? 'warning' : 'danger'
                         }`}>
                           {evaluation.score || 0}
                           {evaluation.maxScore ? ` / ${evaluation.maxScore}` : ''}

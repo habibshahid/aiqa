@@ -22,7 +22,8 @@ import GroupsList from './pages/GroupManagement/GroupsList';
 import GroupEditor from './pages/GroupManagement/GroupEditor';
 import GroupUsers from './pages/GroupManagement/GroupUsers';
 import SchedulerDashboard from './pages/SchedulerDashboard';
-import TourProvider from './components/tour/TourProvider'; // Import TourProvider
+import TourProvider from './components/tour/TourProvider';
+import Documentation from './pages/Documentation';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'shepherd.js/dist/css/shepherd.css'; // Import Shepherd.js styles
@@ -263,7 +264,15 @@ function App() {
             </PrivateLayout>
           }
         />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route
+          path="/documentation"
+          element={
+            <PrivateLayout>
+              <Documentation />
+            </PrivateLayout>
+          }
+        />
+        <Route path="/documentation" element={<Documentation />} />
       </Routes>
     </TourProvider>
   );
