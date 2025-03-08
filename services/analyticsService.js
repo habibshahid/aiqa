@@ -150,6 +150,7 @@ const getEvaluationMetrics = async (filters = {}) => {
         duration: eval.interactionData?.duration || 0,
         direction: parseInt(eval.interactionData?.direction) || 0,
         channel: eval.interactionData?.channel || 'call',
+        queue: eval.interactionData?.queue || 'Unknown',
         evaluator: { id: '2', name: 'Intellicon Agent' },
         caller: eval.interactionData?.caller || {}
       };

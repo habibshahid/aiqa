@@ -81,6 +81,9 @@ const interactionAIQASchema = new mongoose.Schema({
     evaluation: evaluationSchema
   },
   interactionData: {
+    queue: {
+      name: String
+    },
     agent: {
       id: String,
       name: String
@@ -312,6 +315,10 @@ const criteriaProfileSchema = new mongoose.Schema({
     formName: String
   },
   isActive: {
+    type: Boolean,
+    default: true
+  },
+  excludeEvaluated: {
     type: Boolean,
     default: true
   },

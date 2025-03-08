@@ -45,7 +45,8 @@ const qaDetailService = {
         'interactionData.direction': 1,
         'interactionData.channel': 1,
         'evaluationData.evaluation': 1,
-        'evaluationData.usage': 1
+        'evaluationData.usage': 1,
+        'interactionData.queue': 1
       })
       .lean();
 
@@ -72,6 +73,7 @@ const qaDetailService = {
       const interaction = await Interactions.findOne({
         _id: interactionObjectId
       }, {
+        'queue.name': 1,
         'queue.duration': 1,
         'connect.duration': 1,
         'wrapUp.duration': 1,

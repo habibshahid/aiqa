@@ -707,6 +707,7 @@ const processEvaluation = async (evaluation) => {
     let channel = 'call';
     let direction = 0;
     let duration = 0;
+    let queue = '';
 
     try {
       const interaction = await Interactions.findById(interactionId);
@@ -715,6 +716,7 @@ const processEvaluation = async (evaluation) => {
       direction = interactionData.direction;
       duration = interactionData.connect.duration || 0;
       interactionStartTime = interactionData?.connect?.startDtTime || new Date();
+      queue = interactionData.queue?.name || '';
     } catch (error) {
       console.warn(`Could not find interaction start time: ${error.message}`);
       interactionStartTime = new Date();
@@ -828,7 +830,8 @@ const processEvaluation = async (evaluation) => {
       channel, 
       direction,
       duration,
-      evaluator 
+      evaluator,
+      queue
     );
     
     //console.log('processedDocument', processedDocument);
@@ -891,7 +894,7 @@ const processEvaluation = async (evaluation) => {
   }
 };
 
-const processEvaluationResponse = (apiResponse, interactionId, qaFormId, qaFormName, agent, caller, channel, direction, duration, evaluator) => {
+const processEvaluationResponse = (apiResponse, interactionId, qaFormId, qaFormName, agent, caller, channel, direction, duration, evaluator, queue) => {
   return new Promise(async (resolve, reject) => {
   try {
     // Validate the response has the expected structure
@@ -970,7 +973,8 @@ const processEvaluationResponse = (apiResponse, interactionId, qaFormId, qaFormN
         caller: caller || {},
         direction: direction || 0, // Default value
         channel: channel || 'call',     // Default value
-        duration: duration || 0     // Default value
+        duration: duration || 0,     // Default value
+        queue: {name: queue || 'unknown'}
       },
       status: 'completed',
       createdAt: new Date(),

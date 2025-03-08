@@ -97,7 +97,8 @@ const NewEvaluations = () => {
           agentIds: selectedProfile.agents.map(a => a.agentId),
           workCodeIds: selectedProfile.workCodes.map(w => w.code),
           minDuration: selectedProfile.minCallDuration,
-          qaFormId: selectedProfile.evaluationForm?.formId || ''
+          qaFormId: selectedProfile.evaluationForm?.formId || '',
+          excludeEvaluated: selectedProfile.excludeEvaluated !== false
         }));
       }
     }
@@ -132,7 +133,11 @@ const NewEvaluations = () => {
       const searchParams = {
         startDate: filters.startDate,
         endDate: filters.endDate,
-        queues: filters.queueIds,
+        queues: filters.queueIds.map(id => {
+          // Find the queue name by ID
+          const queue = options.queues.find(q => q.id.toString() === id.toString());
+          return queue ? queue.name : id;
+        }),
         agents: filters.agentIds,
         minDuration: filters.minDuration,
         durationComparison: filters.durationComparison,

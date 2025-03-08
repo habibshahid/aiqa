@@ -30,6 +30,7 @@ export default function CriteriaEditor() {
     direction: 'all',
     evaluationForm: null,
     isActive: true,
+    excludeEvaluated: true,
     scheduler: {
       enabled: false,
       cronExpression: '0 17 * * *', // Default to 5:00 PM daily
@@ -101,6 +102,7 @@ export default function CriteriaEditor() {
         direction: formData.direction,
         evaluationForm: formData.evaluationForm,
         isActive: formData.isActive,
+        excludeEvaluated: formData.excludeEvaluated,
         scheduler: formData.scheduler // Include scheduler settings
     };
   
@@ -323,6 +325,27 @@ export default function CriteriaEditor() {
                     } : null
                   }))}
                 />
+              </div>
+
+              <div className="col-12 mt-3">
+                <div className="form-check form-switch">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="excludeEvaluated"
+                    checked={formData.excludeEvaluated}
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      excludeEvaluated: e.target.checked
+                    }))}
+                  />
+                  <label className="form-check-label" htmlFor="excludeEvaluated">
+                    Exclude already evaluated interactions
+                  </label>
+                  <div className="form-text">
+                    When enabled, interactions that have already been evaluated will be excluded from scheduled evaluations.
+                  </div>
+                </div>
               </div>
             </div>
           </div>

@@ -10,7 +10,7 @@ router.use(authenticateToken);
 // Get dashboard metrics and QA data
 router.get('/metrics', async (req, res) => {
   try {
-    const { agentId, queueId, startDate, endDate, formId } = req.query;
+    let { agentId, queueId, startDate, endDate, formId } = req.query;
     
     // If user is not admin, restrict to their agent data only
     if (!req.user.isAdmin && req.user.agentId) {

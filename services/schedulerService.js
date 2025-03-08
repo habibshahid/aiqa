@@ -203,15 +203,43 @@ const buildSearchCriteria = (profile) => {
     };
   }
   
-  // Filter by queue IDs
+  // Filter by queues
   if (profile.queues && profile.queues.length > 0) {
-    query['queue.id'] = { 
-      $in: profile.queues.map(queue => {
-        // Try to convert to number if it's stored as string
-        const queueId = queue.queueId || queue.id;
-        return isNaN(queueId) ? queueId : parseInt(queueId);
-      })
-    };
+    // Check if queue identifiers are numeric IDs or string names
+    const queuesData = profile.queues.map(queue => ({
+      id: queue.queueId || queue.id,
+      name: queue.queueName || queue.name
+    }));
+    
+    // Separate numeric IDs and string names
+    const numericIds = [];
+    const queueNames = [];
+    
+    queuesData.forEach(queue => {
+      if (!isNaN(queue.id)) {
+        numericIds.push(parseInt(queue.id));
+      }
+      
+      // If there's a queue name, add it to the names array
+      if (queue.name && typeof queue.name === 'string') {
+        queueNames.push(queue.name);
+      }
+    });
+    
+    // Build the query for both ID and name
+    if (numericIds.length > 0 && queueNames.length > 0) {
+      // If we have both, use $or to match either
+      query.$or = [
+        { 'queue.id': { $in: numericIds } },
+        { 'queue.name': { $in: queueNames } }
+      ];
+    } else if (numericIds.length > 0) {
+      // If we only have numeric IDs
+      query['queue.id'] = { $in: numericIds };
+    } else if (queueNames.length > 0) {
+      // If we only have string names
+      query['queue.name'] = { $in: queueNames };
+    }
   }
   
   // Filter by work codes

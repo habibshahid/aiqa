@@ -565,11 +565,11 @@ const QADetail = () => {
                   </tr>
                   <tr>
                     <td><strong>Direction:</strong></td>
-                    <td className="text-capitalize">{evaluation.interaction?.direction || 'inbound'}</td>
+                    <td className="text-capitalize">{(evaluation.interaction?.direction) ? 'Inbound' : 'Outbound'}</td>
                   </tr>
                   <tr>
-                    <td><strong>Channel:</strong></td>
-                    <td className="text-capitalize">{evaluation.interaction?.channel || 'voice'}</td>
+                    <td><strong>Channel / Queue:</strong></td>
+                    <td className="text-capitalize">{evaluation.interaction?.channel || 'call'} / {evaluation.interaction?.queue?.name || ''}</td>
                   </tr>
                   <tr>
                     <td><strong>Customer ID:</strong></td>

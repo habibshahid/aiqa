@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const { generateToken, revokeToken } = require('../middleware/auth');
 const db = require('../config/database');
 const { loginValidation, validateRequest } = require('../middleware/validation');
+const { verifyPassword, hashPassword } = require('../services/passwordService');
 const tablePrefix = process.env.TABLE_PREFIX;
 
 router.post('/login', loginValidation, validateRequest, async (req, res) => {
@@ -24,7 +25,7 @@ router.post('/login', loginValidation, validateRequest, async (req, res) => {
     const user = users[0];
 
     // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    const isValidPassword = await verifyPassword(password, user.password);
     if (!isValidPassword) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
