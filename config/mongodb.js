@@ -69,38 +69,6 @@ const evaluationSchema = new mongoose.Schema({
   problemAreas: [String]
 });
 
-const interactionAIQASchema = new mongoose.Schema({
-  interactionId: { type: String, required: true },
-  qaFormName: { type: String, required: true },
-  qaFormId: { type: String, required: true },
-  evaluator: {     // Add this new field
-    id: String,
-    name: String
-  },
-  evaluationData: {
-    usage: usageDetailsSchema,
-    evaluation: evaluationSchema
-  },
-  interactionData: {
-    queue: {
-      name: String
-    },
-    agent: {
-      id: String,
-      name: String
-    },
-    caller: {
-      id: String
-    },
-    direction: String,
-    duration: Number,
-    channel: String
-  }
-}, { 
-  collection: 'interactionaiqas',
-  timestamps: true 
-});
-
 // Message Content Schema for Transcription
 const messageContentSchema = new mongoose.Schema({
   port: Number,
@@ -158,16 +126,134 @@ const transcriptionSchema = new mongoose.Schema({
   timestamps: true 
 });
 
-// Interactions Schema
-const interactionsSchema = new mongoose.Schema({},{ 
-  collection: 'interactions',  // Specify the collection name
+const humanEvaluationSchema = new mongoose.Schema({
+  // Parameter evaluations with human scores and explanations
+  parameters: {
+    type: Map,
+    of: new mongoose.Schema({
+      score: Number,  // Original AI score
+      explanation: String, // Original AI explanation
+      humanScore: Number, // Human score
+      humanExplanation: String // Human explanation
+    }, { _id: false, strict: false })
+  },
+  
+  // Additional comments from QA evaluator
+  additionalComments: {
+    type: String,
+    default: ''
+  },
+  
+  // Comments from the agent (response to the evaluation)
+  agentComments: {
+    type: String,
+    default: ''
+  },
+  
+  // Moderation status
+  isModerated: {
+    type: Boolean,
+    default: false
+  },
+  
+  // Publication status (visible to agent)
+  isPublished: {
+    type: Boolean,
+    default: false
+  },
+  
+  // Who moderated the evaluation
+  moderatedBy: {
+    type: String,
+    default: null
+  },
+  
+  // When the evaluation was moderated
+  moderatedAt: {
+    type: Date,
+    default: null
+  }
+}, { _id: false, strict: false });
+
+const interactionAIQASchema = new mongoose.Schema({
+  interactionId: { type: String, required: true },
+  qaFormName: { type: String, required: true },
+  qaFormId: { type: String, required: true },
+  evaluator: {     // Add this new field
+    id: String,
+    name: String
+  },
+  evaluationData: {
+    usage: usageDetailsSchema,
+    evaluation: evaluationSchema
+  },
+  interactionData: {
+    queue: {
+      name: String
+    },
+    agent: {
+      id: String,
+      name: String
+    },
+    caller: {
+      id: String
+    },
+    direction: String,
+    duration: Number,
+    channel: String
+  }
+  ,status: {
+    type: String,
+    enum: ['pending', 'completed', 'moderated', 'published'],
+    default: 'pending'
+  },
+  
+  // Human evaluation data
+  humanEvaluation: {
+    type: humanEvaluationSchema,
+    default: null
+  }
+}, { 
+  collection: 'interactionaiqas',
   timestamps: true 
+});
+
+// Interactions Schema
+const Interactions = require('../models/interaction');
+
+interactionAIQASchema.pre('save', async function(next) {
+  try {
+    // If new evaluation and status is 'completed' (AI just finished)
+    if (this.isNew && this.status === 'completed') {
+      // Check if the QA form requires moderation
+      const QAForm = mongoose.model('QAForm');
+      const form = await QAForm.findById(this.qaFormId);
+      
+      // If form doesn't require moderation, auto-publish
+      if (form && form.moderationRequired === false) {
+        this.status = 'published';
+        
+        // Initialize humanEvaluation with default published state
+        if (!this.humanEvaluation) {
+          this.humanEvaluation = {
+            isModerated: true,
+            isPublished: true,
+            moderatedBy: 'system',
+            moderatedAt: new Date()
+          };
+        }
+      }
+    }
+    
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Create models
 const InteractionAIQA = mongoose.model('InteractionAIQA', interactionAIQASchema);
 const InteractionTranscription = mongoose.model('InteractionTranscription', transcriptionSchema);
-const Interactions = mongoose.model('Interactions', interactionsSchema);
 
 // Add debug logging for models
 console.log('\n=== MongoDB Models ===');

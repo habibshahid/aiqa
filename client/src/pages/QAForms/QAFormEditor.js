@@ -33,6 +33,7 @@ const QAFormEditor = () => {
     name: '',
     description: '',
     isActive: true,
+    moderationRequired: true,
     parameters: [{ ...initialParameterState }],
     groups: [{ id: 'default', name: 'Default Group' }] // Initialize with a default group
   });
@@ -539,6 +540,7 @@ const QAFormEditor = () => {
                   maxLength={100}
                 />
               </div>
+              
               <div className="col-md-6">
                 <label className="form-label">Status</label>
                 <select
@@ -550,7 +552,27 @@ const QAFormEditor = () => {
                   <option value="false">Inactive</option>
                 </select>
               </div>
-              
+              <div className="col-md-12 mt-3">
+                <div className="form-check form-switch">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="moderationRequired"
+                    checked={formData.moderationRequired}
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      moderationRequired: e.target.checked
+                    }))}
+                  />
+                  <label className="form-check-label" htmlFor="moderationRequired">
+                    Require Human Moderation Before Publishing
+                  </label>
+                  <div className="form-text">
+                    When enabled, AI evaluations will require review by a human QA evaluator before they are visible to agents.
+                    When disabled, evaluations will be automatically published to agents upon completion.
+                  </div>
+                </div>
+              </div>
               <div className="col-12">
                 <label className="form-label">Description</label>
                 <textarea

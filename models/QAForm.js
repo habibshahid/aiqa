@@ -83,6 +83,11 @@ const QAFormSchema = new mongoose.Schema({
       message: 'At least one group is required'
     }
   },
+  moderationRequired: {
+    type: Boolean,
+    default: true,
+    description: 'If true, evaluations need human review before being published to agents'
+  },
   createdBy: {
     type: Number,
     ref: 'User'
@@ -109,6 +114,15 @@ QAFormSchema.pre('validate', function(next) {
     this.invalidate('parameters', 'All parameters must reference a valid group');
   }
   
+  next();
+});
+
+QAFormSchema.pre('save', function(next) {
+  // If moderationRequired is being set for the first time and not explicitly defined
+  if (this.isNew && this.moderationRequired === undefined) {
+    // Default to true for new forms
+    this.moderationRequired = true;
+  }
   next();
 });
 

@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
+import { Lock, Eye, EyeOff, MessageSquare, CheckCircle, XCircle, AlertTriangle, Edit, Save } from 'lucide-react';
+import { useApp } from '../context/AppContext';
 
 const formatDuration = (duration) => {
   if (!duration || duration === '0:00') return '0:00';
@@ -130,7 +132,7 @@ const RecordedTranscriptionRow = ({ entry }) => {
     // Return the original timestamp if parsing fails
     return timestamp;
   };
-  console.log(entry)
+  
   return (
     <tr>
       <td className="text-nowrap">
@@ -181,10 +183,32 @@ const RecordedTranscriptionRow = ({ entry }) => {
 const QADetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useApp(); // Access user context to check permissions
   const [evaluation, setEvaluation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showTranscription, setShowTranscription] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(true);
+  const [isAgent, setIsAgent] = useState(false);
+  const [formParams, setFormParams] = useState(null);
+  const [qaForm, setQaForm] = useState(null);
+  
+  // New state variables for human QA evaluation
+  const [humanEvaluation, setHumanEvaluation] = useState({
+    parameters: {},
+    additionalComments: '',
+    agentComments: '',
+    isModerated: false,
+    isPublished: false,
+    moderatedBy: null,
+    moderatedAt: null
+  });
+  
+  // State for editing mode
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [saveSuccess, setSaveSuccess] = useState(null);
 
   useEffect(() => {
     const fetchEvaluation = async () => {
@@ -204,6 +228,40 @@ const QADetail = () => {
         const data = await response.json();
         console.log('Evaluation Data:', data);
         setEvaluation(data);
+        
+        // Initialize human evaluation from existing data if available
+        if (data.humanEvaluation) {
+          setHumanEvaluation(data.humanEvaluation);
+        } else {
+          // Initialize with AI evaluation data
+          const initialParameters = {};
+          if (data.evaluation?.scores?.categories) {
+            Object.entries(data.evaluation.scores.categories).forEach(([criterion, criterionData]) => {
+              initialParameters[criterion] = {
+                score: criterionData.score,
+                explanation: criterionData.explanation,
+                humanExplanation: '',
+                humanScore: criterionData.score
+              };
+            });
+          }
+          
+          setHumanEvaluation({
+            parameters: initialParameters,
+            additionalComments: '',
+            agentComments: '',
+            isModerated: false,
+            isPublished: data.status === 'published'
+          });
+        }
+        
+        // Fetch QA form to get parameter details
+        if (data.qaFormId) {
+          fetchQAForm(data.qaFormId);
+        }
+        
+        // Check user permissions
+        checkUserPermissions();
       } catch (err) {
         console.error('Error fetching evaluation:', err);
         setError(err.message);
@@ -214,6 +272,154 @@ const QADetail = () => {
 
     fetchEvaluation();
   }, [id]);
+  
+  const fetchQAForm = async (formId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/qa-forms/${formId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch QA form');
+      }
+      
+      const formData = await response.json();
+      setQaForm(formData);
+      
+      // Map parameters for easy access
+      const paramsMap = {};
+      formData.parameters.forEach(param => {
+        paramsMap[param.name] = param;
+      });
+      
+      setFormParams(paramsMap);
+    } catch (err) {
+      console.error('Error fetching QA form:', err);
+    }
+  };
+  
+  const checkUserPermissions = async () => {
+    try {
+      // Fetch user permissions
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/user/permissions', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch permissions');
+      }
+      
+      const permissions = await response.json();
+      
+      // Check if user is admin or agent
+      const isUserAdmin = permissions.qaForms?.admin === true;
+      const isUserAgent = permissions.qaForms?.read === true && !isUserAdmin;
+      
+      setIsAdmin(isUserAdmin);
+      setIsAgent(isUserAgent);
+    } catch (err) {
+      console.error('Error checking permissions:', err);
+      // Default to basic permissions if check fails
+      setIsAdmin(false);
+      setIsAgent(true);
+    }
+  };
+  
+  const handleHumanScoreChange = (criterion, value) => {
+    setHumanEvaluation(prev => ({
+      ...prev,
+      parameters: {
+        ...prev.parameters,
+        [criterion]: {
+          ...prev.parameters[criterion],
+          humanScore: parseInt(value)
+        }
+      }
+    }));
+  };
+  
+  const handleHumanExplanationChange = (criterion, value) => {
+    setHumanEvaluation(prev => ({
+      ...prev,
+      parameters: {
+        ...prev.parameters,
+        [criterion]: {
+          ...prev.parameters[criterion],
+          humanExplanation: value
+        }
+      }
+    }));
+  };
+  
+  const handleAdditionalCommentsChange = (value) => {
+    setHumanEvaluation(prev => ({
+      ...prev,
+      additionalComments: value
+    }));
+  };
+  
+  const handleAgentCommentsChange = (value) => {
+    setHumanEvaluation(prev => ({
+      ...prev,
+      agentComments: value
+    }));
+  };
+  
+  const saveHumanEvaluation = async (publish = false) => {
+    try {
+      setIsSaving(true);
+      setSaveError(null);
+      setSaveSuccess(null);
+      
+      // Prepare data for submission
+      const updatedEvaluation = {
+        ...humanEvaluation,
+        isModerated: true,
+        isPublished: publish,
+        moderatedBy: user?.id || 'unknown',
+        moderatedAt: new Date().toISOString()
+      };
+      
+      // Make API call to save evaluation
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/qa/evaluation/${id}/moderate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updatedEvaluation)
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save evaluation');
+      }
+      
+      // Update local state
+      setHumanEvaluation(updatedEvaluation);
+      setIsEditMode(false);
+      setSaveSuccess(publish ? 'Evaluation published successfully' : 'Evaluation saved successfully');
+      
+      // Refresh evaluation data
+      const updatedData = await response.json();
+      setEvaluation(updatedData);
+    } catch (err) {
+      console.error('Error saving evaluation:', err);
+      setSaveError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  
+  const publishEvaluation = async () => {
+    await saveHumanEvaluation(true);
+  };
 
   if (loading) {
     return (
@@ -350,7 +556,6 @@ const QADetail = () => {
   };
 
   const getOverallScore = () => {
-    //return evaluation.evaluation?.scores?.overall?.average || 0;
     return evaluation.evaluation?.scores?.overall?.average ? `${evaluation.evaluation?.scores?.overall?.average} / ${evaluation.evaluation?.scores?.overall?.maxScore}` : 0;
   };
 
@@ -365,18 +570,153 @@ const QADetail = () => {
     // Otherwise return translated_text if it's a string, or fall back to original_text
     return typeof entry.translated_text === 'string' ? entry.translated_text : entry.original_text;
   };
+  
+  // Generate score options based on max score and scoring type
+  const getScoreOptions = (criterion) => {
+    if (!formParams || !formParams[criterion]) return [];
+    
+    const param = formParams[criterion];
+    const maxScore = param.maxScore || 5;
+    const scoringType = param.scoringType || 'variable';
+    
+    if (scoringType === 'binary') {
+      // Binary scoring only has 0 or max
+      return [
+        { value: 0, label: '0 - Failed' },
+        { value: maxScore, label: `${maxScore} - Passed` }
+      ];
+    } else {
+      // Variable scoring has 0 to max
+      return Array.from({ length: maxScore + 1 }, (_, i) => ({
+        value: i,
+        label: `${i} - ${i === 0 ? 'Failed' : i === maxScore ? 'Excellent' : i < maxScore / 2 ? 'Needs Improvement' : 'Good'}`
+      }));
+    }
+  };
+  
+  // Calculate publication status badges
+  const getStatusBadge = () => {
+    if (!humanEvaluation.isModerated) {
+      return <span className="badge bg-warning">Awaiting Human Moderation</span>;
+    } else if (humanEvaluation.isPublished) {
+      return <span className="badge bg-success">Published</span>;
+    } else {
+      return <span className="badge bg-secondary">Not Published</span>;
+    }
+  };
 
   return (
     <div className="container-fluid py-4">
+      {/* Status and Action Bar */}
+      <div className="card mb-4">
+        <div className="card-body d-flex justify-content-between align-items-center">
+          <div className="d-flex align-items-center">
+            <h4 className="mb-0 me-3">QA Evaluation</h4>
+            {getStatusBadge()}
+            {humanEvaluation.moderatedBy && humanEvaluation.moderatedAt && (
+              <span className="ms-3 text-muted small">
+                Moderated by {humanEvaluation.moderatedBy} on {format(new Date(humanEvaluation.moderatedAt), 'MMM d, yyyy h:mm a')}
+              </span>
+            )}
+          </div>
+          
+          <div className="d-flex gap-2">
+            <button 
+              className="btn btn-outline-primary"
+              onClick={() => navigate('/dashboard')}
+            >
+              Back to Dashboard
+            </button>
+            
+            {isAdmin && !isEditMode && (
+              <button 
+                className="btn btn-primary"
+                onClick={() => setIsEditMode(true)}
+              >
+                <Edit size={16} className="me-2" />
+                Edit Evaluation
+              </button>
+            )}
+            
+            {isAdmin && isEditMode && (
+              <>
+                <button 
+                  className="btn btn-outline-secondary"
+                  onClick={() => setIsEditMode(false)}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => saveHumanEvaluation(false)}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={16} className="me-2" />
+                      Save Evaluation
+                    </>
+                  )}
+                </button>
+                {!humanEvaluation.isPublished && (
+                  <button 
+                    className="btn btn-success"
+                    onClick={publishEvaluation}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" />
+                        Publishing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle size={16} className="me-2" />
+                        Publish Evaluation
+                      </>
+                    )}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Save messages */}
+      {saveError && (
+        <div className="alert alert-danger alert-dismissible fade show" role="alert">
+          <AlertTriangle size={16} className="me-2" />
+          {saveError}
+          <button 
+            type="button" 
+            className="btn-close" 
+            onClick={() => setSaveError(null)}
+          ></button>
+        </div>
+      )}
+      
+      {saveSuccess && (
+        <div className="alert alert-success alert-dismissible fade show" role="alert">
+          <CheckCircle size={16} className="me-2" />
+          {saveSuccess}
+          <button 
+            type="button" 
+            className="btn-close" 
+            onClick={() => setSaveSuccess(null)}
+          ></button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h1 className="h3 mb-0">QA Evaluation Details</h1>
-        <button 
-          className="btn btn-outline-primary"
-          onClick={() => navigate('/dashboard')}
-        >
-          Back to Dashboard
-        </button>
       </div>
 
       {/* Stats Cards */}
@@ -594,28 +934,89 @@ const QADetail = () => {
               {evaluation.evaluation?.summary || 'No summary available'}
             </p>
           </div>
+      </div>
+    </div>
+
+      {/* Human QA Additional Comments Section */}
+      <div className="card mb-4">
+        <div className="card-header">
+          <h5 className="card-title mb-0">QA Evaluator Comments</h5>
+        </div>
+        <div className="card-body">
+          {isEditMode ? (
+            <div className="form-group">
+              <textarea
+                className="form-control"
+                rows="4"
+                value={humanEvaluation.additionalComments}
+                onChange={(e) => handleAdditionalCommentsChange(e.target.value)}
+                placeholder="Enter additional comments or feedback for this evaluation..."
+              />
+            </div>
+          ) : (
+            <div>
+              {humanEvaluation.additionalComments ? (
+                <div className="p-3 border rounded bg-light">
+                  <p className="mb-0">{humanEvaluation.additionalComments}</p>
+                </div>
+              ) : (
+                <p className="text-muted mb-0">No additional comments from QA evaluator.</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Call Recording */}
-      {evaluation.interaction?.recording?.webPath && (
+      {/* Agent Comments Section - Only visible if user is an agent or if comments exist */}
+      {(isAgent || humanEvaluation.agentComments) && (
         <div className="card mb-4">
           <div className="card-header">
-            <h5 className="card-title mb-0">Call Recording</h5>
+            <h5 className="card-title mb-0">Agent Response</h5>
           </div>
           <div className="card-body">
-            <audio 
-              controls 
-              className="w-100" 
-              controlsList="nodownload"
-              preload="metadata"
-            >
-              <source 
-                src={`/api/audio-proxy?url=${encodeURIComponent(evaluation.interaction.recording.webPath)}`}
-                type="audio/mpeg"
-              />
-              <p>Your browser does not support the audio element.</p>
-            </audio>
+            {isAgent ? (
+              <div className="form-group">
+                <textarea
+                  className="form-control"
+                  rows="4"
+                  value={humanEvaluation.agentComments}
+                  onChange={(e) => handleAgentCommentsChange(e.target.value)}
+                  placeholder="Enter your response to this evaluation..."
+                  disabled={!humanEvaluation.isPublished}
+                />
+                {!humanEvaluation.isPublished && (
+                  <div className="alert alert-warning mt-2">
+                    <Lock size={16} className="me-2" />
+                    You cannot respond until this evaluation is published.
+                  </div>
+                )}
+                {humanEvaluation.isPublished && (
+                  <button 
+                    className="btn btn-primary mt-2"
+                    onClick={() => saveHumanEvaluation(true)}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <MessageSquare size={16} className="me-2" />
+                        Save Response
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            ) : humanEvaluation.agentComments ? (
+              <div className="p-3 border rounded bg-light">
+                <p className="mb-0">{humanEvaluation.agentComments}</p>
+              </div>
+            ) : (
+              <p className="text-muted mb-0">No response from agent yet.</p>
+            )}
           </div>
         </div>
       )}
@@ -658,39 +1059,136 @@ const QADetail = () => {
         </div>
       )}
 
-      {/* Evaluation Criteria Section */}
+      {/* Evaluation Criteria Section with Human QA Modification */}
       {evaluation.evaluation?.scores?.categories && Object.keys(evaluation.evaluation.scores.categories).length > 0 && (
         <div className="card mb-4">
-          <div className="card-header">
+          <div className="card-header d-flex justify-content-between align-items-center">
             <h5 className="card-title mb-0">Evaluation Criteria</h5>
+            {isAdmin && !isEditMode && (
+              <button 
+                className="btn btn-sm btn-outline-primary"
+                onClick={() => setIsEditMode(true)}
+              >
+                <Edit size={14} className="me-1" />
+                Edit Criteria
+              </button>
+            )}
           </div>
           <div className="card-body">
             <div className="table-responsive">
               <table className="table table-hover">
                 <thead>
                   <tr>
-                    <th>Criterion</th>
-                    <th>Score</th>
-                    <th>Confidence</th>
-                    <th>Explanation</th>
+                    <th style={{width: "20%"}}>Criterion</th>
+                    <th style={{width: "15%"}}>AI Score</th>
+                    {(isEditMode || humanEvaluation.isModerated) && (
+                      <th style={{width: "15%"}}>Human Score</th>
+                    )}
+                    <th style={{width: "50%"}}>Explanation</th>
                   </tr>
                 </thead>
                 <tbody>
                   {Object.entries(evaluation.evaluation.scores.categories).map(([criterion, data]) => (
                     <tr key={criterion}>
-                      <td>{criterion}</td>
+                      <td>
+                        {criterion}
+                        {formParams && formParams[criterion] && (
+                          <div className="mt-1">
+                            <span className={`badge bg-${
+                              formParams[criterion].classification === 'major' ? 'danger' :
+                              formParams[criterion].classification === 'moderate' ? 'warning' : 'info'
+                            } me-1`}>
+                              {formParams[criterion].classification}
+                            </span>
+                            <span className="badge bg-secondary">
+                              {formParams[criterion].scoringType === 'binary' ? 'Binary' : 'Variable'} 
+                              (0-{formParams[criterion].maxScore || 5})
+                            </span>
+                          </div>
+                        )}
+                      </td>
                       <td>
                         <span className={`badge bg-${
                           data.score >= 4 ? 'success' :
                           data.score >= 3 ? 'warning' : 'danger'
                         }`}>
-                          {data.score}/5
+                          {data.score}/{formParams?.[criterion]?.maxScore || 5}
                         </span>
+                        <div className="mt-1 small text-muted text-capitalize">
+                          {data.confidence || 'medium'} confidence
+                        </div>
                       </td>
+                      
+                      {/* Human Score Column */}
+                      {isEditMode && (
+                        <td>
+                          <select 
+                            className="form-select"
+                            value={humanEvaluation.parameters[criterion]?.humanScore || data.score}
+                            onChange={(e) => handleHumanScoreChange(criterion, e.target.value)}
+                          >
+                            {getScoreOptions(criterion).map(option => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
+                      
+                      {/* Display Human Score when not in edit mode */}
+                      {!isEditMode && humanEvaluation.isModerated && (
+                        <td>
+                          <span className={`badge bg-${
+                            humanEvaluation.parameters[criterion]?.humanScore >= 4 ? 'success' :
+                            humanEvaluation.parameters[criterion]?.humanScore >= 3 ? 'warning' : 'danger'
+                          }`}>
+                            {humanEvaluation.parameters[criterion]?.humanScore || data.score}/{formParams?.[criterion]?.maxScore || 5}
+                          </span>
+                          {humanEvaluation.parameters[criterion]?.humanScore !== data.score && (
+                            <span className="ms-2 badge bg-secondary">Adjusted</span>
+                          )}
+                        </td>
+                      )}
+                      
+                      {/* Explanation Column */}
                       <td>
-                        <span className="text-capitalize">{data.confidence}</span>
+                        {isEditMode ? (
+                          <div>
+                            <div className="mb-2">
+                              <small className="text-muted">AI Explanation:</small>
+                              <p className="mb-2">{data.explanation}</p>
+                            </div>
+                            <div>
+                              <small className="text-muted">Human Explanation:</small>
+                              <textarea
+                                className="form-control mt-1"
+                                rows="3"
+                                value={humanEvaluation.parameters[criterion]?.humanExplanation || ''}
+                                onChange={(e) => handleHumanExplanationChange(criterion, e.target.value)}
+                                placeholder="Add your explanation here..."
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            {humanEvaluation.isModerated && humanEvaluation.parameters[criterion]?.humanExplanation ? (
+                              <div>
+                                <div className="mb-2">
+                                  <small className="text-muted">AI:</small>
+                                  <p className="mb-0">{data.explanation}</p>
+                                </div>
+                                <div className="mt-2 p-2 border-start border-primary border-3 bg-light">
+                                  <small className="text-primary">Human QA:</small>
+                                  <p className="mb-0">{humanEvaluation.parameters[criterion].humanExplanation}</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="mb-0">{data.explanation}</p>
+                            )}
+                          </div>
+                        )}
                       </td>
-                      <td>{data.explanation}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -747,7 +1245,17 @@ const QADetail = () => {
               className="btn btn-sm btn-outline-primary"
               onClick={() => setShowTranscription(!showTranscription)}
             >
-              {showTranscription ? 'Hide Transcription' : 'Show Transcription'}
+              {showTranscription ? (
+                <>
+                  <EyeOff size={16} className="me-1" />
+                  Hide Transcription
+                </>
+              ) : (
+                <>
+                  <Eye size={16} className="me-1" />
+                  Show Transcription
+                </>
+              )}
             </button>
           </div>
           

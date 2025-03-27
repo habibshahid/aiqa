@@ -123,13 +123,8 @@ const interactionSchema = new mongoose.Schema({
   channel: String,
   extension: String,
   extraPayload: {
-    callRecording: {
-      fileName: String,
-      filePath: String,
-      webPath: String
-    },
-    ticketId: Number,
-    ticketNumber: Number
+    type: mongoose.Schema.Types.Mixed, // This is more flexible than just {}
+    default: {}
   },
   created: {
     year: String,
@@ -139,6 +134,8 @@ const interactionSchema = new mongoose.Schema({
     minutes: String
   }
 }, { timestamps: true });
+
+interactionSchema.set('strict', false);
 
 const Interaction = mongoose.model('Interaction', interactionSchema);
 
