@@ -1,5 +1,6 @@
 // config/mongodb.js
 const mongoose = require('mongoose');
+const QAFormSchema = require('../models/QAForm');
 
 const connectMongoDB = async () => {
   try {
@@ -174,67 +175,6 @@ console.log('InteractionAIQA collection:', InteractionAIQA.collection.name);
 console.log('InteractionTranscription collection:', InteractionTranscription.collection.name);
 console.log('===================\n');
 
-const qaFormParameterSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  context: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  maxScore: {
-    type: Number,
-    required: true,
-    min: 1
-  },
-  scoringType: {
-    type: String,
-    enum: ['binary', 'variable'],
-    required: true
-  },
-  order: {
-    type: Number,
-    required: true
-  }
-}, { _id: true });
-
-const qaFormSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true
-  },
-  description: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  parameters: [qaFormParameterSchema],
-  createdBy: {
-    type: String,
-    required: true
-  },
-  updatedBy: {
-    type: String,
-    required: true
-  }
-}, {
-  timestamps: true,
-  collection: 'aiqaforms'
-});
-
-// Create model
-const QAForm = mongoose.model('AIQAForm', qaFormSchema);
-
-
 const schedulerSchema = new mongoose.Schema({
   enabled: {
     type: Boolean,
@@ -375,6 +315,7 @@ const schedulerHistorySchema = new mongoose.Schema({
 // Create the model for scheduler history
 const CriteriaProfile = mongoose.model('CriteriaProfile', criteriaProfileSchema);
 const SchedulerHistory = mongoose.model('SchedulerHistory', schedulerHistorySchema);
+const QAForm = mongoose.model('AIQAForm', QAFormSchema);
 
 module.exports = {
   connectMongoDB,

@@ -998,15 +998,38 @@ const processEvaluationResponse = (apiResponse, interactionId, qaFormId, qaFormN
 function formatInstructions(form) {
   let instructions = `You are a quality analyst evaluating a call center interaction. Please evaluate the following transcription based on these criteria:\n\n`;
   
-  // Process each parameter
-  form.parameters.forEach((param, index) => {
-    instructions += `Question ${index + 1}: ${param.label}\n`;
-    instructions += `Evaluation Context: ${param.evaluationContext}\n`;
-    instructions += `Scoring Type: ${param.scoringType}\n`;
-    instructions += `Scoring Type Meaning: ${param.scoringType === 'binary' ? 
-      `binary = either 0 or ${param.maxScore} (max score)` : 
-      `variable = between 0 and ${param.maxScore} (max score)`}\n`;
-    instructions += `If this question is not relevant to the call, mark it with a score of -1.\n\n`;
+  const parametersByGroup = {};
+  form.parameters.forEach(param => {
+    if (!parametersByGroup[param.group]) {
+      parametersByGroup[param.group] = [];
+    }
+    parametersByGroup[param.group].push(param);
+  });
+  
+  // Find group names
+  const groupMap = {};
+  if (form.groups && form.groups.length > 0) {
+    form.groups.forEach(group => {
+      groupMap[group.id] = group.name;
+    });
+  }
+  
+  // Process each group and its parameters
+  Object.entries(parametersByGroup).forEach(([groupId, parameters], groupIndex) => {
+    const groupName = groupMap[groupId] || 'Unknown Group';
+    instructions += `Group ${groupIndex + 1}: ${groupName}\n`;
+    
+    // Process parameters in this group
+    parameters.forEach((param, paramIndex) => {
+      instructions += `Question ${paramIndex + 1}: ${param.label}\n`;
+      instructions += `Classification: ${param.classification.toUpperCase()}\n`;
+      instructions += `Evaluation Context: ${param.evaluationContext}\n`;
+      instructions += `Scoring Type: ${param.scoringType}\n`;
+      instructions += `Scoring Type Meaning: ${param.scoringType === 'binary' ? 
+        `binary = either 0 or ${param.maxScore} (max score)` : 
+        `variable = between 0 and ${param.maxScore} (max score)`}\n`;
+      instructions += `If this question is not relevant to the call, mark it with a score of -1.\n\n`;
+    });
   });
   
   instructions += 'callSummary: Generate a comprehensive summary of the interaction based on the transcription. The summary should contain what the interaction was about, what the customer was asking and how the agent responded. or it could be an outbound call from the agent side and the agent might be calling to update on some problem or probing more about a problem or it can be a CSAT Call. IT SHOULD NOT INCLUDE praises about the agent or customer. but need summary of conversation only.';
@@ -1015,6 +1038,10 @@ function formatInstructions(form) {
   instructions += 'areasOfImprovement: find the areas Of Improvements from the transcription. the things the agent could have done better. It should be in an array';
   instructions += 'whatTheAgentDidWell: find the areas Of where the agent did well in the call from the transcription. It should be in an array';
   instructions += 'Please provide your evaluation with a score for each question, along with an explanation of your reasoning. Also include an overall assessment of the interaction.';
+  
+  // Additional instructions for handling question classifications
+  instructions += '\nPlease consider the classifications when determining overall impact. MAJOR issues should have more significant impact on the overall score than MINOR issues. When summarizing areas of improvement, prioritize MAJOR issues first, followed by MODERATE and then MINOR issues.';
+  
   instructions += process.env.AIQA_SAMPLE_RESPONSE;
   
   return instructions;

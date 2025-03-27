@@ -33,11 +33,30 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create QA Form
 router.post('/', authenticateToken, async (req, res) => {
   try {
+    // Extract form data
+    const { name, description, isActive, parameters, groups } = req.body;
+    
+    // Ensure we have at least one parameter
+    if (!parameters || parameters.length === 0) {
+      return res.status(400).json({ message: 'At least one parameter is required' });
+    }
+    
+    // Ensure we have at least one group
+    if (!groups || groups.length === 0) {
+      return res.status(400).json({ message: 'At least one group is required' });
+    }
+    
+    // Create new QA form
     const newForm = new QAForm({
-      ...req.body,
+      name,
+      description,
+      isActive,
+      parameters,
+      groups,
       createdBy: req.user.id,
       updatedBy: req.user.id
     });
+    
     await newForm.save();
     res.status(201).json(newForm);
   } catch (error) {
@@ -49,17 +68,37 @@ router.post('/', authenticateToken, async (req, res) => {
 // Update QA Form
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
+    // Extract form data
+    const { name, description, isActive, parameters, groups } = req.body;
+    
+    // Ensure we have at least one parameter
+    if (!parameters || parameters.length === 0) {
+      return res.status(400).json({ message: 'At least one parameter is required' });
+    }
+    
+    // Ensure we have at least one group
+    if (!groups || groups.length === 0) {
+      return res.status(400).json({ message: 'At least one group is required' });
+    }
+    
+    // Update the form
     const updatedForm = await QAForm.findByIdAndUpdate(
       req.params.id,
       {
-        ...req.body,
+        name,
+        description,
+        isActive,
+        parameters,
+        groups,
         updatedBy: req.user.id
       },
       { new: true }
     );
+    
     if (!updatedForm) {
       return res.status(404).json({ message: 'Form not found' });
     }
+    
     res.json(updatedForm);
   } catch (error) {
     console.error('Error updating QA form:', error);
