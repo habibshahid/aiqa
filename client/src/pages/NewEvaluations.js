@@ -209,10 +209,10 @@ const NewEvaluations = () => {
       // Format the data for the API
       const evaluationData = selectedInteractions.map(interactionId => {
         const interaction = interactions.find(item => item._id === interactionId);
-        
+        const recordingUrl = interaction.extraPayload?.callRecording?.webPathQA ? interaction.extraPayload?.callRecording?.webPathQA : interaction.extraPayload?.callRecording?.webPath;
         return {
           interactionId,
-          recordingUrl: interaction.extraPayload?.callRecording?.webPathQA,
+          recordingUrl: recordingUrl,
           agent: {
             id: interaction.agent?.id,
             name: interaction.agent?.name
@@ -656,6 +656,8 @@ const NewEvaluations = () => {
                     <td>
                       {interaction.extraPayload?.callRecording?.webPathQA ? (
                         <span className="badge bg-success">Available</span>
+                      ) : interaction.extraPayload?.callRecording?.webPath ? (
+                        <span className="badge bg-warning">Available</span>
                       ) : (
                         <span className="badge bg-danger">Missing</span>
                       )}
