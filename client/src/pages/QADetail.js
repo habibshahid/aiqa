@@ -5,29 +5,13 @@ import { Lock, Eye, EyeOff, MessageSquare, CheckCircle, XCircle, AlertTriangle, 
 import { useApp } from '../context/AppContext';
 import SectionWiseScores from '../components/SectionWiseScores';
 import { Tooltip } from 'bootstrap';
+import Select from 'react-select';
 
-const ClassificationEditSelect = ({ value, onChange, disabled = false }) => {
-  const classificationOptions = [
-    { value: 'minor', label: 'Minor', color: 'info', impact: 10 },
-    { value: 'moderate', label: 'Moderate', color: 'warning', impact: 25 },
-    { value: 'major', label: 'Major', color: 'danger', impact: 50 }
-  ];
-  
-  return (
-    <select
-      className="form-select form-select-sm"
-      value={value}
-      onChange={onChange}
-      disabled={disabled}
-    >
-      {classificationOptions.map(option => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  );
-};
+const classificationOptions = [
+  { value: 'minor', label: 'Minor' },
+  { value: 'moderate', label: 'Moderate' },
+  { value: 'major', label: 'Major' }
+];
 
 // Classification badge with tooltip helper component
 const ClassificationBadge = ({ classification }) => {
@@ -254,6 +238,19 @@ const QADetail = () => {
     moderatedAt: null
   });
   
+  const handleClassificationChange = (criterion, value) => {
+    setHumanEvaluation(prev => ({
+      ...prev,
+      parameters: {
+        ...prev.parameters,
+        [criterion]: {
+          ...(prev.parameters[criterion] || {}),
+          classification: value
+        }
+      }
+    }));
+  };
+
   // State for editing mode
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -450,8 +447,7 @@ const QADetail = () => {
         ...humanEvaluation,
         isModerated: true,
         isPublished: publish,
-        moderatedByUserId: user?.id || 'unknown',
-        moderatedBy: user?.username || user?.name || 'Unknown User',
+        moderatedBy: user?.id || 'unknown',
         moderatedAt: new Date().toISOString()
       };
       
@@ -475,19 +471,9 @@ const QADetail = () => {
       setIsEditMode(false);
       setSaveSuccess(publish ? 'Evaluation published successfully' : 'Evaluation saved successfully');
       
-      // Fetch the complete evaluation data using the same API as initial load
-      const detailResponse = await fetch(`/api/qa/evaluation/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!detailResponse.ok) {
-        throw new Error('Failed to reload evaluation details');
-      }
-      
-      const completeData = await detailResponse.json();
-      setEvaluation(completeData);
+      // Refresh evaluation data
+      const updatedData = await response.json();
+      setEvaluation(updatedData);
     } catch (err) {
       console.error('Error saving evaluation:', err);
       setSaveError(err.message);
@@ -1175,134 +1161,217 @@ const QADetail = () => {
             )}
           </div>
           <div className="card-body">
+          <div className="table-responsive">
+            <table className="table table-hover">
+              <thead>
+                <tr>
+                  <th style={{width: "20%"}}>Criterion</th>
+                  <th style={{width: "10%"}}>Classification</th>
+                  <th style={{width: "10%"}}>AI Score</th>
+                  {(isEditMode || humanEvaluation.isModerated) && (
+                    <th style={{width: "10%"}}>Human Score</th>
+                  )}
+                  <th style={{width: "50%"}}>Explanation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(evaluation.evaluation.scores.categories).map(([criterion, data]) => (
+                  <tr key={criterion}>
+                    <td>
+                      {criterion}
+                      {formParams && formParams[criterion] && (
+                        <div className="mt-1">
+                          <span className="badge bg-secondary">
+                            {formParams[criterion].scoringType === 'binary' ? 'Binary' : 'Variable'} 
+                            (0-{formParams[criterion].maxScore || 5})
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      {isEditMode ? (
+                        <Select
+                          options={classificationOptions}
+                          value={classificationOptions.find(opt => 
+                            opt.value === (humanEvaluation.parameters[criterion]?.classification || 
+                                        formParams?.[criterion]?.classification || 
+                                        'minor')
+                          )}
+                          onChange={(selected) => handleClassificationChange(criterion, selected.value)}
+                          className="classification-select"
+                          menuPortalTarget={document.body}
+                          styles={{
+                            control: (base) => ({
+                              ...base,
+                              minHeight: '30px',
+                              height: '35px'
+                            }),
+                            menuPortal: base => ({ ...base, zIndex: 9999 })
+                          }}
+                        />
+                      ) : (
+                        <span className={`badge bg-${
+                          (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification) === 'major' ? 'danger' :
+                          (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification) === 'moderate' ? 'warning' : 'info'
+                        }`}>
+                          {humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification || 'minor'}
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`badge bg-${
+                        data.score >= 4 ? 'success' :
+                        data.score >= 3 ? 'warning' : 'danger'
+                      }`}>
+                        {data.score}/{formParams?.[criterion]?.maxScore || 5}
+                      </span>
+                      <div className="mt-1 small text-muted text-capitalize">
+                        {data.confidence || 'medium'} confidence
+                      </div>
+                    </td>
+                    
+                    {/* Human Score Column */}
+                    {isEditMode && (
+                      <td>
+                        <select 
+                          className="form-select"
+                          value={humanEvaluation.parameters[criterion]?.humanScore || data.score}
+                          onChange={(e) => handleHumanScoreChange(criterion, e.target.value)}
+                        >
+                          {getScoreOptions(criterion).map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    )}
+                    
+                    {/* Display Human Score when not in edit mode */}
+                    {!isEditMode && humanEvaluation.isModerated && (
+                      <td>
+                        <span className={`badge bg-${
+                          humanEvaluation.parameters[criterion]?.humanScore >= 4 ? 'success' :
+                          humanEvaluation.parameters[criterion]?.humanScore >= 3 ? 'warning' : 'danger'
+                        }`}>
+                          {humanEvaluation.parameters[criterion]?.humanScore || data.score}/{formParams?.[criterion]?.maxScore || 5}
+                        </span>
+                        {humanEvaluation.parameters[criterion]?.humanScore !== data.score && (
+                          <span className="ms-2 badge bg-secondary">Adjusted</span>
+                        )}
+                      </td>
+                    )}
+                    
+                    {/* Explanation Column */}
+                    <td>
+                      {isEditMode ? (
+                        <div>
+                          <div className="mb-2">
+                            <small className="text-muted">AI Explanation:</small>
+                            <p className="mb-2">{data.explanation}</p>
+                          </div>
+                          <div>
+                            <small className="text-muted">Human Explanation:</small>
+                            <textarea
+                              className="form-control mt-1"
+                              rows="3"
+                              value={humanEvaluation.parameters[criterion]?.humanExplanation || ''}
+                              onChange={(e) => handleHumanExplanationChange(criterion, e.target.value)}
+                              placeholder="Add your explanation here..."
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          {humanEvaluation.isModerated && humanEvaluation.parameters[criterion]?.humanExplanation ? (
+                            <div>
+                              <div className="mb-2">
+                                <small className="text-muted">AI:</small>
+                                <p className="mb-0">{data.explanation}</p>
+                              </div>
+                              <div className="mt-2 p-2 border-start border-primary border-3 bg-light">
+                                <small className="text-primary">Human QA:</small>
+                                <p className="mb-0">{humanEvaluation.parameters[criterion].humanExplanation}</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="mb-0">{data.explanation}</p>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {evaluation.sectionScores && (
+        <div className="card mb-4">
+          <div className="card-header">
+            <h5 className="card-title mb-0">Section-Level Scores</h5>
+          </div>
+          <div className="card-body">
+            <p className="text-muted mb-3">
+              Section scores reflect the impact of classifications. When a section contains a question 
+              with a particular classification, the entire section's score is reduced by the defined percentage.
+            </p>
+            
             <div className="table-responsive">
-              <table className="table table-hover">
+              <table className="table">
                 <thead>
                   <tr>
-                    <th style={{width: "20%"}}>Criterion</th>
-                    <th style={{width: "15%"}}>AI Score</th>
-                    {(isEditMode || humanEvaluation.isModerated) && (
-                      <th style={{width: "15%"}}>Human Score</th>
-                    )}
-                    <th style={{width: "50%"}}>Explanation</th>
+                    <th>Section</th>
+                    <th>Raw Score</th>
+                    <th>Classification Impact</th>
+                    <th>Final Score</th>
+                    <th>Percentage</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(evaluation.evaluation.scores.categories).map(([criterion, data]) => (
-                    <tr key={criterion}>
+                  {Object.entries(evaluation.sectionScores.sections).map(([sectionId, section]) => (
+                    <tr key={sectionId}>
+                      <td>{section.name}</td>
+                      <td>{section.rawScore.toFixed(1)} / {section.maxScore}</td>
                       <td>
-                        {criterion}
-                        {formParams && formParams[criterion] && (
-                          <div className="mt-1">
-                            <span className={`badge bg-${
-                              formParams[criterion].classification === 'major' ? 'danger' :
-                              formParams[criterion].classification === 'moderate' ? 'warning' : 'info'
-                            } me-1`}>
-                              {formParams[criterion].classification}
-                            </span>
-                            <span className="badge bg-secondary">
-                              {formParams[criterion].scoringType === 'binary' ? 'Binary' : 'Variable'} 
-                              (0-{formParams[criterion].maxScore || 5})
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        <span className={`badge bg-${
-                          data.score >= 4 ? 'success' :
-                          data.score >= 3 ? 'warning' : 'danger'
-                        }`}>
-                          {data.score}/{formParams?.[criterion]?.maxScore || 5}
-                        </span>
-                        <div className="mt-1 small text-muted text-capitalize">
-                          {data.confidence || 'medium'} confidence
-                        </div>
-                      </td>
-                      
-                      {/* Human Score Column */}
-                      {isEditMode && (
-                        <td>
-                          <select 
-                            className="form-select"
-                            value={humanEvaluation.parameters[criterion]?.humanScore || data.score}
-                            onChange={(e) => handleHumanScoreChange(criterion, e.target.value)}
-                          >
-                            {getScoreOptions(criterion).map(option => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      )}
-                      
-                      {/* Display Human Score when not in edit mode */}
-                      {!isEditMode && humanEvaluation.isModerated && (
-                        <td>
-                          <span className={`badge bg-${
-                            humanEvaluation.parameters[criterion]?.humanScore >= 4 ? 'success' :
-                            humanEvaluation.parameters[criterion]?.humanScore >= 3 ? 'warning' : 'danger'
-                          }`}>
-                            {humanEvaluation.parameters[criterion]?.humanScore || data.score}/{formParams?.[criterion]?.maxScore || 5}
-                          </span>
-                          {humanEvaluation.parameters[criterion]?.humanScore !== data.score && (
-                            <span className="ms-2 badge bg-secondary">Adjusted</span>
-                          )}
-                        </td>
-                      )}
-                      
-                      {/* Explanation Column */}
-                      <td>
-                        {isEditMode ? (
-                          <div>
-                            <div className="mb-2">
-                              <small className="text-muted">AI Explanation:</small>
-                              <p className="mb-2">{data.explanation}</p>
-                            </div>
-                            <div>
-                              <small className="text-muted">Human Explanation:</small>
-                              <textarea
-                                className="form-control mt-1"
-                                rows="3"
-                                value={humanEvaluation.parameters[criterion]?.humanExplanation || ''}
-                                onChange={(e) => handleHumanExplanationChange(criterion, e.target.value)}
-                                placeholder="Add your explanation here..."
-                              />
-                            </div>
-                          </div>
+                        {section.classifications.major ? (
+                          <span className="badge bg-danger">Major</span>
+                        ) : section.classifications.moderate ? (
+                          <span className="badge bg-warning">Moderate</span>
+                        ) : section.classifications.minor ? (
+                          <span className="badge bg-info">Minor</span>
                         ) : (
-                          <div>
-                            {humanEvaluation.isModerated && humanEvaluation.parameters[criterion]?.humanExplanation ? (
-                              <div>
-                                <div className="mb-2">
-                                  <small className="text-muted">AI:</small>
-                                  <p className="mb-0">{data.explanation}</p>
-                                </div>
-                                <div className="mt-2 p-2 border-start border-primary border-3 bg-light">
-                                  <small className="text-primary">Human QA:</small>
-                                  <p className="mb-0">{humanEvaluation.parameters[criterion].humanExplanation}</p>
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="mb-0">{data.explanation}</p>
-                            )}
-                          </div>
+                          <span className="badge bg-secondary">None</span>
                         )}
                       </td>
+                      <td>{section.adjustedScore.toFixed(1)} / {section.maxScore}</td>
                       <td>
-                        {criterion}
-                        {formParams && formParams[criterion] && (
-                          <div className="mt-1">
-                            <ClassificationBadge classification={formParams[criterion].classification} />
-                            <span className="badge bg-secondary">
-                              {formParams[criterion].scoringType === 'binary' ? 'Binary' : 'Variable'} 
-                              (0-{formParams[criterion].maxScore || 5})
-                            </span>
-                          </div>
-                        )}
+                        <div className={`badge bg-${
+                          section.percentage >= 80 ? 'success' :
+                          section.percentage >= 60 ? 'warning' : 'danger'
+                        }`}>
+                          {section.percentage}%
+                        </div>
                       </td>
                     </tr>
                   ))}
+                  <tr className="table-active fw-bold">
+                    <td>Overall</td>
+                    <td>{evaluation.sectionScores.overall.rawScore.toFixed(1)} / {evaluation.sectionScores.overall.maxScore}</td>
+                    <td>-</td>
+                    <td>{evaluation.sectionScores.overall.adjustedScore.toFixed(1)} / {evaluation.sectionScores.overall.maxScore}</td>
+                    <td>
+                      <div className={`badge bg-${
+                        evaluation.sectionScores.overall.percentage >= 80 ? 'success' :
+                        evaluation.sectionScores.overall.percentage >= 60 ? 'warning' : 'danger'
+                      }`}>
+                        {evaluation.sectionScores.overall.percentage}%
+                      </div>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
