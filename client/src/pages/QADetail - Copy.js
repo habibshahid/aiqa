@@ -214,7 +214,7 @@ const RecordedTranscriptionRow = ({ entry }) => {
   );
 };
 
-const QADetail = async () => {
+const QADetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useApp(); // Access user context to check permissions
@@ -238,60 +238,17 @@ const QADetail = async () => {
     moderatedAt: null
   });
   
-  const [humanEvaluationModifications, setHumanEvaluationModifications] = useState({
-    parameters: {},
-    classifications: {}
-  });
-
-  const handleParameterScoreModification = (paramName, modification) => {
-    setHumanEvaluationModifications(prev => ({
+  const handleClassificationChange = (criterion, value) => {
+    setHumanEvaluation(prev => ({
       ...prev,
       parameters: {
         ...prev.parameters,
-        [paramName]: {
-          ...prev.parameters[paramName],
-          ...modification
+        [criterion]: {
+          ...(prev.parameters[criterion] || {}),
+          classification: value
         }
       }
     }));
-  };
-
-  const handleClassificationModification = (paramName, classification) => {
-    setHumanEvaluationModifications(prev => ({
-      ...prev,
-      classifications: {
-        ...prev.classifications,
-        [paramName]: classification
-      }
-    }));
-  };
-  
-  const handleClassificationChange = (criterion, value) => {
-    setHumanEvaluation(prev => {
-      // Create the parameter entry if it doesn't exist
-      const paramEntry = prev.parameters[criterion] || {
-        score: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0,
-        explanation: evaluation.evaluation?.scores?.categories?.[criterion]?.explanation || '',
-        humanScore: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0,
-        humanExplanation: ''
-      };
-      
-      return {
-        ...prev,
-        parameters: {
-          ...prev.parameters,
-          [criterion]: {
-            ...paramEntry,
-            classification: value
-          }
-        }
-      };
-    });
-    
-    // If setting to 'none', also set the score to N/A (-1)
-    if (value === 'none') {
-      handleHumanScoreChange(criterion, -1);
-    }
   };
 
   // State for editing mode
@@ -440,35 +397,16 @@ const QADetail = async () => {
   };
   
   const handleHumanScoreChange = (criterion, value) => {
-    const scoreValue = parseInt(value);
-    
-    setHumanEvaluation(prev => {
-      // Create the parameter entry if it doesn't exist
-      const paramEntry = prev.parameters[criterion] || {
-        score: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0,
-        explanation: evaluation.evaluation?.scores?.categories?.[criterion]?.explanation || '',
-        classification: formParams?.[criterion]?.classification || 'minor'
-      };
-      
-      return {
-        ...prev,
-        parameters: {
-          ...prev.parameters,
-          [criterion]: {
-            ...paramEntry,
-            humanScore: scoreValue
-          }
+    setHumanEvaluation(prev => ({
+      ...prev,
+      parameters: {
+        ...prev.parameters,
+        [criterion]: {
+          ...prev.parameters[criterion],
+          humanScore: parseInt(value)
         }
-      };
-    });
-    
-    // If marking as N/A, also update classification to 'none'
-    if (scoreValue === -1) {
-      handleClassificationChange(criterion, 'none');
-    } else if (humanEvaluation.parameters[criterion]?.classification === 'none') {
-      // If changing from N/A to a score, restore original classification if it was 'none'
-      handleClassificationChange(criterion, formParams?.[criterion]?.classification || 'minor');
-    }
+      }
+    }));
   };
   
   const handleHumanExplanationChange = (criterion, value) => {
@@ -504,121 +442,12 @@ const QADetail = async () => {
       setSaveError(null);
       setSaveSuccess(null);
       
-      // Calculate classification impacts
-      const classificationImpacts = {};
-      if (qaForm && qaForm.classifications) {
-        qaForm.classifications.forEach(classification => {
-          classificationImpacts[classification.type] = classification.impactPercentage / 100;
-        });
-      } else {
-        // Default impacts if classifications not defined in form
-        classificationImpacts.minor = 0.1;    // 10%
-        classificationImpacts.moderate = 0.25; // 25%
-        classificationImpacts.major = 0.5;     // 50%
-      }
-      
-      // Calculate section scores
-      const sectionScores = {
-        sections: {},
-        overall: { rawScore: 0, adjustedScore: 0, maxScore: 0, percentage: 0 }
-      };
-      
-      // Initialize sections based on form groups
-      if (qaForm && qaForm.groups) {
-        qaForm.groups.forEach(group => {
-          sectionScores.sections[group.id] = {
-            name: group.name,
-            rawScore: 0,
-            maxScore: 0,
-            adjustedScore: 0,
-            percentage: 0,
-            classifications: { minor: false, moderate: false, major: false, none: false },
-            highestClassification: null,
-            highestClassificationImpact: 0
-          };
-        });
-      }
-      
-      // Calculate scores by group/section
-      if (qaForm && qaForm.parameters) {
-        qaForm.parameters.forEach(param => {
-          const criterion = param.name;
-          const groupId = param.group;
-          
-          // Skip if section is not initialized
-          if (!sectionScores.sections[groupId]) return;
-          
-          // Get the parameter data from human evaluation
-          const paramData = humanEvaluation.parameters[criterion] || {};
-          
-          // Determine the score to use (human score or AI score)
-          let score = paramData.humanScore !== undefined ? 
-                    paramData.humanScore : 
-                    evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0;
-          
-          // Get the max score for this parameter
-          const maxScore = param.maxScore || 5;
-          
-          // Skip N/A scores
-          if (score === -1) return;
-          
-          // Add to section totals
-          sectionScores.sections[groupId].rawScore += score;
-          sectionScores.sections[groupId].maxScore += maxScore;
-          
-          // Track classifications
-          const classification = paramData.classification || param.classification || 'minor';
-          if (classification !== 'none') {
-            sectionScores.sections[groupId].classifications[classification] = true;
-          }
-        });
-        
-        // Calculate adjusted scores and find highest classification for each section
-        Object.values(sectionScores.sections).forEach(section => {
-          // Find highest classification
-          let highestClassificationImpact = 0;
-          let highestClassification = null;
-          
-          if (section.classifications.major) {
-            highestClassification = 'major';
-            highestClassificationImpact = classificationImpacts.major;
-          } else if (section.classifications.moderate) {
-            highestClassification = 'moderate';
-            highestClassificationImpact = classificationImpacts.moderate;
-          } else if (section.classifications.minor) {
-            highestClassification = 'minor';
-            highestClassificationImpact = classificationImpacts.minor;
-          }
-          
-          section.highestClassification = highestClassification;
-          section.highestClassificationImpact = highestClassificationImpact * 100; // Store as percentage
-          
-          // Calculate adjusted score
-          const deduction = section.rawScore * highestClassificationImpact;
-          section.adjustedScore = Math.max(0, section.rawScore - deduction);
-          
-          // Calculate percentage
-          section.percentage = section.maxScore > 0 ? 
-                             Math.round((section.adjustedScore / section.maxScore) * 100) : 0;
-                             
-          // Add to overall totals
-          sectionScores.overall.rawScore += section.rawScore;
-          sectionScores.overall.maxScore += section.maxScore;
-          sectionScores.overall.adjustedScore += section.adjustedScore;
-        });
-        
-        // Calculate overall percentage
-        sectionScores.overall.percentage = sectionScores.overall.maxScore > 0 ? 
-                                         Math.round((sectionScores.overall.adjustedScore / sectionScores.overall.maxScore) * 100) : 0;
-      }
-      
       // Prepare data for submission
       const updatedEvaluation = {
         ...humanEvaluation,
-        sectionScores: sectionScores,
         isModerated: true,
         isPublished: publish,
-        moderatedBy: user?.username || user?.id || 'unknown',
+        moderatedBy: user?.id || 'unknown',
         moderatedAt: new Date().toISOString()
       };
       
@@ -644,11 +473,7 @@ const QADetail = async () => {
       
       // Refresh evaluation data
       const updatedData = await response.json();
-      setEvaluation({
-        ...evaluation,
-        ...updatedData,
-        sectionScores: sectionScores
-      });
+      setEvaluation(updatedData);
     } catch (err) {
       console.error('Error saving evaluation:', err);
       setSaveError(err.message);
@@ -1366,55 +1191,39 @@ const QADetail = async () => {
                     <td>
                       {isEditMode ? (
                         <Select
-                          options={[
-                            { value: "none", label: "N/A" },
-                            { value: "minor", label: "Minor" },
-                            { value: "moderate", label: "Moderate" },
-                            { value: "major", label: "Major" }
-                          ]}
-                          value={{
-                            value: humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification || "minor",
-                            label: (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification || "minor").charAt(0).toUpperCase() + 
-                                  (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification || "minor").slice(1)
-                          }}
+                          options={classificationOptions}
+                          value={classificationOptions.find(opt => 
+                            opt.value === (humanEvaluation.parameters[criterion]?.classification || 
+                                        formParams?.[criterion]?.classification || 
+                                        'minor')
+                          )}
                           onChange={(selected) => handleClassificationChange(criterion, selected.value)}
-                          isSearchable={false}
-                          menuPlacement="auto"
+                          className="classification-select"
+                          menuPortalTarget={document.body}
                           styles={{
                             control: (base) => ({
                               ...base,
-                              minHeight: '32px',
-                              height: '32px'
+                              minHeight: '30px',
+                              height: '35px'
                             }),
-                            valueContainer: (base) => ({
-                              ...base,
-                              height: '32px',
-                              padding: '0 8px'
-                            }),
-                            indicatorsContainer: (base) => ({
-                              ...base,
-                              height: '32px'
-                            })
+                            menuPortal: base => ({ ...base, zIndex: 9999 })
                           }}
                         />
                       ) : (
                         <span className={`badge bg-${
                           (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification) === 'major' ? 'danger' :
-                          (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification) === 'moderate' ? 'warning' : 
-                          (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification) === 'none' ? 'secondary' : 'info'
+                          (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification) === 'moderate' ? 'warning' : 'info'
                         }`}>
-                          {(humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification) === 'none' ? 'N/A' :
-                          (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification || 'minor')}
+                          {humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification || 'minor'}
                         </span>
                       )}
                     </td>
                     <td>
                       <span className={`badge bg-${
-                        data.score === -1 ? 'secondary' :
                         data.score >= 4 ? 'success' :
                         data.score >= 3 ? 'warning' : 'danger'
                       }`}>
-                        {data.score === -1 ? 'N/A' : `${data.score}/${formParams?.[criterion]?.maxScore || 5}`}
+                        {data.score}/{formParams?.[criterion]?.maxScore || 5}
                       </span>
                       <div className="mt-1 small text-muted text-capitalize">
                         {data.confidence || 'medium'} confidence
@@ -1426,17 +1235,13 @@ const QADetail = async () => {
                       <td>
                         <select 
                           className="form-select"
-                          value={humanEvaluation.parameters[criterion]?.humanScore !== undefined ? 
-                                humanEvaluation.parameters[criterion].humanScore : data.score}
+                          value={humanEvaluation.parameters[criterion]?.humanScore || data.score}
                           onChange={(e) => handleHumanScoreChange(criterion, e.target.value)}
                         >
-                          <option value="-1">N/A</option>
-                          {getScoreOptions(criterion)
-                            .filter(option => option.value !== -1) // Filter out N/A option from getScoreOptions
-                            .map(option => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
+                          {getScoreOptions(criterion).map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
                           ))}
                         </select>
                       </td>
@@ -1445,16 +1250,12 @@ const QADetail = async () => {
                     {/* Display Human Score when not in edit mode */}
                     {!isEditMode && humanEvaluation.isModerated && (
                       <td>
-                        {humanEvaluation.parameters[criterion]?.humanScore === -1 ? (
-                          <span className="badge bg-secondary">N/A</span>
-                        ) : (
-                          <span className={`badge bg-${
-                            humanEvaluation.parameters[criterion]?.humanScore >= 4 ? 'success' :
-                            humanEvaluation.parameters[criterion]?.humanScore >= 3 ? 'warning' : 'danger'
-                          }`}>
-                            {humanEvaluation.parameters[criterion]?.humanScore}/{formParams?.[criterion]?.maxScore || 5}
-                          </span>
-                        )}
+                        <span className={`badge bg-${
+                          humanEvaluation.parameters[criterion]?.humanScore >= 4 ? 'success' :
+                          humanEvaluation.parameters[criterion]?.humanScore >= 3 ? 'warning' : 'danger'
+                        }`}>
+                          {humanEvaluation.parameters[criterion]?.humanScore || data.score}/{formParams?.[criterion]?.maxScore || 5}
+                        </span>
                         {humanEvaluation.parameters[criterion]?.humanScore !== data.score && (
                           <span className="ms-2 badge bg-secondary">Adjusted</span>
                         )}

@@ -5,26 +5,23 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
   // Ensure we have the necessary data
   if (!evaluation || !qaForm) return null;
 
-  const groupScores = evaluation.evaluation?.groupScores || {};
-  const allGroups = qaForm.groups.map(group => group.name);
+  // Get section scores from evaluation or initialize if not present
+  const sectionScores = evaluation.sectionScores || {
+    sections: {},
+    overall: { rawScore: 0, adjustedScore: 0, maxScore: 0, percentage: 0 }
+  };
 
-  const completeGroupScores = allGroups.reduce((acc, groupName) => {
-    acc[groupName] = groupScores[groupName] || {
-      rawScore: 0,
-      maxScore: 0,
-      adjustedScore: 0,
-      applicableScore: 0,
-      applicableMaxScore: 0,
-      naQuestions: []
-    };
-    return acc;
-  }, {});
+  // Map all group IDs to names
+  const groupMap = {};
+  qaForm.groups.forEach(group => {
+    groupMap[group.id] = group.name;
+  });
 
   // Prepare classification impact information
   const classificationMap = {
-    minor: { label: 'Minor', color: 'info' },
-    moderate: { label: 'Moderate', color: 'warning' },
-    major: { label: 'Major', color: 'danger' }
+    minor: { label: 'Minor', color: 'info', impact: 10 },
+    moderate: { label: 'Moderate', color: 'warning', impact: 25 },
+    major: { label: 'Major', color: 'danger', impact: 50 }
   };
 
   // Use custom classification definitions if available
@@ -36,10 +33,81 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
     });
   }
 
-  // Calculate overall scores
-  const overallRawScore = evaluation.evaluation?.rawScore || 0;
-  const overallMaxScore = evaluation.evaluation?.maxScore || 0;
-  const overallAdjustedScore = evaluation.evaluation?.totalScore || 0;
+  // Calculate scores by group
+  const groupScores = {};
+  qaForm.groups.forEach(group => {
+    // Get section score if available
+    const sectionScore = sectionScores.sections[group.id] || {
+      name: group.name,
+      rawScore: 0,
+      adjustedScore: 0,
+      maxScore: 0,
+      percentage: 0,
+      classifications: { minor: false, moderate: false, major: false },
+      highestClassificationImpact: 0
+    };
+
+    // Store parameters for this group
+    const parameters = qaForm.parameters.filter(param => param.group === group.id);
+    
+    // Calculate scores if they're not already set
+    if (sectionScore.rawScore === 0 && parameters.length > 0) {
+      let rawScore = 0;
+      let maxScore = 0;
+      let classifications = { minor: false, moderate: false, major: false };
+      
+      parameters.forEach(param => {
+        const paramData = evaluation.evaluation?.scores?.categories?.[param.name] || {};
+        const score = paramData.score || 0;
+        
+        // Skip N/A scores
+        if (score === -1) return;
+        
+        rawScore += score;
+        maxScore += param.maxScore || 5;
+        
+        // Track classifications
+        if (param.classification) {
+          classifications[param.classification] = true;
+        }
+      });
+      
+      // Find highest classification
+      let highestClassificationImpact = 0;
+      let highestClassification = null;
+      
+      if (classifications.major) {
+        highestClassification = 'major';
+        highestClassificationImpact = classificationMap.major.impact;
+      } else if (classifications.moderate) {
+        highestClassification = 'moderate';
+        highestClassificationImpact = classificationMap.moderate.impact;
+      } else if (classifications.minor) {
+        highestClassification = 'minor';
+        highestClassificationImpact = classificationMap.minor.impact;
+      }
+      
+      // Calculate adjusted score
+      const deduction = rawScore * (highestClassificationImpact / 100);
+      const adjustedScore = Math.max(0, rawScore - deduction);
+      const percentage = maxScore > 0 ? Math.round((adjustedScore / maxScore) * 100) : 0;
+      
+      sectionScore.rawScore = rawScore;
+      sectionScore.maxScore = maxScore;
+      sectionScore.adjustedScore = adjustedScore;
+      sectionScore.percentage = percentage;
+      sectionScore.classifications = classifications;
+      sectionScore.highestClassification = highestClassification;
+      sectionScore.highestClassificationImpact = highestClassificationImpact;
+    }
+    
+    groupScores[group.id] = sectionScore;
+  });
+
+  // Calculate overall scores if not already set
+  const overallRawScore = Object.values(groupScores).reduce((total, group) => total + group.rawScore, 0);
+  const overallMaxScore = Object.values(groupScores).reduce((total, group) => total + group.maxScore, 0);
+  const overallAdjustedScore = Object.values(groupScores).reduce((total, group) => total + group.adjustedScore, 0);
   const overallPercentage = overallMaxScore > 0 
     ? Math.round((overallAdjustedScore / overallMaxScore) * 100) 
     : 0;
@@ -89,7 +157,7 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
               {Object.entries(classificationMap).map(([key, value]) => (
                 <div key={key} className="d-flex align-items-center">
                   <span className={`badge bg-${value.color} me-2`}>{value.label}</span>
-                  <span className="small text-muted">-{value.impact || 10}% impact</span>
+                  <span className="small text-muted">-{value.impact}% impact</span>
                 </div>
               ))}
             </div>
@@ -98,27 +166,26 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
 
         {/* Group-wise Scores */}
         <div className="row">
-          {Object.entries(groupScores).map(([groupName, groupScore]) => {
+          {Object.entries(groupScores).map(([groupId, groupScore]) => {
             const rawScore = groupScore.rawScore || 0;
             const maxScore = groupScore.maxScore || 0;
             const adjustedScore = groupScore.adjustedScore || 0;
-            const percentage = maxScore > 0 
-              ? Math.round((adjustedScore / maxScore) * 100) 
-              : 0;
+            const percentage = groupScore.percentage || 0;
 
             // Determine classification badge
-            //const classification = groupScore.highestClassification || 'minor';
+            const classification = groupScore.highestClassification || null;
+            const classificationData = classification ? classificationMap[classification] : null;
             
             return (
-              <div key={groupName} className="col-md-6 mb-4">
+              <div key={groupId} className="col-md-6 mb-4">
                 <div className="card h-100 border">
                   <div className="card-header bg-light d-flex justify-content-between align-items-center">
-                    <h6 className="card-title mb-0">{groupName}</h6>
-                    <span className={`badge bg-${
-                      classificationMap[classification]?.color || 'secondary'
-                    }`}>
-                      {classificationMap[classification]?.label || classification}
-                    </span>
+                    <h6 className="card-title mb-0">{groupScore.name || groupMap[groupId] || 'Unknown Group'}</h6>
+                    {classification && (
+                      <span className={`badge bg-${classificationData?.color || 'secondary'}`}>
+                        {classificationData?.label || classification}
+                      </span>
+                    )}
                   </div>
                   <div className="card-body">
                     <div className="d-flex justify-content-between align-items-center mb-2">
@@ -150,7 +217,7 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
                     {/* Detailed Parameter Breakdown */}
                     <ul className="list-group list-group-flush">
                       {qaForm.parameters
-                        .filter(param => param.group === groupName)
+                        .filter(param => param.group === groupId)
                         .map((param, index) => {
                           // Find the corresponding parameter data in evaluation
                           const paramData = evaluation.evaluation?.scores?.categories?.[param.name] || {};
@@ -169,7 +236,7 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
                                   {isNA && (
                                     <span className="badge bg-secondary ms-2">N/A</span>
                                   )}
-                                  {!isNA && (
+                                  {!isNA && param.classification && (
                                     <span className={`badge bg-${
                                       classificationMap[param.classification]?.color || 'secondary'
                                     } ms-2`}>
@@ -198,14 +265,6 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
                             </li>
                           );
                         })}
-                      
-                      {/* Show N/A questions if any */}
-                      {groupScores[groupName]?.naQuestions?.length > 0 && (
-                        <li className="list-group-item text-muted small">
-                          <strong>Not Applicable Questions:</strong>{' '}
-                          {groupScores[groupName].naQuestions.map(q => q.name).join(', ')}
-                        </li>
-                      )}
                     </ul>
                   </div>
                 </div>
