@@ -238,6 +238,34 @@ const QADetail = () => {
     moderatedAt: null
   });
   
+  const [humanEvaluationModifications, setHumanEvaluationModifications] = useState({
+    parameters: {},
+    classifications: {}
+  });
+
+  const handleParameterScoreModification = (paramName, modification) => {
+    setHumanEvaluationModifications(prev => ({
+      ...prev,
+      parameters: {
+        ...prev.parameters,
+        [paramName]: {
+          ...prev.parameters[paramName],
+          ...modification
+        }
+      }
+    }));
+  };
+
+  const handleClassificationModification = (paramName, classification) => {
+    setHumanEvaluationModifications(prev => ({
+      ...prev,
+      classifications: {
+        ...prev.classifications,
+        [paramName]: classification
+      }
+    }));
+  };
+  
   const handleClassificationChange = (criterion, value) => {
     setHumanEvaluation(prev => ({
       ...prev,
@@ -1191,22 +1219,23 @@ const QADetail = () => {
                     <td>
                       {isEditMode ? (
                         <Select
-                          options={classificationOptions}
-                          value={classificationOptions.find(opt => 
-                            opt.value === (humanEvaluation.parameters[criterion]?.classification || 
-                                        formParams?.[criterion]?.classification || 
-                                        'minor')
-                          )}
-                          onChange={(selected) => handleClassificationChange(criterion, selected.value)}
-                          className="classification-select"
-                          menuPortalTarget={document.body}
-                          styles={{
-                            control: (base) => ({
-                              ...base,
-                              minHeight: '30px',
-                              height: '35px'
-                            }),
-                            menuPortal: base => ({ ...base, zIndex: 9999 })
+                          options={[
+                            { value: 'remove', label: 'N/A' },
+                            { value: 'minor', label: 'Minor' },
+                            { value: 'moderate', label: 'Moderate' },
+                            { value: 'major', label: 'Major' }
+                          ]}
+                          value={
+                            humanEvaluationModifications.classifications[paramName] || 
+                            paramData.classification
+                          }
+                          onChange={(selected) => {
+                            if (selected.value === 'remove') {
+                              // Remove classification or set to N/A
+                              handleParameterScoreModification(paramName, { score: -1 });
+                            } else {
+                              handleClassificationModification(paramName, selected.value);
+                            }
                           }}
                         />
                       ) : (

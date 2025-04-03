@@ -1,10 +1,15 @@
 // src/pages/QAForms/QAFormEditor.js
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, X, ArrowLeft, Edit, Save, PlusCircle, Trash2, GripVertical, Move } from 'lucide-react';
-import Select from 'react-select';
+import { Plus, X, ArrowLeft, Edit, Save, GripVertical } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
-import { ClassificationInfo, ClassificationSelect } from '../../components/classification/ClassificationHelpers';
+import { ClassificationSelect } from '../../components/classification/ClassificationHelpers';
+import { 
+  NewGroupModal, 
+  RenameGroupModal, 
+  DeleteGroupConfirmationModal 
+} from '../../components/classification/ModalComponents';
+import ClassificationSettings from '../../components/classification/ClassificationSettings';
 
 const initialParameterState = {
   name: '',
@@ -13,118 +18,14 @@ const initialParameterState = {
   scoringType: 'variable',
   context: '',
   group: 'default',
-  classification: 'minor' // default classification
+  classification: 'minor'
 };
 
-// Base classification options
 const baseClassificationOptions = [
   { value: 'minor', label: 'Minor', color: 'info', impact: 10 },
   { value: 'moderate', label: 'Moderate', color: 'warning', impact: 25 },
   { value: 'major', label: 'Major', color: 'danger', impact: 50 }
 ];
-
-const ClassificationSettings = ({ classifications, onChange }) => {
-  // Create local state for each classification to manage UI updates
-  const [localClassifications, setLocalClassifications] = useState(classifications || [
-    { 
-      type: 'minor', 
-      impactPercentage: 10, 
-      description: 'Minor issues have a small impact on quality and deduct 10% of the section\'s possible score.'
-    },
-    { 
-      type: 'moderate', 
-      impactPercentage: 25, 
-      description: 'Moderate issues have a significant impact on quality and deduct 25% of the section\'s possible score.'
-    },
-    { 
-      type: 'major', 
-      impactPercentage: 50, 
-      description: 'Major issues have a critical impact on quality and deduct 50% of the section\'s possible score.'
-    }
-  ]);
-
-  // When local settings change, notify parent
-  useEffect(() => {
-    if (onChange) {
-      onChange(localClassifications);
-    }
-  }, [localClassifications, onChange]);
-
-  // Safely parse number input
-  const parseNumber = (value) => {
-    const parsed = parseInt(value, 10);
-    return isNaN(parsed) ? 0 : parsed;
-  };
-
-  // Handle percentage change
-  const handlePercentageChange = (type, value) => {
-    const newValue = Math.max(0, Math.min(100, parseNumber(value)));
-    
-    setLocalClassifications(prev => 
-      prev.map(item => 
-        item.type === type ? { ...item, impactPercentage: newValue } : item
-      )
-    );
-  };
-
-  // Handle description change
-  const handleDescriptionChange = (type, value) => {
-    setLocalClassifications(prev => 
-      prev.map(item => 
-        item.type === type ? { ...item, description: value } : item
-      )
-    );
-  };
-
-  return (
-    <div className="card mb-4">
-      <div className="card-header bg-light">
-        <h5 className="card-title mb-0">Classification Impact Settings</h5>
-      </div>
-      <div className="card-body">
-        <p className="text-muted mb-3">
-          Define how different classifications impact scoring. The percentage values represent 
-          the portion of points deducted from the entire section when any question in that section 
-          has the specified classification.
-        </p>
-        
-        {localClassifications.map((classification) => (
-          <div key={classification.type} className="row mb-4">
-            <div className="col-12">
-              <h6 className="text-capitalize">{classification.type} Classification</h6>
-            </div>
-            <div className="col-md-3">
-              <label className="form-label">Impact Percentage</label>
-              <div className="input-group">
-                <input
-                  type="number"
-                  className="form-control"
-                  min="0"
-                  max="100"
-                  value={classification.impactPercentage}
-                  onChange={(e) => handlePercentageChange(classification.type, e.target.value)}
-                />
-                <span className="input-group-text">%</span>
-              </div>
-              <small className="form-text text-muted">
-                % of points deducted from the section
-              </small>
-            </div>
-            <div className="col-md-9">
-              <label className="form-label">Description</label>
-              <input
-                type="text"
-                className="form-control"
-                value={classification.description}
-                onChange={(e) => handleDescriptionChange(classification.type, e.target.value)}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 const QAFormEditor = () => {
   const navigate = useNavigate();
@@ -133,27 +34,20 @@ const QAFormEditor = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   
-  const handleClassificationsChange = (classifications) => {
-    setFormData(prev => ({
-      ...prev,
-      classifications
-    }));
-    
-    // Update classification options based on the new percentages
-    const updatedOptions = baseClassificationOptions.map(option => {
-      const classification = classifications.find(c => c.type === option.value);
-      if (classification) {
-        return {
-          ...option,
-          label: `${option.value.charAt(0).toUpperCase() + option.value.slice(1)}`,
-          impact: classification.impactPercentage
-        };
-      }
-      return option;
-    });
-    
-    setDynamicClassificationOptions(updatedOptions);
-  };
+  // Modal States
+  const [newGroupModalOpen, setNewGroupModalOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  
+  const [renameGroupModalOpen, setRenameGroupModalOpen] = useState(false);
+  const [groupToRename, setGroupToRename] = useState(null);
+  const [renamedGroupName, setRenamedGroupName] = useState('');
+  
+  const [deleteGroupModalOpen, setDeleteGroupModalOpen] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState(null);
+  const [newGroupForQuestions, setNewGroupForQuestions] = useState('');
+
+  // Store updated classification options based on percentages
+  const [dynamicClassificationOptions, setDynamicClassificationOptions] = useState([...baseClassificationOptions]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -181,25 +75,8 @@ const QAFormEditor = () => {
     ]
   });
 
-  // Store updated classification options based on percentages
-  const [dynamicClassificationOptions, setDynamicClassificationOptions] = useState([...baseClassificationOptions]);
-
-  // State for the new group modal
-  const [showNewGroupModal, setShowNewGroupModal] = useState(false);
-  const [newGroupName, setNewGroupName] = useState('');
-  
-  // State for group rename modal
-  const [showRenameGroupModal, setShowRenameGroupModal] = useState(false);
-  const [groupToRename, setGroupToRename] = useState(null);
-  const [renamedGroupName, setRenamedGroupName] = useState('');
-
-  // State for group delete confirmation
-  const [showDeleteGroupConfirmation, setShowDeleteGroupConfirmation] = useState(false);
-  const [groupToDelete, setGroupToDelete] = useState(null);
-  const [newGroupForQuestions, setNewGroupForQuestions] = useState('');
-
+  // Fetch form data on component mount or when ID changes
   useEffect(() => {
-    // Define the fetchForm function directly inside the useEffect
     const fetchForm = async () => {
       try {
         setLoading(true);
@@ -215,59 +92,35 @@ const QAFormEditor = () => {
   
         const data = await response.json();
         
-        // If form doesn't have groups, add a default group
+        // Ensure groups and classifications exist
         if (!data.groups || data.groups.length === 0) {
           data.groups = [{ id: 'default', name: 'Default Group' }];
-          
-          // Assign all parameters to the default group
-          if (data.parameters) {
-            data.parameters = data.parameters.map(param => ({
-              ...param,
-              group: 'default',
-              classification: param.classification || 'minor'
-            }));
-          }
         }
         
-        // If form doesn't have classifications, add default ones
         if (!data.classifications || data.classifications.length === 0) {
-          data.classifications = [
-            { 
-              type: 'minor', 
-              impactPercentage: 10, 
-              description: 'Minor issues have a small impact on quality and deduct 10% of the section\'s possible score.'
-            },
-            { 
-              type: 'moderate', 
-              impactPercentage: 25, 
-              description: 'Moderate issues have a significant impact on quality and deduct 25% of the section\'s possible score.'
-            },
-            { 
-              type: 'major', 
-              impactPercentage: 50, 
-              description: 'Major issues have a critical impact on quality and deduct 50% of the section\'s possible score.'
-            }
-          ];
+          data.classifications = formData.classifications;
+        }
+        
+        // Normalize parameters
+        if (data.parameters) {
+          data.parameters = data.parameters.map(param => ({
+            ...param,
+            group: param.group || 'default',
+            classification: param.classification || 'minor'
+          }));
         }
         
         setFormData(data);
         
-        // Update classification options based on loaded data
-        if (data.classifications && data.classifications.length > 0) {
-          const loadedOptions = baseClassificationOptions.map(option => {
-            const classification = data.classifications.find(c => c.type === option.value);
-            if (classification) {
-              return {
-                ...option,
-                label: `${option.value.charAt(0).toUpperCase() + option.value.slice(1)}`,
-                impact: classification.impactPercentage
-              };
-            }
-            return option;
-          });
-          
-          setDynamicClassificationOptions(loadedOptions);
-        }
+        // Update classification options
+        const loadedOptions = baseClassificationOptions.map(option => {
+          const classification = data.classifications.find(c => c.type === option.value);
+          return classification 
+            ? { ...option, impact: classification.impactPercentage } 
+            : option;
+        });
+        
+        setDynamicClassificationOptions(loadedOptions);
         
         setError(null);
       } catch (err) {
@@ -283,8 +136,10 @@ const QAFormEditor = () => {
     }
   }, [id]);
 
+  // Form Submission Handler
   const handleSubmit = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
     
     try {
       setSaving(true);
@@ -301,7 +156,7 @@ const QAFormEditor = () => {
         order: index
       }));
   
-      // Prepare payload including classifications
+      // Prepare payload
       const payload = {
         name: formData.name,
         description: formData.description,
@@ -335,46 +190,13 @@ const QAFormEditor = () => {
     }
   };
 
-  const handleParameterChange = (index, field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      parameters: prev.parameters.map((param, i) => 
-        i === index ? { ...param, [field]: value } : param
-      )
-    }));
-  };
-
-  const addParameter = (groupId = 'default') => {
-    setFormData(prev => ({
-      ...prev,
-      parameters: [
-        ...prev.parameters,
-        { ...initialParameterState, group: groupId }
-      ]
-    }));
-  };
-
-  const removeParameter = (index) => {
-    if (formData.parameters.length <= 1) {
-      setError('At least one parameter is required');
-      return;
-    }
-    setFormData(prev => ({
-      ...prev,
-      parameters: prev.parameters.filter((_, i) => i !== index)
-    }));
-  };
-
-  // Function to add a new group
-  const addGroup = () => {
-    if (!newGroupName.trim()) {
-      return;
-    }
+  // Add Group Handler
+  const handleAddGroup = () => {
+    if (!newGroupName.trim()) return;
     
     // Generate a unique ID for the group
     const groupId = `group-${Date.now()}`;
     
-    // Update the form data with the new group
     setFormData(prev => ({
       ...prev,
       groups: [...prev.groups, { id: groupId, name: newGroupName.trim() }]
@@ -382,14 +204,12 @@ const QAFormEditor = () => {
     
     // Reset state and close modal
     setNewGroupName('');
-    setShowNewGroupModal(false);
+    setNewGroupModalOpen(false);
   };
 
-  // Function to rename a group
-  const renameGroup = () => {
-    if (!renamedGroupName.trim() || !groupToRename) {
-      return;
-    }
+  // Rename Group Handler
+  const handleRenameGroup = () => {
+    if (!renamedGroupName.trim() || !groupToRename) return;
     
     setFormData(prev => ({
       ...prev,
@@ -400,23 +220,15 @@ const QAFormEditor = () => {
       )
     }));
     
+    // Reset state and close modal
     setRenamedGroupName('');
     setGroupToRename(null);
-    setShowRenameGroupModal(false);
+    setRenameGroupModalOpen(false);
   };
 
-  // Function to check if a group can be deleted
-  const canDeleteGroup = (groupId) => {
-    // Can't delete the group if it has parameters
-    const hasParameters = formData.parameters.some(param => param.group === groupId);
-    return !hasParameters;
-  };
-
-  // Function to delete a group
-  const deleteGroup = () => {
-    if (!groupToDelete) {
-      return;
-    }
+  // Delete Group Handler
+  const handleDeleteGroup = () => {
+    if (!groupToDelete) return;
     
     // If no new group is selected for questions, we can't delete
     if (formData.parameters.some(param => param.group === groupToDelete.id) && !newGroupForQuestions) {
@@ -435,12 +247,14 @@ const QAFormEditor = () => {
       )
     }));
     
+    // Reset state and close modal
     setGroupToDelete(null);
     setNewGroupForQuestions('');
-    setShowDeleteGroupConfirmation(false);
+    setDeleteGroupModalOpen(false);
   };
 
-  // Handle drag end for drag and drop
+  // Other existing handler methods...
+  
   const handleDragEnd = (result) => {
     if (!result.destination) return;
     
@@ -481,214 +295,63 @@ const QAFormEditor = () => {
     }
   };
 
-  // Modal components
-  const NewGroupModal = () => {
-    // Only render if the modal state is true
-    if (!showNewGroupModal) return null;
-  
-    // Support for keyboard controls
-    const handleKeyDown = (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        addGroup();
-      } else if (e.key === 'Escape') {
-        setShowNewGroupModal(false);
+  // Parameter change handler
+  const handleParameterChange = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      parameters: prev.parameters.map((param, i) => 
+        i === index ? { ...param, [field]: value } : param
+      )
+    }));
+  };
+
+  // Add parameter to a specific group
+  const addParameter = (groupId = 'default') => {
+    setFormData(prev => ({
+      ...prev,
+      parameters: [
+        ...prev.parameters,
+        { ...initialParameterState, group: groupId }
+      ]
+    }));
+  };
+
+  // Remove parameter
+  const removeParameter = (index) => {
+    if (formData.parameters.length <= 1) {
+      setError('At least one parameter is required');
+      return;
+    }
+    setFormData(prev => ({
+      ...prev,
+      parameters: prev.parameters.filter((_, i) => i !== index)
+    }));
+  };
+
+  // Classification change handler
+  const handleClassificationsChange = (classifications) => {
+    setFormData(prev => ({
+      ...prev,
+      classifications
+    }));
+    
+    // Update classification options based on the new percentages
+    const updatedOptions = baseClassificationOptions.map(option => {
+      const classification = classifications.find(c => c.type === option.value);
+      if (classification) {
+        return {
+          ...option,
+          label: `${option.value.charAt(0).toUpperCase() + option.value.slice(1)}`,
+          impact: classification.impactPercentage
+        };
       }
-    };
-  
-    return (
-      <>
-        <div className="modal-backdrop fade show"></div>
-        <div 
-          className="modal fade show" 
-          style={{ display: 'block' }} 
-          tabIndex="-1"
-        >
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Add New Group</h5>
-                <button 
-                  type="button" 
-                  className="btn-close" 
-                  onClick={() => setShowNewGroupModal(false)}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="mb-3">
-                  <label className="form-label">Group Name</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={newGroupName}
-                    onChange={(e) => setNewGroupName(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    autoFocus
-                    maxLength={100}
-                  />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button 
-                  type="button" 
-                  className="btn btn-secondary" 
-                  onClick={() => setShowNewGroupModal(false)}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="button" 
-                  className="btn btn-primary"
-                  onClick={addGroup}
-                  disabled={!newGroupName.trim()}
-                >
-                  Add Group
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </>
-    );
+      return option;
+    });
+    
+    setDynamicClassificationOptions(updatedOptions);
   };
 
-  const RenameGroupModal = () => {
-    if (!showRenameGroupModal || !groupToRename) return null;
-    
-    return (
-      <>
-        <div className="modal-backdrop fade show"></div>
-        <div className="modal fade show" style={{ display: 'block' }}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Rename Group</h5>
-                <button 
-                  type="button" 
-                  className="btn-close" 
-                  onClick={() => {
-                    setShowRenameGroupModal(false);
-                    setGroupToRename(null);
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="mb-3">
-                  <label className="form-label">New Group Name</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={renamedGroupName}
-                    onChange={(e) => setRenamedGroupName(e.target.value)}
-                    autoFocus
-                  />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button 
-                  type="button" 
-                  className="btn btn-secondary" 
-                  onClick={() => {
-                    setShowRenameGroupModal(false);
-                    setGroupToRename(null);
-                  }}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="button" 
-                  className="btn btn-primary"
-                  onClick={renameGroup}
-                  disabled={!renamedGroupName.trim()}
-                >
-                  Rename Group
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </>
-    );
-  };
-
-  const DeleteGroupConfirmationModal = () => {
-    if (!showDeleteGroupConfirmation || !groupToDelete) return null;
-    
-    const hasParameters = formData.parameters.some(param => param.group === groupToDelete.id);
-    
-    return (
-      <>
-        <div className="modal-backdrop fade show"></div>
-        <div className="modal fade show" style={{ display: 'block' }}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Delete Group</h5>
-                <button 
-                  type="button" 
-                  className="btn-close" 
-                  onClick={() => {
-                    setShowDeleteGroupConfirmation(false);
-                    setGroupToDelete(null);
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                {hasParameters ? (
-                  <>
-                    <div className="alert alert-warning">
-                      <strong>Warning:</strong> This group contains questions that need to be moved to another group.
-                    </div>
-                    <div className="mb-3">
-                      <label className="form-label">Move questions to:</label>
-                      <select
-                        className="form-select"
-                        value={newGroupForQuestions}
-                        onChange={(e) => setNewGroupForQuestions(e.target.value)}
-                        required
-                      >
-                        <option value="">Select a group</option>
-                        {formData.groups
-                          .filter(group => group.id !== groupToDelete.id)
-                          .map(group => (
-                            <option key={group.id} value={group.id}>
-                              {group.name}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                  </>
-                ) : (
-                  <p>Are you sure you want to delete the group "{groupToDelete.name}"?</p>
-                )}
-              </div>
-              <div className="modal-footer">
-                <button 
-                  type="button" 
-                  className="btn btn-secondary" 
-                  onClick={() => {
-                    setShowDeleteGroupConfirmation(false);
-                    setGroupToDelete(null);
-                  }}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="button" 
-                  className="btn btn-danger"
-                  onClick={deleteGroup}
-                  disabled={hasParameters && !newGroupForQuestions}
-                >
-                  Delete Group
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </>
-    );
-  };
-
+  // Render loading state
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ height: '60vh' }}>
@@ -701,6 +364,7 @@ const QAFormEditor = () => {
 
   return (
     <div className="container-fluid py-4">
+      {/* Header */}
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div className="d-flex align-items-center">
           <button 
@@ -714,13 +378,16 @@ const QAFormEditor = () => {
         </div>
       </div>
 
+      {/* Error Alert */}
       {error && (
         <div className="alert alert-danger" role="alert">
           {error}
         </div>
       )}
 
+      {/* Main Form */}
       <form onSubmit={handleSubmit}>
+        {/* Form Details Card */}
         <div className="card mb-4">
           <div className="card-header">
             <h5 className="card-title mb-0">Form Details</h5>
@@ -750,6 +417,8 @@ const QAFormEditor = () => {
                   <option value="false">Inactive</option>
                 </select>
               </div>
+
+              {/* Moderation Required Switch */}
               <div className="col-md-12 mt-3">
                 <div className="form-check form-switch">
                   <input
@@ -771,6 +440,7 @@ const QAFormEditor = () => {
                   </div>
                 </div>
               </div>
+
               <div className="col-12">
                 <label className="form-label">Description</label>
                 <textarea
@@ -785,24 +455,26 @@ const QAFormEditor = () => {
           </div>
         </div>
           
-        {/* Classification settings section */}
+        {/* Classification Settings */}
         <ClassificationSettings 
           classifications={formData.classifications} 
           onChange={handleClassificationsChange}
         />
 
+        {/* Groups Section */}
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h5 className="mb-0">Question Groups</h5>
           <button
             type="button"
             className="btn btn-outline-primary d-flex align-items-center"
-            onClick={() => setShowNewGroupModal(true)}
+            onClick={() => setNewGroupModalOpen(true)}
           >
             <Plus size={16} className="me-2" />
             Add Group
           </button>
         </div>
 
+        {/* Drag and Drop Context for Groups */}
         <DragDropContext onDragEnd={handleDragEnd}>
           {formData.groups.map((group) => {
             // Filter parameters for this group
@@ -819,7 +491,7 @@ const QAFormEditor = () => {
                       onClick={() => {
                         setGroupToRename(group);
                         setRenamedGroupName(group.name);
-                        setShowRenameGroupModal(true);
+                        setRenameGroupModalOpen(true);
                       }}
                     >
                       <Edit size={14} className="me-1" />
@@ -831,11 +503,11 @@ const QAFormEditor = () => {
                       onClick={() => {
                         setGroupToDelete(group);
                         setNewGroupForQuestions('');
-                        setShowDeleteGroupConfirmation(true);
+                        setDeleteGroupModalOpen(true);
                       }}
-                      disabled={formData.groups.length <= 1} // Prevent deleting if only one group exists
+                      disabled={formData.groups.length <= 1}
                     >
-                      <Trash2 size={14} className="me-1" />
+                      <X size={14} className="me-1" />
                       Delete
                     </button>
                     <button
@@ -982,6 +654,7 @@ const QAFormEditor = () => {
           })}
         </DragDropContext>
 
+        {/* Form Actions */}
         <div className="d-flex justify-content-end gap-2 mt-4">
           <button 
             type="button" 
@@ -1008,10 +681,44 @@ const QAFormEditor = () => {
         </div>
       </form>
 
-      {/* Modals for Group Actions */}
-      <NewGroupModal />
-      <RenameGroupModal />
-      <DeleteGroupConfirmationModal />
+      {/* Modals */}
+      <NewGroupModal 
+        isOpen={newGroupModalOpen}
+        onClose={() => {
+          setNewGroupModalOpen(false);
+          setNewGroupName('');
+        }}
+        newGroupName={newGroupName}
+        onGroupNameChange={(e) => setNewGroupName(e.target.value)}
+        onSubmit={handleAddGroup}
+      />
+
+      <RenameGroupModal 
+        isOpen={renameGroupModalOpen}
+        onClose={() => {
+          setRenameGroupModalOpen(false);
+          setGroupToRename(null);
+          setRenamedGroupName('');
+        }}
+        groupName={renamedGroupName}
+        onGroupNameChange={(e) => setRenamedGroupName(e.target.value)}
+        onSubmit={handleRenameGroup}
+      />
+
+      <DeleteGroupConfirmationModal 
+        isOpen={deleteGroupModalOpen}
+        onClose={() => {
+          setDeleteGroupModalOpen(false);
+          setGroupToDelete(null);
+          setNewGroupForQuestions('');
+        }}
+        groupName={groupToDelete?.name || ''}
+        hasParameters={formData.parameters.some(param => param.group === groupToDelete?.id)}
+        groupOptions={formData.groups.filter(g => g.id !== groupToDelete?.id)}
+        newGroupForQuestions={newGroupForQuestions}
+        onNewGroupChange={(e) => setNewGroupForQuestions(e.target.value)}
+        onSubmit={handleDeleteGroup}
+      />
     </div>
   );
 };

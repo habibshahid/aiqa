@@ -804,7 +804,7 @@ const processEvaluation = async (evaluation) => {
         evaluationContext: param.context,
         maxScore: param.maxScore,
         scoringType: param.scoringType,
-		classification: param.classification
+		    classification: param.classification
       }))
     };
     
@@ -895,44 +895,96 @@ const processEvaluation = async (evaluation) => {
   }
 };
 
-const processEvaluationResponse = (apiResponse, interactionId, qaFormId, qaFormName, agent, caller, channel, direction, duration, evaluator, queue) => {
-  return new Promise(async (resolve, reject) => {
-  try {
-    // Validate the response has the expected structure
-    if (!apiResponse.evaluation || typeof apiResponse.evaluation !== 'object') {
-      throw new Error('Invalid evaluation response structure');
+const calculateGroupScores = (qaForm, parameters) => {
+  const groupScores = {};
+  const classificationImpacts = {};
+  
+  // Prepare classification impacts
+  qaForm.classifications.forEach(classification => {
+    classificationImpacts[classification.type] = classification.impactPercentage / 100;
+  });
+
+  // Initialize group scores
+  qaForm.groups.forEach(group => {
+    groupScores[group.name] = {
+      rawScore: 0,
+      maxScore: 0,
+      adjustedScore: 0,
+      applicableScore: 0,
+      applicableMaxScore: 0,
+      highestClassification: null,
+      classificationImpact: 0,
+      naQuestions: [] // Track N/A questions
+    };
+  });
+
+  // Calculate group scores
+  qaForm.parameters.forEach(param => {
+    const paramData = parameters[param.name] || {};
+    const score = paramData.score || 0;
+    const maxScore = param.maxScore;
+    const classification = param.classification || 'minor';
+    const groupName = qaForm.groups.find(g => g.id === param.group)?.name || 'Default';
+
+    const groupScore = groupScores[groupName];
+
+    // Check if score is -1 (Not Applicable)
+    if (score === -1) {
+      groupScore.naQuestions.push({
+        name: param.name,
+        maxScore: maxScore
+      });
+      return; // Skip this parameter
     }
 
+    // Add to total scores
+    groupScore.rawScore += score;
+    groupScore.maxScore += maxScore;
+    groupScore.applicableScore += score;
+    groupScore.applicableMaxScore += maxScore;
+
+    // Track highest classification
+    const currentClassificationImpact = classificationImpacts[classification] || 0;
+    if (!groupScore.highestClassification || 
+        currentClassificationImpact > classificationImpacts[groupScore.highestClassification]) {
+      groupScore.highestClassification = classification;
+      groupScore.classificationImpact = currentClassificationImpact;
+    }
+  });
+
+  // Apply classification impacts
+  Object.values(groupScores).forEach(groupScore => {
+    // Only apply impact to applicable scores
+    const impact = groupScore.classificationImpact;
+    const deduction = groupScore.applicableScore * impact;
+    groupScore.adjustedScore = Math.max(0, groupScore.applicableScore - deduction);
+  });
+
+  return groupScores;
+};
+
+const calculateTotalScore = (groupScores) => {
+  return Object.values(groupScores).reduce((total, group) => total + group.adjustedScore, 0);
+};
+
+const processEvaluationResponse = async (apiResponse, interactionId, qaFormId, qaFormName, agent, caller, channel, direction, duration, evaluator, queue) => {
+  try {
     const qaForm = await QAForm.findById(qaFormId);
     if (!qaForm) {
       throw new Error('QA Form not found');
     }
-    
-    let totalMaxScore = 0;
-    let totalScore = Number(apiResponse.evaluation.totalScore) || 0;
-    
-    // Get parameters from the response
-    const responseParameters = apiResponse.evaluation.parameters || {}
-    // For each parameter in the QA form
-    qaForm.parameters.forEach(param => {
-      const paramName = param.name;
-      const paramMaxScore = param.maxScore;
-      
-      // Check if this parameter exists in the response and has a valid score
-      if (responseParameters[paramName]) {
-        const score = responseParameters[paramName].score;
-        
-        // Only add to maxScore if question is relevant (score is not -1)
-        if (score !== -1) {
-          totalMaxScore += paramMaxScore;
-        }
-      } else {
-        // Parameter was in form but not in response, add to maxScore anyway
-        totalMaxScore += paramMaxScore;
-      }
-    });
 
-    // Create the structured document for MongoDB
+    // Ensure parameters exist
+    const parameters = apiResponse.evaluation.parameters || {};
+
+    // Calculate group scores
+    const groupScores = calculateGroupScores(qaForm, parameters);
+
+    // Ensure we always have a total score, even if 0
+    const totalScore = Object.values(groupScores).reduce((total, group) => total + group.adjustedScore, 0);
+    const maxScore = Object.values(groupScores).reduce((total, group) => total + group.maxScore, 0);
+
+    // Prepare the QA document
     const qaDocument = {
       interactionId,
       qaFormName,
@@ -941,7 +993,13 @@ const processEvaluationResponse = (apiResponse, interactionId, qaFormId, qaFormN
       evaluationData: {
         usage: apiResponse.usage || {},
         evaluation: {
-          parameters: apiResponse.evaluation.parameters || {},
+          parameters,
+          groupScores,
+          totalScore: totalScore,
+          maxScore: maxScore,
+          rawScore: Object.values(groupScores).reduce((total, group) => total + group.rawScore, 0),
+          
+          // Existing evaluation details (rest of the code remains the same)
           silencePeriods: Array.isArray(apiResponse.evaluation.silencePeriods) 
             ? apiResponse.evaluation.silencePeriods.map(period => ({
                 fromTimeStamp: period.fromTimeStamp,
@@ -956,11 +1014,9 @@ const processEvaluationResponse = (apiResponse, interactionId, qaFormId, qaFormN
           areasOfImprovements: Array.isArray(apiResponse.evaluation.areasOfImprovements) 
             ? apiResponse.evaluation.areasOfImprovements 
             : [],
-            totalScore: Number(totalScore),
-            maxScore: Number(totalMaxScore),
           whatTheAgentDidWell: Array.isArray(apiResponse.evaluation.whatTheAgentDidWell) 
             ? apiResponse.evaluation.whatTheAgentDidWell 
-            : [], // Add this new field
+            : [],
           customerSentiment: Array.isArray(apiResponse.evaluation.customerSentiment) 
             ? apiResponse.evaluation.customerSentiment 
             : ['neutral'],
@@ -969,12 +1025,12 @@ const processEvaluationResponse = (apiResponse, interactionId, qaFormId, qaFormN
             : ['neutral']
         }
       },
-	    interactionData: {
+      interactionData: {
         agent: agent || {},
         caller: caller || {},
-        direction: direction || 0, // Default value
-        channel: channel || 'call',     // Default value
-        duration: duration || 0,     // Default value
+        direction: direction || 0,
+        channel: channel || 'call',
+        duration: duration || 0,
         queue: {name: queue || 'unknown'}
       },
       status: 'completed',
@@ -982,13 +1038,11 @@ const processEvaluationResponse = (apiResponse, interactionId, qaFormId, qaFormN
       updatedAt: new Date()
     };
 
-    resolve(qaDocument);
+    return qaDocument;
   } catch (error) {
     console.error('Error processing evaluation response:', error);
-	resolve(false);
     throw error;
   }
-  })
 };
 
 /**
@@ -1155,5 +1209,7 @@ module.exports = {
   processEvaluation,
   processTranscript,
   processTranscriptV2,
-  getFormattedQAForm
+  getFormattedQAForm,
+  calculateGroupScores,
+  calculateTotalScore
 };
