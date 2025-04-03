@@ -795,7 +795,7 @@ const processEvaluation = async (evaluation) => {
       throw new Error('QA Form not found');
     }
     
-    // Step 7: Format QA form parameters into instructions
+	// Step 7: Format QA form parameters into instructions
     const formattedQAForm = {
       formId: qaForm._id,
       formName: qaForm.name,
@@ -803,7 +803,8 @@ const processEvaluation = async (evaluation) => {
         label: param.name,
         evaluationContext: param.context,
         maxScore: param.maxScore,
-        scoringType: param.scoringType
+        scoringType: param.scoringType,
+		classification: param.classification
       }))
     };
     
@@ -851,7 +852,7 @@ const processEvaluation = async (evaluation) => {
       { 
         $set: { 
           "extraPayload.evaluated": true,
-          "extraPayload.evaluationId": aiqaDoc._id.toString() // Store the evaluation ID for linking
+          "extraPayload.evaluationId": aiqaDoc['_id'].toString() // Store the evaluation ID for linking
         } 
       }
     );
@@ -1041,6 +1042,7 @@ function formatInstructions(form) {
   
   // Additional instructions for handling question classifications
   instructions += '\nPlease consider the classifications when determining overall impact. MAJOR issues should have more significant impact on the overall score than MINOR issues. When summarizing areas of improvement, prioritize MAJOR issues first, followed by MODERATE and then MINOR issues.';
+  instructions += '\nwhen returning the response do not include the text Question in parameter name, just the label name';
   
   instructions += process.env.AIQA_SAMPLE_RESPONSE;
   

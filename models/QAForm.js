@@ -56,6 +56,25 @@ const groupSchema = new mongoose.Schema({
   }
 });
 
+// Classification definitions for the overall form
+const classificationDefinitionSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ['minor', 'moderate', 'major'],
+    required: true
+  },
+  impactPercentage: {
+    type: Number,
+    required: true,
+    min: 0,
+    max: 100
+  },
+  description: {
+    type: String,
+    required: true
+  }
+});
+
 // Main QA Form schema
 const QAFormSchema = new mongoose.Schema({
   name: {
@@ -82,6 +101,26 @@ const QAFormSchema = new mongoose.Schema({
       },
       message: 'At least one group is required'
     }
+  },
+  classifications: {
+    type: [classificationDefinitionSchema],
+    default: [
+      { 
+        type: 'minor', 
+        impactPercentage: 10, 
+        description: 'Minor issues have a small impact on quality and deduct 10% of the question\'s possible score.'
+      },
+      { 
+        type: 'moderate', 
+        impactPercentage: 25, 
+        description: 'Moderate issues have a significant impact on quality and deduct 25% of the question\'s possible score.'
+      },
+      { 
+        type: 'major', 
+        impactPercentage: 50, 
+        description: 'Major issues have a critical impact on quality and deduct 50% of the question\'s possible score.'
+      }
+    ]
   },
   moderationRequired: {
     type: Boolean,

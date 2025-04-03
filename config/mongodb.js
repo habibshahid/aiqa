@@ -163,6 +163,11 @@ const humanEvaluationSchema = new mongoose.Schema({
   },
   
   // Who moderated the evaluation
+  moderatedByUserId: {
+    type: Number,
+    default: null
+  },
+
   moderatedBy: {
     type: String,
     default: null
@@ -226,7 +231,7 @@ interactionAIQASchema.pre('save', async function(next) {
     // If new evaluation and status is 'completed' (AI just finished)
     if (this.isNew && this.status === 'completed') {
       // Check if the QA form requires moderation
-      const QAForm = mongoose.model('QAForm');
+      const QAForm = mongoose.model('AIQAForm');
       const form = await QAForm.findById(this.qaFormId);
       
       // If form doesn't require moderation, auto-publish

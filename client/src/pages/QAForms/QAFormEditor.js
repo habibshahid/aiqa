@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, X, ArrowLeft, Edit, Save, PlusCircle, Trash2, GripVertical, Move } from 'lucide-react';
 import Select from 'react-select';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { ClassificationInfo, ClassificationSelect } from '../../components/classification/ClassificationHelpers';
 
 const initialParameterState = {
   name: '',
@@ -737,22 +738,6 @@ const QAFormEditor = () => {
                                         </select>
                                       </div>
 
-                                      <div className="col-md-2">
-                                        <label className="form-label">Classification</label>
-                                        <select
-                                          className="form-select"
-                                          value={param.classification || 'minor'}
-                                          onChange={(e) => handleParameterChange(paramIndex, 'classification', e.target.value)}
-                                          required
-                                        >
-                                          {classificationOptions.map(option => (
-                                            <option key={option.value} value={option.value}>
-                                              {option.label}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </div>
-
                                       <div className="col-12">
                                         <label className="form-label">Context</label>
                                         <textarea
@@ -762,6 +747,14 @@ const QAFormEditor = () => {
                                           onChange={(e) => handleParameterChange(paramIndex, 'context', e.target.value)}
                                           required
                                           maxLength={1000}
+                                        />
+                                      </div>
+
+                                      <div className="col-md-4">
+                                        <label className="form-label">Classification</label>
+                                        <ClassificationSelect
+                                          value={param.classification || 'minor'}
+                                          onChange={(e) => handleParameterChange(paramIndex, 'classification', e.target.value)}
                                         />
                                       </div>
                                     </div>

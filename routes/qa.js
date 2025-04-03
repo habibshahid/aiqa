@@ -5,6 +5,8 @@ const { authenticateToken } = require('../middleware/auth');
 const analyticsService = require('../services/analyticsService');
 const qaDetailService = require('../services/qaDetailService');
 const transcriptionService = require('../services/transcriptionService');
+const { InteractionAIQA } = require('../config/mongodb');
+const scoringService = require('../services/scoringService');
 
 router.use(authenticateToken);
 
@@ -100,6 +102,173 @@ router.get('/evaluation/:id/transcription', authenticateToken, async (req, res) 
   } catch (error) {
     console.error('Error fetching paginated transcription:', error);
     res.status(500).json({ message: 'Error fetching transcription' });
+  }
+});
+
+router.post('/evaluation/:id/moderate', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const moderationData = req.body;
+    
+    // Validate input
+    if (!moderationData) {
+      return res.status(400).json({ message: 'Moderation data is required' });
+    }
+    
+    // Find the evaluation
+    const evaluation = await InteractionAIQA.findById(id);
+    if (!evaluation) {
+      return res.status(404).json({ message: 'Evaluation not found' });
+    }
+    
+    // Calculate new total score based on human scores
+    let totalScore = 0;
+    let totalMaxScore = 0;
+    
+    if (moderationData.parameters) {
+      for (const [paramName, paramData] of Object.entries(moderationData.parameters)) {
+        // Only include if we have a valid human score
+        if (paramData.humanScore !== undefined && paramData.humanScore !== null) {
+          // Get the original parameter data to find the max score
+          const originalParam = evaluation.evaluationData.evaluation.parameters.get(paramName);
+          if (originalParam) {
+            const maxScore = originalParam.maxScore || 5; // Default to 5 if not specified
+            
+            // Add to totals
+            totalScore += paramData.humanScore;
+            totalMaxScore += maxScore;
+          }
+        }
+      }
+    }
+    
+    // Add human evaluation data
+    evaluation.humanEvaluation = moderationData;
+    
+    // Update status based on publish flag
+    evaluation.status = moderationData.isPublished ? 'published' : 'moderated';
+    
+    // Update the evaluation's total score if we calculated a new one
+    if (totalMaxScore > 0) {
+      evaluation.evaluationData.evaluation.totalScore = totalScore;
+      evaluation.evaluationData.evaluation.maxScore = totalMaxScore;
+    }
+    
+    // Save changes
+    await evaluation.save();
+    
+    // Return updated evaluation
+    res.json(evaluation);
+  } catch (error) {
+    console.error('QA moderation error:', error);
+    res.status(500).json({ message: 'Error updating evaluation', error: error.message });
+  }
+});
+
+// Get agent comments for an evaluation
+router.post('/evaluation/:id/agent-comment', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { comment } = req.body;
+    
+    // Validate
+    if (!comment) {
+      return res.status(400).json({ message: 'Comment is required' });
+    }
+    
+    // Find evaluation
+    const evaluation = await InteractionAIQA.findById(id);
+    if (!evaluation) {
+      return res.status(404).json({ message: 'Evaluation not found' });
+    }
+    
+    // Ensure it's published
+    if (evaluation.status !== 'published') {
+      return res.status(403).json({ message: 'Cannot comment on unpublished evaluation' });
+    }
+    
+    // Add or update agent comment
+    if (!evaluation.humanEvaluation) {
+      evaluation.humanEvaluation = {
+        isModerated: true,
+        isPublished: true,
+        agentComments: comment
+      };
+    } else {
+      evaluation.humanEvaluation.agentComments = comment;
+    }
+    
+    // Save changes
+    await evaluation.save();
+    
+    // Return updated evaluation
+    res.json(evaluation);
+  } catch (error) {
+    console.error('Agent comment error:', error);
+    res.status(500).json({ message: 'Error adding comment', error: error.message });
+  }
+});
+
+// Get evaluation scores with classification impacts
+router.get('/evaluation/:id/scores', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get the evaluation
+    const qaDetail = await qaDetailService.getQAEvaluationDetail(id);
+    if (!qaDetail) {
+      return res.status(404).json({ message: 'QA evaluation not found' });
+    }
+    
+    // Get section scores with classification impacts
+    const scoreDetails = await scoringService.calculateEvaluationScores(
+      qaDetail, 
+      qaDetail.qaFormId
+    );
+    
+    res.json(scoreDetails);
+  } catch (error) {
+    console.error('Error calculating evaluation scores:', error);
+    res.status(500).json({ 
+      message: 'Error calculating evaluation scores',
+      error: error.message
+    });
+  }
+});
+
+// Update an existing route to include section scores
+// Modify the existing '/evaluation/:id' route to include scores
+router.get('/evaluation/:id', authenticateToken, async (req, res) => {
+  try {
+    const qaDetail = await qaDetailService.getQAEvaluationDetail(req.params.id);
+    if (!qaDetail) {
+      return res.status(404).json({ message: 'QA evaluation not found' });
+    }
+
+    // Get transcription analysis if available
+    const transcriptionAnalysis = await transcriptionService
+      .getTranscriptionAnalysis(qaDetail.interactionId);
+
+    if (transcriptionAnalysis) {
+      qaDetail.transcriptionAnalysis = transcriptionAnalysis;
+    }
+    
+    // Calculate section scores with classification impacts
+    try {
+      const scoreDetails = await scoringService.calculateEvaluationScores(
+        qaDetail, 
+        qaDetail.qaFormId
+      );
+      qaDetail.sectionScores = scoreDetails.scores;
+    } catch (scoreError) {
+      console.warn('Error calculating section scores:', scoreError);
+      // Continue without section scores if there's an error
+    }
+
+    res.json(qaDetail);
+  } catch (error) {
+    console.error('QA detail error:', error);
+    res.status(500).json({ message: 'Error fetching QA evaluation details' });
   }
 });
 

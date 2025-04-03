@@ -46,7 +46,8 @@ const qaDetailService = {
         'interactionData.channel': 1,
         'evaluationData.evaluation': 1,
         'evaluationData.usage': 1,
-        'interactionData.queue': 1
+        'interactionData.queue': 1,
+        humanEvaluation: 1 
       })
       .lean();
 
@@ -128,6 +129,35 @@ const qaDetailService = {
         });
       }
 
+      // Calculate overall score using human scores if available
+      let totalScore = evaluation.evaluationData?.evaluation?.totalScore || 0;
+      let maxScore = evaluation.evaluationData?.evaluation?.maxScore || 0;
+
+      // If human evaluation exists and has parameters, recalculate the overall score
+      if (evaluation.humanEvaluation && evaluation.humanEvaluation.parameters) {
+        let humanTotalScore = 0;
+        let humanMaxScore = 0;
+        
+        // Loop through parameters to calculate total
+        for (const [paramName, paramData] of Object.entries(evaluation.humanEvaluation.parameters)) {
+          if (paramData.humanScore !== undefined && paramData.humanScore !== null) {
+            // Access the parameter using object notation instead of Map.get()
+            const originalParam = evaluation.evaluationData.evaluation.parameters[paramName];
+            if (originalParam) {
+              const maxParam = originalParam.maxScore || 5;
+              humanTotalScore += paramData.humanScore;
+              humanMaxScore += maxParam;
+            }
+          }
+        }
+        
+        // Only update if we have valid scores
+        if (humanMaxScore > 0) {
+          totalScore = humanTotalScore;
+          maxScore = humanMaxScore;
+        }
+      }
+
       // Process the evaluation data
       const processed = {
         id: evaluation._id,
@@ -138,14 +168,15 @@ const qaDetailService = {
         updatedAt: evaluation.updatedAt,
         status: evaluation.status,
         evaluator: evaluation.evaluator || { id: 'system', name: 'AI System' },
+        humanEvaluation: evaluation.humanEvaluation,
         // Keep the original data structure for backward compatibility 
         agent: evaluation.interactionData?.agent,
         evaluation: {
           scores: {
             overall: {
-              average: evaluation.evaluationData?.evaluation?.totalScore || 0, // Updated path
-              summary: evaluation.evaluationData?.evaluation?.summary,        // Updated path
-              maxScore: evaluation.evaluationData?.evaluation?.maxScore || 0, // Updated path
+              average: totalScore,
+              summary: evaluation.evaluationData?.evaluation?.summary,
+              maxScore: maxScore,
             },
             categories: evaluation.evaluationData?.evaluation?.parameters || {} // Updated path
           },
