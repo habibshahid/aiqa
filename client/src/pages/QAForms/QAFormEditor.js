@@ -23,16 +23,42 @@ const classificationOptions = [
 ];
 
 const ClassificationSettings = ({ classifications, onChange }) => {
-  const [localClassifications, setLocalClassifications] = useState(classifications);
+  // Create local state for each classification to manage UI updates
+  const [localClassifications, setLocalClassifications] = useState(classifications || [
+    { 
+      type: 'minor', 
+      impactPercentage: 10, 
+      description: 'Minor issues have a small impact on quality and deduct 10% of the section\'s possible score.'
+    },
+    { 
+      type: 'moderate', 
+      impactPercentage: 25, 
+      description: 'Moderate issues have a significant impact on quality and deduct 25% of the section\'s possible score.'
+    },
+    { 
+      type: 'major', 
+      impactPercentage: 50, 
+      description: 'Major issues have a critical impact on quality and deduct 50% of the section\'s possible score.'
+    }
+  ]);
 
-  // Update parent when local state changes
+  // When local settings change, notify parent
   useEffect(() => {
-    onChange(localClassifications);
+    if (onChange) {
+      onChange(localClassifications);
+    }
   }, [localClassifications, onChange]);
+
+  // Safely parse number input
+  const parseNumber = (value) => {
+    const parsed = parseInt(value, 10);
+    return isNaN(parsed) ? 0 : parsed;
+  };
 
   // Handle percentage change
   const handlePercentageChange = (type, value) => {
-    const newValue = Math.max(0, Math.min(100, parseInt(value) || 0));
+    const newValue = Math.max(0, Math.min(100, parseNumber(value)));
+    
     setLocalClassifications(prev => 
       prev.map(item => 
         item.type === type ? { ...item, impactPercentage: newValue } : item
@@ -172,48 +198,76 @@ const QAFormEditor = () => {
     };
 
     fetchQueues();
+  }, [id]);
+
+  // In the QAFormEditor component, ensure classifications are properly loaded and saved
+
+  useEffect(() => {
+    // Define the fetchForm function directly inside the useEffect
+    const fetchForm = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/qa-forms/${id}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+  
+        if (!response.ok) {
+          throw new Error('Failed to fetch form');
+        }
+  
+        const data = await response.json();
+        
+        // If form doesn't have groups, add a default group
+        if (!data.groups || data.groups.length === 0) {
+          data.groups = [{ id: 'default', name: 'Default Group' }];
+          
+          // Assign all parameters to the default group
+          if (data.parameters) {
+            data.parameters = data.parameters.map(param => ({
+              ...param,
+              group: 'default',
+              classification: param.classification || 'minor'
+            }));
+          }
+        }
+        
+        // If form doesn't have classifications, add default ones
+        if (!data.classifications || data.classifications.length === 0) {
+          data.classifications = [
+            { 
+              type: 'minor', 
+              impactPercentage: 10, 
+              description: 'Minor issues have a small impact on quality and deduct 10% of the section\'s possible score.'
+            },
+            { 
+              type: 'moderate', 
+              impactPercentage: 25, 
+              description: 'Moderate issues have a significant impact on quality and deduct 25% of the section\'s possible score.'
+            },
+            { 
+              type: 'major', 
+              impactPercentage: 50, 
+              description: 'Major issues have a critical impact on quality and deduct 50% of the section\'s possible score.'
+            }
+          ];
+        }
+        
+        setFormData(data);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching form:', err);
+        setError('Failed to load the form. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+  
     if (id) {
       fetchForm();
     }
   }, [id]);
-
-  const fetchForm = async () => {
-    try {
-      const response = await fetch(`/api/qa-forms/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch form');
-      }
-
-      const data = await response.json();
-      
-      // If form doesn't have groups, add a default group
-      if (!data.groups || data.groups.length === 0) {
-        data.groups = [{ id: 'default', name: 'Default Group' }];
-        
-        // Assign all parameters to the default group
-        if (data.parameters) {
-          data.parameters = data.parameters.map(param => ({
-            ...param,
-            group: 'default',
-            classification: param.classification || 'minor' // Set default classification if not present
-          }));
-        }
-      }
-      
-      setFormData(data);
-      setError(null);
-    } catch (err) {
-      console.error('Error fetching form:', err);
-      setError('Failed to load the form. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -221,35 +275,44 @@ const QAFormEditor = () => {
     try {
       setSaving(true);
       setError(null);
-
+  
       // Validate parameters
       if (!formData.parameters.length) {
         throw new Error('At least one parameter is required');
       }
-
+  
       // Add order to parameters based on their current position
       const orderedParameters = formData.parameters.map((param, index) => ({
         ...param,
         order: index
       }));
-
+  
+      // Prepare payload including classifications
+      const payload = {
+        name: formData.name,
+        description: formData.description,
+        isActive: formData.isActive,
+        moderationRequired: formData.moderationRequired,
+        parameters: orderedParameters,
+        groups: formData.groups,
+        classifications: formData.classifications // Ensure classifications are included
+      };
+  
+      console.log('Submitting form with classifications:', payload.classifications);
+  
       const response = await fetch(`/api/qa-forms${id ? `/${id}` : ''}`, {
         method: id ? 'PUT' : 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          ...formData,
-          parameters: orderedParameters,
-          classifications: formData.classifications
-        })
+        body: JSON.stringify(payload)
       });
-
+  
       if (!response.ok) {
         throw new Error('Failed to save form');
       }
-
+  
       navigate('/qa-forms');
     } catch (err) {
       console.error('Error saving form:', err);
@@ -298,12 +361,28 @@ const QAFormEditor = () => {
     // Generate a unique ID for the group
     const groupId = `group-${Date.now()}`;
     
+    // Update the form data with the new group
     setFormData(prev => ({
       ...prev,
       groups: [...prev.groups, { id: groupId, name: newGroupName }]
     }));
     
+    // Reset state and close modal
     setNewGroupName('');
+    setShowNewGroupModal(false);
+  };
+
+  const handleAddGroup = (name) => {
+    // Generate a unique ID for the group
+    const groupId = `group-${Date.now()}`;
+    
+    // Update the form data with the new group
+    setFormData(prev => ({
+      ...prev,
+      groups: [...prev.groups, { id: groupId, name }]
+    }));
+    
+    // Close modal
     setShowNewGroupModal(false);
   };
 
@@ -405,12 +484,45 @@ const QAFormEditor = () => {
 
   // Modal components
   const NewGroupModal = () => {
+    // Only render if the modal state is true
     if (!showNewGroupModal) return null;
-    
+  
+    // Handle saving the new group
+    const handleAddGroup = () => {
+      if (!newGroupName.trim()) return;
+      
+      // Generate a unique ID for the group
+      const groupId = `group-${Date.now()}`;
+      
+      // Add the new group to the form data
+      setFormData(prev => ({
+        ...prev,
+        groups: [...prev.groups, { id: groupId, name: newGroupName.trim() }]
+      }));
+      
+      // Reset form and close modal
+      setNewGroupName('');
+      setShowNewGroupModal(false);
+    };
+  
+    // Support for keyboard controls
+    const handleKeyDown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAddGroup();
+      } else if (e.key === 'Escape') {
+        setShowNewGroupModal(false);
+      }
+    };
+  
     return (
       <>
         <div className="modal-backdrop fade show"></div>
-        <div className="modal fade show" style={{ display: 'block' }}>
+        <div 
+          className="modal fade show" 
+          style={{ display: 'block' }} 
+          tabIndex="-1"
+        >
           <div className="modal-dialog">
             <div className="modal-content">
               <div className="modal-header">
@@ -429,7 +541,9 @@ const QAFormEditor = () => {
                     className="form-control"
                     value={newGroupName}
                     onChange={(e) => setNewGroupName(e.target.value)}
+                    onKeyDown={handleKeyDown}
                     autoFocus
+                    maxLength={100}
                   />
                 </div>
               </div>
@@ -444,7 +558,7 @@ const QAFormEditor = () => {
                 <button 
                   type="button" 
                   className="btn btn-primary"
-                  onClick={addGroup}
+                  onClick={handleAddGroup}
                   disabled={!newGroupName.trim()}
                 >
                   Add Group
@@ -688,12 +802,11 @@ const QAFormEditor = () => {
               </div>
             </div>
           </div>
+          <ClassificationSettings 
+            classifications={formData.classifications} 
+            onChange={handleClassificationsChange}
+          />
         </div>
-
-        <ClassificationSettings 
-          classifications={formData.classifications} 
-          onChange={handleClassificationsChange}
-        />
 
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h5 className="mb-0">Question Groups</h5>

@@ -1317,7 +1317,8 @@ const QADetail = () => {
           <div className="card-body">
             <p className="text-muted mb-3">
               Section scores reflect the impact of classifications. When a section contains a question 
-              with a particular classification, the entire section's score is reduced by the defined percentage.
+              with a classification, the section's actual earned points (not the maximum possible) are 
+              reduced by the defined percentage.
             </p>
             
             <div className="table-responsive">
@@ -1327,41 +1328,72 @@ const QADetail = () => {
                     <th>Section</th>
                     <th>Raw Score</th>
                     <th>Classification Impact</th>
+                    <th>Deduction</th>
                     <th>Final Score</th>
                     <th>Percentage</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(evaluation.sectionScores.sections).map(([sectionId, section]) => (
-                    <tr key={sectionId}>
-                      <td>{section.name}</td>
-                      <td>{section.rawScore.toFixed(1)} / {section.maxScore}</td>
-                      <td>
-                        {section.classifications.major ? (
-                          <span className="badge bg-danger">Major</span>
-                        ) : section.classifications.moderate ? (
-                          <span className="badge bg-warning">Moderate</span>
-                        ) : section.classifications.minor ? (
-                          <span className="badge bg-info">Minor</span>
-                        ) : (
-                          <span className="badge bg-secondary">None</span>
-                        )}
-                      </td>
-                      <td>{section.adjustedScore.toFixed(1)} / {section.maxScore}</td>
-                      <td>
-                        <div className={`badge bg-${
-                          section.percentage >= 80 ? 'success' :
-                          section.percentage >= 60 ? 'warning' : 'danger'
-                        }`}>
-                          {section.percentage}%
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {Object.entries(evaluation.sectionScores.sections).map(([sectionId, section]) => {
+                    // Calculate deduction amount
+                    const deduction = section.rawScore - section.adjustedScore;
+                    
+                    return (
+                      <tr key={sectionId}>
+                        <td>{section.name}</td>
+                        <td>{section.rawScore.toFixed(1)} / {section.maxScore}</td>
+                        <td>
+                          {section.classifications.major ? (
+                            <span className="d-flex align-items-center">
+                              <span className="badge bg-danger me-2">Major</span>
+                              <span>({section.highestClassificationImpact}%)</span>
+                            </span>
+                          ) : section.classifications.moderate ? (
+                            <span className="d-flex align-items-center">
+                              <span className="badge bg-warning me-2">Moderate</span>
+                              <span>({section.highestClassificationImpact}%)</span>
+                            </span>
+                          ) : section.classifications.minor ? (
+                            <span className="d-flex align-items-center">
+                              <span className="badge bg-info me-2">Minor</span>
+                              <span>({section.highestClassificationImpact}%)</span>
+                            </span>
+                          ) : (
+                            <span className="badge bg-secondary">None</span>
+                          )}
+                        </td>
+                        <td>
+                          {deduction > 0 ? (
+                            <span className="text-danger">-{deduction.toFixed(1)}</span>
+                          ) : (
+                            <span>0</span>
+                          )}
+                        </td>
+                        <td>{section.adjustedScore.toFixed(1)} / {section.maxScore}</td>
+                        <td>
+                          <div className={`badge bg-${
+                            section.percentage >= 80 ? 'success' :
+                            section.percentage >= 60 ? 'warning' : 'danger'
+                          }`}>
+                            {section.percentage}%
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   <tr className="table-active fw-bold">
                     <td>Overall</td>
                     <td>{evaluation.sectionScores.overall.rawScore.toFixed(1)} / {evaluation.sectionScores.overall.maxScore}</td>
                     <td>-</td>
+                    <td>
+                      {(evaluation.sectionScores.overall.rawScore - evaluation.sectionScores.overall.adjustedScore) > 0 ? (
+                        <span className="text-danger">
+                          -{(evaluation.sectionScores.overall.rawScore - evaluation.sectionScores.overall.adjustedScore).toFixed(1)}
+                        </span>
+                      ) : (
+                        <span>0</span>
+                      )}
+                    </td>
                     <td>{evaluation.sectionScores.overall.adjustedScore.toFixed(1)} / {evaluation.sectionScores.overall.maxScore}</td>
                     <td>
                       <div className={`badge bg-${
@@ -1374,6 +1406,15 @@ const QADetail = () => {
                   </tr>
                 </tbody>
               </table>
+            </div>
+            
+            <div className="alert alert-info mt-3">
+              <h6 className="mb-2">How Classification Impacts Are Applied:</h6>
+              <ul className="mb-0">
+                <li>When a section contains questions with different classifications, the highest classification is applied.</li>
+                <li>The deduction is calculated based on the actual earned points in that section, not the maximum possible.</li>
+                <li>For example, if a section has earned 20 points and contains a "moderate" question with a 25% impact, 5 points (25% of 20) will be deducted.</li>
+              </ul>
             </div>
           </div>
         </div>
