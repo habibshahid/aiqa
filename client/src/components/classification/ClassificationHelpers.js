@@ -33,8 +33,9 @@ const ClassificationInfo = () => {
 };
 
 // Enhanced Classification Select Component with clear visuals
-const ClassificationSelect = ({ value, onChange, disabled = false }) => {
-  const classificationOptions = [
+const ClassificationSelect = ({ value, onChange, disabled = false, customOptions = null }) => {
+  // Use provided custom options or fall back to defaults
+  const classificationOptions = customOptions || [
     { value: 'minor', label: 'Minor', color: 'info', impact: 10 },
     { value: 'moderate', label: 'Moderate', color: 'warning', impact: 25 },
     { value: 'major', label: 'Major', color: 'danger', impact: 50 }
@@ -78,20 +79,5 @@ const ClassificationSelect = ({ value, onChange, disabled = false }) => {
     </div>
   );
 };
-
-// Usage example in QAFormEditor.js:
-/*
-<div className="col-md-2">
-  <label className="form-label">Classification</label>
-  <ClassificationSelect
-    value={param.classification || 'minor'}
-    onChange={(e) => handleParameterChange(paramIndex, 'classification', e.target.value)}
-    disabled={false}
-  />
-</div>
-
-// Add this near the top of your form or in a help section
-<ClassificationInfo />
-*/
 
 export { ClassificationInfo, ClassificationSelect };

@@ -16,10 +16,11 @@ const initialParameterState = {
   classification: 'minor' // default classification
 };
 
-const classificationOptions = [
-  { value: 'minor', label: 'Minor' },
-  { value: 'moderate', label: 'Moderate' },
-  { value: 'major', label: 'Major' }
+// Base classification options
+const baseClassificationOptions = [
+  { value: 'minor', label: 'Minor', color: 'info', impact: 10 },
+  { value: 'moderate', label: 'Moderate', color: 'warning', impact: 25 },
+  { value: 'major', label: 'Major', color: 'danger', impact: 50 }
 ];
 
 const ClassificationSettings = ({ classifications, onChange }) => {
@@ -131,13 +132,27 @@ const QAFormEditor = () => {
   const [loading, setLoading] = useState(id ? true : false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [queues, setQueues] = useState([]);
   
   const handleClassificationsChange = (classifications) => {
     setFormData(prev => ({
       ...prev,
       classifications
     }));
+    
+    // Update classification options based on the new percentages
+    const updatedOptions = baseClassificationOptions.map(option => {
+      const classification = classifications.find(c => c.type === option.value);
+      if (classification) {
+        return {
+          ...option,
+          label: `${option.value.charAt(0).toUpperCase() + option.value.slice(1)}`,
+          impact: classification.impactPercentage
+        };
+      }
+      return option;
+    });
+    
+    setDynamicClassificationOptions(updatedOptions);
   };
 
   const [formData, setFormData] = useState({
@@ -166,6 +181,9 @@ const QAFormEditor = () => {
     ]
   });
 
+  // Store updated classification options based on percentages
+  const [dynamicClassificationOptions, setDynamicClassificationOptions] = useState([...baseClassificationOptions]);
+
   // State for the new group modal
   const [showNewGroupModal, setShowNewGroupModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -179,28 +197,6 @@ const QAFormEditor = () => {
   const [showDeleteGroupConfirmation, setShowDeleteGroupConfirmation] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState(null);
   const [newGroupForQuestions, setNewGroupForQuestions] = useState('');
-
-  useEffect(() => {
-    const fetchQueues = async () => {
-      try {
-        const response = await fetch('/api/queues', {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        if (!response.ok) throw new Error('Failed to fetch queues');
-        const data = await response.json();
-        setQueues(data);
-      } catch (error) {
-        console.error('Error fetching queues:', error);
-        setError('Failed to load queues');
-      }
-    };
-
-    fetchQueues();
-  }, [id]);
-
-  // In the QAFormEditor component, ensure classifications are properly loaded and saved
 
   useEffect(() => {
     // Define the fetchForm function directly inside the useEffect
@@ -255,6 +251,24 @@ const QAFormEditor = () => {
         }
         
         setFormData(data);
+        
+        // Update classification options based on loaded data
+        if (data.classifications && data.classifications.length > 0) {
+          const loadedOptions = baseClassificationOptions.map(option => {
+            const classification = data.classifications.find(c => c.type === option.value);
+            if (classification) {
+              return {
+                ...option,
+                label: `${option.value.charAt(0).toUpperCase() + option.value.slice(1)}`,
+                impact: classification.impactPercentage
+              };
+            }
+            return option;
+          });
+          
+          setDynamicClassificationOptions(loadedOptions);
+        }
+        
         setError(null);
       } catch (err) {
         console.error('Error fetching form:', err);
@@ -295,11 +309,10 @@ const QAFormEditor = () => {
         moderationRequired: formData.moderationRequired,
         parameters: orderedParameters,
         groups: formData.groups,
-        classifications: formData.classifications // Ensure classifications are included
+        classifications: formData.classifications
       };
   
-      console.log('Submitting form with classifications:', payload.classifications);
-  
+      // Submit the form
       const response = await fetch(`/api/qa-forms${id ? `/${id}` : ''}`, {
         method: id ? 'PUT' : 'POST',
         headers: {
@@ -364,25 +377,11 @@ const QAFormEditor = () => {
     // Update the form data with the new group
     setFormData(prev => ({
       ...prev,
-      groups: [...prev.groups, { id: groupId, name: newGroupName }]
+      groups: [...prev.groups, { id: groupId, name: newGroupName.trim() }]
     }));
     
     // Reset state and close modal
     setNewGroupName('');
-    setShowNewGroupModal(false);
-  };
-
-  const handleAddGroup = (name) => {
-    // Generate a unique ID for the group
-    const groupId = `group-${Date.now()}`;
-    
-    // Update the form data with the new group
-    setFormData(prev => ({
-      ...prev,
-      groups: [...prev.groups, { id: groupId, name }]
-    }));
-    
-    // Close modal
     setShowNewGroupModal(false);
   };
 
@@ -396,7 +395,7 @@ const QAFormEditor = () => {
       ...prev,
       groups: prev.groups.map(group => 
         group.id === groupToRename.id 
-          ? { ...group, name: renamedGroupName }
+          ? { ...group, name: renamedGroupName.trim() }
           : group
       )
     }));
@@ -487,29 +486,11 @@ const QAFormEditor = () => {
     // Only render if the modal state is true
     if (!showNewGroupModal) return null;
   
-    // Handle saving the new group
-    const handleAddGroup = () => {
-      if (!newGroupName.trim()) return;
-      
-      // Generate a unique ID for the group
-      const groupId = `group-${Date.now()}`;
-      
-      // Add the new group to the form data
-      setFormData(prev => ({
-        ...prev,
-        groups: [...prev.groups, { id: groupId, name: newGroupName.trim() }]
-      }));
-      
-      // Reset form and close modal
-      setNewGroupName('');
-      setShowNewGroupModal(false);
-    };
-  
     // Support for keyboard controls
     const handleKeyDown = (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        handleAddGroup();
+        addGroup();
       } else if (e.key === 'Escape') {
         setShowNewGroupModal(false);
       }
@@ -558,7 +539,7 @@ const QAFormEditor = () => {
                 <button 
                   type="button" 
                   className="btn btn-primary"
-                  onClick={handleAddGroup}
+                  onClick={addGroup}
                   disabled={!newGroupName.trim()}
                 >
                   Add Group
@@ -802,11 +783,13 @@ const QAFormEditor = () => {
               </div>
             </div>
           </div>
-          <ClassificationSettings 
-            classifications={formData.classifications} 
-            onChange={handleClassificationsChange}
-          />
         </div>
+          
+        {/* Classification settings section */}
+        <ClassificationSettings 
+          classifications={formData.classifications} 
+          onChange={handleClassificationsChange}
+        />
 
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h5 className="mb-0">Question Groups</h5>
@@ -975,7 +958,12 @@ const QAFormEditor = () => {
                                         <ClassificationSelect
                                           value={param.classification || 'minor'}
                                           onChange={(e) => handleParameterChange(paramIndex, 'classification', e.target.value)}
+                                          customOptions={dynamicClassificationOptions}
                                         />
+                                        <small className="form-text text-muted mt-1">
+                                          Impact: {formData.classifications.find(c => c.type === param.classification)?.impactPercentage || 10}% 
+                                          score deduction
+                                        </small>
                                       </div>
                                     </div>
                                   </div>
@@ -1020,6 +1008,7 @@ const QAFormEditor = () => {
         </div>
       </form>
 
+      {/* Modals for Group Actions */}
       <NewGroupModal />
       <RenameGroupModal />
       <DeleteGroupConfirmationModal />
