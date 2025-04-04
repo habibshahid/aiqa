@@ -1,19 +1,160 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
-import { Lock, Eye, EyeOff, MessageSquare, CheckCircle, XCircle, AlertTriangle, Edit, Save } from 'lucide-react';
-import { useApp } from '../context/AppContext';
-import SectionWiseScores from '../components/SectionWiseScores';
-import { Tooltip } from 'bootstrap';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Edit, Eye, EyeOff, MessageSquare, CheckCircle, XCircle, AlertTriangle, Save, Lock } from 'lucide-react';
 import Select from 'react-select';
 
+// Section-wise Scoring Component
+const SectionWiseScores = ({ evaluation, qaForm }) => {
+  // Ensure we have the necessary data
+  if (!evaluation || !qaForm) return null;
+
+  // Get section scores from evaluation or initialize if not present
+  const sectionScores = evaluation.sectionScores || {
+    sections: {},
+    overall: { rawScore: 0, adjustedScore: 0, maxScore: 0, percentage: 0 }
+  };
+
+  // Map all group IDs to names
+  const groupMap = {};
+  qaForm.groups.forEach(group => {
+    groupMap[group.id] = group.name;
+  });
+
+  // Prepare classification impact information
+  const classificationMap = {
+    minor: { label: 'Minor', color: 'info', impact: 10 },
+    moderate: { label: 'Moderate', color: 'warning', impact: 25 },
+    major: { label: 'Major', color: 'danger', impact: 50 }
+  };
+
+  // Use custom classification definitions if available
+  if (qaForm && qaForm.classifications) {
+    qaForm.classifications.forEach(classification => {
+      if (classificationMap[classification.type]) {
+        classificationMap[classification.type].impact = classification.impactPercentage;
+      }
+    });
+  }
+
+  return (
+    <div className="card mb-4">
+      <div className="card-header">
+        <h5 className="card-title mb-0">Section-Level Scores</h5>
+      </div>
+      <div className="card-body">
+        <p className="text-muted mb-3">
+          Section scores reflect the impact of classifications. When a section contains a question 
+          with a classification, the section's actual earned points (not the maximum possible) are 
+          reduced by the defined percentage.
+        </p>
+        
+        <div className="table-responsive">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Section</th>
+                <th>Raw Score</th>
+                <th>Classification Impact</th>
+                <th>Deduction</th>
+                <th>Final Score</th>
+                <th>Percentage</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(sectionScores.sections).map(([sectionId, section]) => {
+                // Calculate deduction amount
+                const deduction = section.rawScore - section.adjustedScore;
+                
+                return (
+                  <tr key={sectionId}>
+                    <td>{section.name}</td>
+                    <td>{section.rawScore.toFixed(1)} / {section.maxScore}</td>
+                    <td>
+                      {section.classifications.major ? (
+                        <span className="d-flex align-items-center">
+                          <span className="badge bg-danger me-2">Major</span>
+                          <span>({section.highestClassificationImpact}%)</span>
+                        </span>
+                      ) : section.classifications.moderate ? (
+                        <span className="d-flex align-items-center">
+                          <span className="badge bg-warning me-2">Moderate</span>
+                          <span>({section.highestClassificationImpact}%)</span>
+                        </span>
+                      ) : section.classifications.minor ? (
+                        <span className="d-flex align-items-center">
+                          <span className="badge bg-info me-2">Minor</span>
+                          <span>({section.highestClassificationImpact}%)</span>
+                        </span>
+                      ) : (
+                        <span className="badge bg-secondary">None</span>
+                      )}
+                    </td>
+                    <td>
+                      {deduction > 0 ? (
+                        <span className="text-danger">-{deduction.toFixed(1)}</span>
+                      ) : (
+                        <span>0</span>
+                      )}
+                    </td>
+                    <td>{section.adjustedScore.toFixed(1)} / {section.maxScore}</td>
+                    <td>
+                      <div className={`badge bg-${
+                        section.percentage >= 80 ? 'success' :
+                        section.percentage >= 60 ? 'warning' : 'danger'
+                      }`}>
+                        {section.percentage}%
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr className="table-active fw-bold">
+                <td>Overall</td>
+                <td>{sectionScores.overall.rawScore.toFixed(1)} / {sectionScores.overall.maxScore}</td>
+                <td>-</td>
+                <td>
+                  {(sectionScores.overall.rawScore - sectionScores.overall.adjustedScore) > 0 ? (
+                    <span className="text-danger">
+                      -{(sectionScores.overall.rawScore - sectionScores.overall.adjustedScore).toFixed(1)}
+                    </span>
+                  ) : (
+                    <span>0</span>
+                  )}
+                </td>
+                <td>{sectionScores.overall.adjustedScore.toFixed(1)} / {sectionScores.overall.maxScore}</td>
+                <td>
+                  <div className={`badge bg-${
+                    sectionScores.overall.percentage >= 80 ? 'success' :
+                    sectionScores.overall.percentage >= 60 ? 'warning' : 'danger'
+                  }`}>
+                    {sectionScores.overall.percentage}%
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <div className="alert alert-info mt-3">
+          <h6 className="mb-2">How Classification Impacts Are Applied:</h6>
+          <ul className="mb-0">
+            <li>When a section contains questions with different classifications, the highest classification is applied.</li>
+            <li>The deduction is calculated based on the actual earned points in that section, not the maximum possible.</li>
+            <li>For example, if a section has earned 20 points and contains a "moderate" question with a 25% impact, 5 points (25% of 20) will be deducted.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Classification Options
 const classificationOptions = [
   { value: 'minor', label: 'Minor' },
   { value: 'moderate', label: 'Moderate' },
   { value: 'major', label: 'Major' }
 ];
 
-// Classification badge with tooltip helper component
+// Classification Badge Component
 const ClassificationBadge = ({ classification }) => {
   if (!classification) return null;
   
@@ -37,11 +178,7 @@ const ClassificationBadge = ({ classification }) => {
   );
 };
 
-const formatDuration = (duration) => {
-  if (!duration || duration === '0:00') return '0:00';
-  return duration;
-};
-
+// Score Card Component
 const ScoreCard = ({ title, value, bgColor = 'bg-primary', subtitle = null }) => (
   <div className="col-md-3">
     <div className="card mb-3">
@@ -54,170 +191,9 @@ const ScoreCard = ({ title, value, bgColor = 'bg-primary', subtitle = null }) =>
   </div>
 );
 
-// Original format Transcription Row (for 'realtime' version)
-const TranscriptionRow = ({ message, timestamp }) => {
-  try {
-    const formatTimestamp = (timestamp) => {
-      if (!timestamp) return 'N/A';
-      
-      // Check if timestamp is a valid number (epoch time in milliseconds)
-      const timestampNum = parseInt(timestamp);
-      if (!isNaN(timestampNum)) {
-        try {
-          // Format the date into a human-readable time format
-          const date = new Date(timestampNum);
-          return date.toLocaleTimeString();
-        } catch (e) {
-          console.error('Error parsing timestamp as integer:', e);
-        }
-      }
-      
-      // Return the original timestamp if parsing fails
-      return timestamp;
-    };
-
-    // Ensure data exists
-    if (!message || !message[timestamp]) {
-      console.log('Invalid message data for timestamp:', timestamp);
-      return (
-        <tr>
-          <td colSpan="6" className="text-center text-muted">
-            Invalid message data
-          </td>
-        </tr>
-      );
-    }
-    const data = message[timestamp];
-    
-    return (
-      <tr>
-        <td className="text-nowrap">
-          {formatTimestamp(timestamp)}
-        </td>
-        <td>
-          <span className={`badge bg-${data.speaker_id?.includes('agent') ? 'primary' : 'success'}`}>
-            {data.speaker_id?.includes('agent') ? 'Agent' : 'Customer'}
-          </span>
-        </td>
-        <td>
-          <div>{data.translated_text || data.original_text}</div>
-          {data.translated_text && data.original_text !== data.translated_text && (
-            <small className="text-muted d-block">
-              Original: {data.original_text}
-            </small>
-          )}
-        </td>
-        <td>
-          <span className="badge bg-info">
-            {data.language?.toUpperCase()}
-          </span>
-        </td>
-        <td>
-          <div className={`badge bg-${
-            data.sentiment?.sentiment === 'positive' ? 'success' :
-            data.sentiment?.sentiment === 'negative' ? 'danger' : 'warning'
-          }`}>
-            {data.sentiment?.sentiment || 'neutral'}
-          </div>
-          {data.sentiment?.score && (
-            <small className="d-block text-muted mt-1">
-              {(data.sentiment.score * 100).toFixed(0)}%
-            </small>
-          )}
-        </td>
-        <td>
-          {data.intent?.map((intent, i) => (
-            <span key={i} className="badge bg-secondary d-block mb-1">
-              {intent}
-            </span>
-          ))}
-        </td>
-      </tr>
-    );
-  } catch (error) {
-    console.error('Error rendering transcription row:', error);
-    return (
-      <tr>
-        <td colSpan="6" className="text-center text-danger">
-          Error displaying message
-        </td>
-      </tr>
-    );
-  }
-};
-
-// New format Transcription Row (for 'recorded' version)
-const RecordedTranscriptionRow = ({ entry }) => {
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'N/A';
-    
-    // Check if timestamp is a valid number (epoch time in milliseconds)
-    const timestampNum = parseInt(timestamp);
-    if (!isNaN(timestampNum)) {
-      try {
-        // Format the date into a human-readable time format
-        const date = new Date(timestampNum);
-        return date.toLocaleTimeString();
-      } catch (e) {
-        console.error('Error parsing timestamp as integer:', e);
-      }
-    }
-    
-    // Return the original timestamp if parsing fails
-    return timestamp;
-  };
-  
-  return (
-    <tr>
-      <td className="text-nowrap">
-        {formatTimestamp(entry.timestamp)}
-      </td>
-      <td>
-        <span className={`badge bg-${entry.speaker_id.includes('agent') ? 'primary' : 'success'}`}>
-          {entry.speaker_id.includes('agent') ? 'Agent' : 'Customer'}
-        </span>
-      </td>
-      <td>
-        <div>{entry.translated_text || entry.original_text}</div>
-        {entry.translated_text && entry.original_text !== entry.translated_text && (
-          <small className="text-muted d-block">
-            Original: {entry.original_text}
-          </small>
-        )}
-      </td>
-      <td>
-        <span className="badge bg-info">
-          {entry.language?.toUpperCase()}
-        </span>
-      </td>
-      <td>
-        <div className={`badge bg-${
-          entry.sentiment?.sentiment === 'positive' ? 'success' :
-          entry.sentiment?.sentiment === 'negative' ? 'danger' : 'warning'
-        }`}>
-          {entry.sentiment?.sentiment || 'neutral'}
-        </div>
-        {entry.sentiment?.score && (
-          <small className="d-block text-muted mt-1">
-            {(entry.sentiment.score * 100).toFixed(0)}%
-          </small>
-        )}
-      </td>
-      <td>
-        {entry.intent?.map((intent, i) => (
-          <span key={i} className="badge bg-secondary d-block mb-1">
-            {intent}
-          </span>
-        ))}
-      </td>
-    </tr>
-  );
-};
-
-const QADetail = async () => {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const { user } = useApp(); // Access user context to check permissions
+// Main QA Detail Component
+const QADetail = () => {
+  // State Management
   const [evaluation, setEvaluation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -227,7 +203,7 @@ const QADetail = async () => {
   const [formParams, setFormParams] = useState(null);
   const [qaForm, setQaForm] = useState(null);
   
-  // New state variables for human QA evaluation
+  // Human Evaluation State
   const [humanEvaluation, setHumanEvaluation] = useState({
     parameters: {},
     additionalComments: '',
@@ -238,149 +214,105 @@ const QADetail = async () => {
     moderatedAt: null
   });
   
+  // Classification State
   const [humanEvaluationModifications, setHumanEvaluationModifications] = useState({
     parameters: {},
     classifications: {}
   });
 
-  const handleParameterScoreModification = (paramName, modification) => {
-    setHumanEvaluationModifications(prev => ({
-      ...prev,
-      parameters: {
-        ...prev.parameters,
-        [paramName]: {
-          ...prev.parameters[paramName],
-          ...modification
-        }
-      }
-    }));
-  };
-
-  const handleClassificationModification = (paramName, classification) => {
-    setHumanEvaluationModifications(prev => ({
-      ...prev,
-      classifications: {
-        ...prev.classifications,
-        [paramName]: classification
-      }
-    }));
-  };
-  
-  const handleClassificationChange = (criterion, value) => {
-    setHumanEvaluation(prev => {
-      // Create the parameter entry if it doesn't exist
-      const paramEntry = prev.parameters[criterion] || {
-        score: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0,
-        explanation: evaluation.evaluation?.scores?.categories?.[criterion]?.explanation || '',
-        humanScore: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0,
-        humanExplanation: ''
-      };
-      
-      return {
-        ...prev,
-        parameters: {
-          ...prev.parameters,
-          [criterion]: {
-            ...paramEntry,
-            classification: value
-          }
-        }
-      };
-    });
-    
-    // If setting to 'none', also set the score to N/A (-1)
-    if (value === 'none') {
-      handleHumanScoreChange(criterion, -1);
-    }
-  };
-
-  // State for editing mode
+  // Editing State
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(null);
 
-  useEffect(() => {
-    // Initialize tooltips
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltipTriggerList.map(function (tooltipTriggerEl) {
-      return new Tooltip(tooltipTriggerEl);
-    });
-    
-    // Clean up tooltips when component unmounts
-    return () => {
-      tooltipTriggerList.forEach(trigger => {
-        const tooltip = Tooltip.getInstance(trigger);
-        if (tooltip) {
-          tooltip.dispose();
+  // Placeholder function for navigation (to be replaced with actual navigation logic)
+  const navigate = (path) => {
+    console.log(`Navigating to: ${path}`);
+  };
+
+  // Utility Functions - These will be implemented in subsequent artifacts
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleString();
+  };
+
+  const getStatusBadge = () => {
+    if (!humanEvaluation.isModerated) {
+      return <span className="badge bg-warning">Awaiting Human Moderation</span>;
+    } else if (humanEvaluation.isPublished) {
+      return <span className="badge bg-success">Published</span>;
+    } else {
+      return <span className="badge bg-secondary">Not Published</span>;
+    }
+  };
+
+  // Fetch evaluation data
+  const fetchEvaluation = useCallback(async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`/api/qa/evaluation/${id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
         }
       });
-    };
-  }, [evaluation]); // Re-initialize when evaluation changes
-
-  useEffect(() => {
-    const fetchEvaluation = async () => {
-      try {
-        setLoading(true);
-        const token = localStorage.getItem('token');
-        const response = await fetch(`/api/qa/evaluation/${id}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch evaluation');
-        }
-  
-        const data = await response.json();
-        console.log('Evaluation Data:', data);
-        setEvaluation(data);
-        
-        // Initialize human evaluation from existing data if available
-        if (data.humanEvaluation) {
-          setHumanEvaluation(data.humanEvaluation);
-        } else {
-          // Initialize with AI evaluation data
-          const initialParameters = {};
-          if (data.evaluation?.scores?.categories) {
-            Object.entries(data.evaluation.scores.categories).forEach(([criterion, criterionData]) => {
-              initialParameters[criterion] = {
-                score: criterionData.score,
-                explanation: criterionData.explanation,
-                humanExplanation: '',
-                humanScore: criterionData.score
-              };
-            });
-          }
-          
-          setHumanEvaluation({
-            parameters: initialParameters,
-            additionalComments: '',
-            agentComments: '',
-            isModerated: false,
-            isPublished: data.status === 'published'
-          });
-        }
-        
-        // Fetch QA form to get parameter details
-        if (data.qaFormId) {
-          fetchQAForm(data.qaFormId);
-        }
-        
-        // Check user permissions
-        checkUserPermissions();
-      } catch (err) {
-        console.error('Error fetching evaluation:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch evaluation');
       }
-    };
-  
-    fetchEvaluation();
+
+      const data = await response.json();
+      console.log('Evaluation Data:', data);
+      
+      // Set evaluation data
+      setEvaluation(data);
+      
+      // Initialize human evaluation state
+      const initialParameters = {};
+      if (data.evaluation?.scores?.categories) {
+        Object.entries(data.evaluation.scores.categories).forEach(([criterion, criterionData]) => {
+          initialParameters[criterion] = {
+            score: criterionData.score,
+            explanation: criterionData.explanation,
+            humanExplanation: '',
+            humanScore: criterionData.score,
+            classification: data.evaluation.classification || 'minor'
+          };
+        });
+      }
+      
+      setHumanEvaluation({
+        parameters: initialParameters,
+        additionalComments: data.humanEvaluation?.additionalComments || '',
+        agentComments: data.humanEvaluation?.agentComments || '',
+        isModerated: data.humanEvaluation?.isModerated || false,
+        isPublished: data.status === 'published',
+        moderatedBy: data.humanEvaluation?.moderatedBy || null,
+        moderatedAt: data.humanEvaluation?.moderatedAt || null
+      });
+      
+      // Fetch QA form if form ID exists
+      if (data.qaFormId) {
+        await fetchQAForm(data.qaFormId);
+      }
+      
+      // Check user permissions
+      await checkUserPermissions();
+    } catch (err) {
+      console.error('Error fetching evaluation:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
-  
+
+  // Fetch QA Form details
   const fetchQAForm = async (formId) => {
     try {
       const token = localStorage.getItem('token');
@@ -408,10 +340,10 @@ const QADetail = async () => {
       console.error('Error fetching QA form:', err);
     }
   };
-  
+
+  // Check user permissions
   const checkUserPermissions = async () => {
     try {
-      // Fetch user permissions
       const token = localStorage.getItem('token');
       const response = await fetch('/api/user/permissions', {
         headers: {
@@ -425,7 +357,7 @@ const QADetail = async () => {
       
       const permissions = await response.json();
       
-      // Check if user is admin or agent
+      // Determine user role
       const isUserAdmin = permissions["qa-forms"]?.write === true;
       const isUserAgent = permissions["qa-forms"]?.read === true && !isUserAdmin;
 
@@ -438,39 +370,63 @@ const QADetail = async () => {
       setIsAgent(true);
     }
   };
-  
+
+  // Fetch evaluation on component mount
+  useEffect(() => {
+    if (id) {
+      fetchEvaluation();
+    }
+  }, [id, fetchEvaluation]);
+
+  // Render loading state
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ height: '80vh' }}>
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Render error state
+  if (error || !evaluation) {
+    return (
+      <div className="text-center my-5">
+        <div className="alert alert-danger">
+          <h4>Failed to load evaluation</h4>
+          <p>{error || 'Evaluation not found'}</p>
+          <button 
+            className="btn btn-primary mt-3"
+            onClick={() => {
+              // Placeholder for navigation
+              console.log('Navigate to dashboard');
+            }}
+          >
+            Return to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Handler for human score changes
   const handleHumanScoreChange = (criterion, value) => {
     const scoreValue = parseInt(value);
     
-    setHumanEvaluation(prev => {
-      // Create the parameter entry if it doesn't exist
-      const paramEntry = prev.parameters[criterion] || {
-        score: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0,
-        explanation: evaluation.evaluation?.scores?.categories?.[criterion]?.explanation || '',
-        classification: formParams?.[criterion]?.classification || 'minor'
-      };
-      
-      return {
-        ...prev,
-        parameters: {
-          ...prev.parameters,
-          [criterion]: {
-            ...paramEntry,
-            humanScore: scoreValue
-          }
+    setHumanEvaluation(prev => ({
+      ...prev,
+      parameters: {
+        ...prev.parameters,
+        [criterion]: {
+          ...prev.parameters[criterion],
+          humanScore: scoreValue
         }
-      };
-    });
-    
-    // If marking as N/A, also update classification to 'none'
-    if (scoreValue === -1) {
-      handleClassificationChange(criterion, 'none');
-    } else if (humanEvaluation.parameters[criterion]?.classification === 'none') {
-      // If changing from N/A to a score, restore original classification if it was 'none'
-      handleClassificationChange(criterion, formParams?.[criterion]?.classification || 'minor');
-    }
+      }
+    }));
   };
-  
+
+  // Handler for human explanation changes
   const handleHumanExplanationChange = (criterion, value) => {
     setHumanEvaluation(prev => ({
       ...prev,
@@ -483,142 +439,43 @@ const QADetail = async () => {
       }
     }));
   };
-  
-  const handleAdditionalCommentsChange = (value) => {
-    setHumanEvaluation(prev => ({
-      ...prev,
-      additionalComments: value
-    }));
+
+  // Handler for classification changes
+  const handleClassificationChange = (criterion, value) => {
+    setHumanEvaluation(prev => {
+      // Create the parameter entry if it doesn't exist
+      const paramEntry = prev.parameters[criterion] || {
+        score: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0,
+        explanation: evaluation.evaluation?.scores?.categories?.[criterion]?.explanation || '',
+        humanScore: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0
+      };
+      
+      return {
+        ...prev,
+        parameters: {
+          ...prev.parameters,
+          [criterion]: {
+            ...paramEntry,
+            classification: value
+          }
+        }
+      };
+    });
   };
-  
-  const handleAgentCommentsChange = (value) => {
-    setHumanEvaluation(prev => ({
-      ...prev,
-      agentComments: value
-    }));
-  };
-  
+
+  // Save human evaluation
   const saveHumanEvaluation = async (publish = false) => {
     try {
       setIsSaving(true);
       setSaveError(null);
       setSaveSuccess(null);
       
-      // Calculate classification impacts
-      const classificationImpacts = {};
-      if (qaForm && qaForm.classifications) {
-        qaForm.classifications.forEach(classification => {
-          classificationImpacts[classification.type] = classification.impactPercentage / 100;
-        });
-      } else {
-        // Default impacts if classifications not defined in form
-        classificationImpacts.minor = 0.1;    // 10%
-        classificationImpacts.moderate = 0.25; // 25%
-        classificationImpacts.major = 0.5;     // 50%
-      }
-      
-      // Calculate section scores
-      const sectionScores = {
-        sections: {},
-        overall: { rawScore: 0, adjustedScore: 0, maxScore: 0, percentage: 0 }
-      };
-      
-      // Initialize sections based on form groups
-      if (qaForm && qaForm.groups) {
-        qaForm.groups.forEach(group => {
-          sectionScores.sections[group.id] = {
-            name: group.name,
-            rawScore: 0,
-            maxScore: 0,
-            adjustedScore: 0,
-            percentage: 0,
-            classifications: { minor: false, moderate: false, major: false, none: false },
-            highestClassification: null,
-            highestClassificationImpact: 0
-          };
-        });
-      }
-      
-      // Calculate scores by group/section
-      if (qaForm && qaForm.parameters) {
-        qaForm.parameters.forEach(param => {
-          const criterion = param.name;
-          const groupId = param.group;
-          
-          // Skip if section is not initialized
-          if (!sectionScores.sections[groupId]) return;
-          
-          // Get the parameter data from human evaluation
-          const paramData = humanEvaluation.parameters[criterion] || {};
-          
-          // Determine the score to use (human score or AI score)
-          let score = paramData.humanScore !== undefined ? 
-                    paramData.humanScore : 
-                    evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0;
-          
-          // Get the max score for this parameter
-          const maxScore = param.maxScore || 5;
-          
-          // Skip N/A scores
-          if (score === -1) return;
-          
-          // Add to section totals
-          sectionScores.sections[groupId].rawScore += score;
-          sectionScores.sections[groupId].maxScore += maxScore;
-          
-          // Track classifications
-          const classification = paramData.classification || param.classification || 'minor';
-          if (classification !== 'none') {
-            sectionScores.sections[groupId].classifications[classification] = true;
-          }
-        });
-        
-        // Calculate adjusted scores and find highest classification for each section
-        Object.values(sectionScores.sections).forEach(section => {
-          // Find highest classification
-          let highestClassificationImpact = 0;
-          let highestClassification = null;
-          
-          if (section.classifications.major) {
-            highestClassification = 'major';
-            highestClassificationImpact = classificationImpacts.major;
-          } else if (section.classifications.moderate) {
-            highestClassification = 'moderate';
-            highestClassificationImpact = classificationImpacts.moderate;
-          } else if (section.classifications.minor) {
-            highestClassification = 'minor';
-            highestClassificationImpact = classificationImpacts.minor;
-          }
-          
-          section.highestClassification = highestClassification;
-          section.highestClassificationImpact = highestClassificationImpact * 100; // Store as percentage
-          
-          // Calculate adjusted score
-          const deduction = section.rawScore * highestClassificationImpact;
-          section.adjustedScore = Math.max(0, section.rawScore - deduction);
-          
-          // Calculate percentage
-          section.percentage = section.maxScore > 0 ? 
-                             Math.round((section.adjustedScore / section.maxScore) * 100) : 0;
-                             
-          // Add to overall totals
-          sectionScores.overall.rawScore += section.rawScore;
-          sectionScores.overall.maxScore += section.maxScore;
-          sectionScores.overall.adjustedScore += section.adjustedScore;
-        });
-        
-        // Calculate overall percentage
-        sectionScores.overall.percentage = sectionScores.overall.maxScore > 0 ? 
-                                         Math.round((sectionScores.overall.adjustedScore / sectionScores.overall.maxScore) * 100) : 0;
-      }
-      
       // Prepare data for submission
       const updatedEvaluation = {
         ...humanEvaluation,
-        sectionScores: sectionScores,
         isModerated: true,
         isPublished: publish,
-        moderatedBy: user?.username || user?.id || 'unknown',
+        moderatedBy: 'Current User', // Replace with actual user identification
         moderatedAt: new Date().toISOString()
       };
       
@@ -638,17 +495,11 @@ const QADetail = async () => {
       }
       
       // Update local state
+      const updatedData = await response.json();
       setHumanEvaluation(updatedEvaluation);
+      setEvaluation(updatedData);
       setIsEditMode(false);
       setSaveSuccess(publish ? 'Evaluation published successfully' : 'Evaluation saved successfully');
-      
-      // Refresh evaluation data
-      const updatedData = await response.json();
-      setEvaluation({
-        ...evaluation,
-        ...updatedData,
-        sectionScores: sectionScores
-      });
     } catch (err) {
       console.error('Error saving evaluation:', err);
       setSaveError(err.message);
@@ -656,75 +507,180 @@ const QADetail = async () => {
       setIsSaving(false);
     }
   };
-  
-  const publishEvaluation = async () => {
-    await saveHumanEvaluation(true);
-  };
 
-  if (loading) {
+  // Render method for evaluation criteria
+  const renderEvaluationCriteria = () => {
+    if (!evaluation?.evaluation?.scores?.categories) return null;
+
     return (
-      <div className="d-flex justify-content-center align-items-center" style={{ height: '80vh' }}>
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
+      <div className="card mb-4">
+        <div className="card-header d-flex justify-content-between align-items-center">
+          <h5 className="card-title mb-0">Evaluation Criteria</h5>
+          {isAdmin && !isEditMode && (
+            <button 
+              className="btn btn-sm btn-outline-primary"
+              onClick={() => setIsEditMode(true)}
+            >
+              <Edit size={14} className="me-1" />
+              Edit Criteria
+            </button>
+          )}
+        </div>
+        <div className="card-body">
+          <div className="table-responsive">
+            <table className="table table-hover">
+              <thead>
+                <tr>
+                  <th style={{width: "20%"}}>Criterion</th>
+                  <th style={{width: "10%"}}>Classification</th>
+                  <th style={{width: "10%"}}>AI Score</th>
+                  {(isEditMode || humanEvaluation.isModerated) && (
+                    <th style={{width: "10%"}}>Human Score</th>
+                  )}
+                  <th style={{width: "50%"}}>Explanation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(evaluation.evaluation.scores.categories).map(([criterion, data]) => (
+                  <tr key={criterion}>
+                    <td>{criterion}</td>
+                    <td>
+                      {isEditMode ? (
+                        <select
+                          className="form-select"
+                          value={humanEvaluation.parameters[criterion]?.classification || 'minor'}
+                          onChange={(e) => handleClassificationChange(criterion, e.target.value)}
+                        >
+                          <option value="minor">Minor</option>
+                          <option value="moderate">Moderate</option>
+                          <option value="major">Major</option>
+                        </select>
+                      ) : (
+                        <span className={`badge bg-${
+                          humanEvaluation.parameters[criterion]?.classification === 'major' ? 'danger' :
+                          humanEvaluation.parameters[criterion]?.classification === 'moderate' ? 'warning' : 'info'
+                        }`}>
+                          {humanEvaluation.parameters[criterion]?.classification || 'minor'}
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`badge bg-${
+                        data.score >= 4 ? 'success' :
+                        data.score >= 3 ? 'warning' : 'danger'
+                      }`}>
+                        {data.score}/{formParams?.[criterion]?.maxScore || 5}
+                      </span>
+                    </td>
+                    {(isEditMode || humanEvaluation.isModerated) && (
+                      <td>
+                        {isEditMode ? (
+                          <select 
+                            className="form-select"
+                            value={humanEvaluation.parameters[criterion]?.humanScore || data.score}
+                            onChange={(e) => handleHumanScoreChange(criterion, e.target.value)}
+                          >
+                            {[...Array(6).keys()].map(score => (
+                              <option key={score} value={score}>
+                                {score} {score === 0 ? '- Failed' : score === 5 ? '- Excellent' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className={`badge bg-${
+                            humanEvaluation.parameters[criterion]?.humanScore >= 4 ? 'success' :
+                            humanEvaluation.parameters[criterion]?.humanScore >= 3 ? 'warning' : 'danger'
+                          }`}>
+                            {humanEvaluation.parameters[criterion]?.humanScore}/{formParams?.[criterion]?.maxScore || 5}
+                          </span>
+                        )}
+                      </td>
+                    )}
+                    <td>
+                      {isEditMode ? (
+                        <div>
+                          <div className="mb-2">
+                            <small className="text-muted">AI Explanation:</small>
+                            <p className="mb-2">{data.explanation}</p>
+                          </div>
+                          <div>
+                            <small className="text-muted">Human Explanation:</small>
+                            <textarea
+                              className="form-control mt-1"
+                              rows="3"
+                              value={humanEvaluation.parameters[criterion]?.humanExplanation || ''}
+                              onChange={(e) => handleHumanExplanationChange(criterion, e.target.value)}
+                              placeholder="Add your explanation here..."
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          {humanEvaluation.isModerated && humanEvaluation.parameters[criterion]?.humanExplanation ? (
+                            <div>
+                              <div className="mb-2">
+                                <small className="text-muted">AI:</small>
+                                <p className="mb-0">{data.explanation}</p>
+                              </div>
+                              <div className="mt-2 p-2 border-start border-primary border-3 bg-light">
+                                <small className="text-primary">Human QA:</small>
+                                <p className="mb-0">{humanEvaluation.parameters[criterion].humanExplanation}</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="mb-0">{data.explanation}</p>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     );
-  }
+  };
 
-  if (error || !evaluation) {
+  // Render method for save/publish messages
+  const renderSaveMessages = () => {
     return (
-      <div className="text-center my-5">
-        <div className="alert alert-danger">
-          <h4>Failed to load evaluation</h4>
-          <p>{error || 'Evaluation not found'}</p>
-          <button 
-            className="btn btn-primary mt-3"
-            onClick={() => navigate('/dashboard')}
-          >
-            Return to Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Enhanced transcription detection
-  const hasTranscription = () => {
-    if (!evaluation) return false;
-    
-    // Check multiple possible transcription sources
-    const transcriptionSources = [
-      evaluation.transcription,
-      evaluation.recordedTranscription,
-      evaluation.transcriptionAnalysis
-    ];
-
-    return transcriptionSources.some(source => 
-      source && 
-      ((Array.isArray(source) && source.length > 0) || 
-       (typeof source === 'object' && Object.keys(source).length > 0))
+      <>
+        {saveError && (
+          <div className="alert alert-danger alert-dismissible fade show" role="alert">
+            <AlertTriangle size={16} className="me-2" />
+            {saveError}
+            <button 
+              type="button" 
+              className="btn-close" 
+              onClick={() => setSaveError(null)}
+            ></button>
+          </div>
+        )}
+        
+        {saveSuccess && (
+          <div className="alert alert-success alert-dismissible fade show" role="alert">
+            <CheckCircle size={16} className="me-2" />
+            {saveSuccess}
+            <button 
+              type="button" 
+              className="btn-close" 
+              onClick={() => setSaveSuccess(null)}
+            ></button>
+          </div>
+        )}
+      </>
     );
   };
 
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'N/A';
-    
-    // Check if timestamp is a valid number (epoch time in milliseconds)
-    const timestampNum = parseInt(timestamp);
-    if (!isNaN(timestampNum)) {
-      try {
-        // Format the date into a human-readable time format
-        const date = new Date(timestampNum);
-        return date.toLocaleTimeString();
-      } catch (e) {
-        console.error('Error parsing timestamp as integer:', e);
-      }
-    }
-    
-    // Return the original timestamp if parsing fails
-    return timestamp;
+  // Utility function to get sentiment color
+  const getSentimentColor = (sentiment) => {
+    return sentiment === 'positive' ? 'bg-success' :
+           sentiment === 'negative' ? 'bg-danger' : 'bg-warning';
   };
 
+  // Utility function to format duration
   const formatDurationHumanReadable = (seconds) => {
     if (!seconds || isNaN(seconds)) return 'N/A';
     
@@ -748,259 +704,27 @@ const QADetail = async () => {
     
     return result.trim();
   };
-  
-  // Helper function to select the appropriate transcription data
-  const getTranscriptionData = () => {
-    if (!evaluation) return [];
 
-    // Prioritize recordedTranscription, then transcription, then fall back to empty array
-    if (Array.isArray(evaluation.recordedTranscription) && evaluation.recordedTranscription.length > 0) {
-      return evaluation.recordedTranscription;
-    }
-
-    if (Array.isArray(evaluation.transcription) && evaluation.transcription.length > 0) {
-      // If transcription is an array of objects with timestamps
-      return evaluation.transcription.map(message => {
-        const timestamp = Object.keys(message)[0];
-        let msg = message[timestamp];
-        msg.timestamp = formatTimestamp(timestamp);
-        return msg;
-      });
-    }
-
-    return [];
-  };
-
-  // Helper to get agent sentiment
-  const getAgentSentiment = () => {
-    if (!evaluation?.evaluation?.agentSentiment) return 'neutral';
-    
-    return Array.isArray(evaluation.evaluation.agentSentiment) 
-      ? evaluation.evaluation.agentSentiment[0] 
-      : evaluation.evaluation.agentSentiment;
-  };
-
-  // Helper to get customer sentiment
-  const getCustomerSentiment = () => {
-    if (!evaluation?.evaluation?.customerSentiment) return 'neutral';
-    
-    return Array.isArray(evaluation.evaluation.customerSentiment) 
-      ? evaluation.evaluation.customerSentiment[0] 
-      : evaluation.evaluation.customerSentiment;
-  };
-
-  // Helper to get sentiment badge color
-  const getSentimentColor = (sentiment) => {
-    return sentiment === 'positive' ? 'bg-success' :
-           sentiment === 'negative' ? 'bg-danger' : 'bg-warning';
-  };
-
-  const getOverallScore = () => {
-    return evaluation.evaluation?.scores?.overall?.average ? `${evaluation.evaluation?.scores?.overall?.average} / ${evaluation.evaluation?.scores?.overall?.maxScore}` : 0;
-  };
-
-  const getTranslatedText = (entry) => {
-    if (!entry) return '';
-    
-    // If translated_text is an object with translatedText property
-    if (entry.translated_text && typeof entry.translated_text === 'object' && entry.translated_text.translatedText) {
-      return entry.translated_text.translatedText;
-    }
-    
-    // Otherwise return translated_text if it's a string, or fall back to original_text
-    return typeof entry.translated_text === 'string' ? entry.translated_text : entry.original_text;
-  };
-  
-  // Generate score options based on max score and scoring type
-  const getScoreOptions = (criterion) => {
-    if (!formParams || !formParams[criterion]) return [];
-    
-    const param = formParams[criterion];
-    const maxScore = param.maxScore || 5;
-    const scoringType = param.scoringType || 'variable';
-    
-    if (scoringType === 'binary') {
-      // Binary scoring only has 0 or max
-      return [
-        { value: 0, label: '0 - Failed' },
-        { value: maxScore, label: `${maxScore} - Passed` }
-      ];
-    } else {
-      // Variable scoring has 0 to max
-      return Array.from({ length: maxScore + 1 }, (_, i) => ({
-        value: i,
-        label: `${i} - ${i === 0 ? 'Failed' : i === maxScore ? 'Excellent' : i < maxScore / 2 ? 'Needs Improvement' : 'Good'}`
-      }));
-    }
-  };
-  
-  const calculateAdjustedScore = (score, maxScore, classification) => {
-    if (!classification) return score;
-    
-    const impactMap = {
-      minor: 0.10,    // 10% impact
-      moderate: 0.25, // 25% impact
-      major: 0.50     // 50% impact
+  // Render Sentiment Analysis Section
+  const renderSentimentAnalysis = () => {
+    // Get agent and customer sentiment
+    const getAgentSentiment = () => {
+      if (!evaluation?.evaluation?.agentSentiment) return 'neutral';
+      
+      return Array.isArray(evaluation.evaluation.agentSentiment) 
+        ? evaluation.evaluation.agentSentiment[0] 
+        : evaluation.evaluation.agentSentiment;
     };
-    
-    const impact = impactMap[classification] || 0;
-    const maxDeduction = maxScore * impact;
-    const scoreDeficit = maxScore - score;
-    const actualDeduction = Math.min(maxDeduction, scoreDeficit);
-    
-    return Math.max(0, score - actualDeduction);
-  };
 
-  // Calculate publication status badges
-  const getStatusBadge = () => {
-    if (!humanEvaluation.isModerated) {
-      return <span className="badge bg-warning">Awaiting Human Moderation</span>;
-    } else if (humanEvaluation.isPublished) {
-      return <span className="badge bg-success">Published</span>;
-    } else {
-      return <span className="badge bg-secondary">Not Published</span>;
-    }
-  };
-
-  return (
-    <div className="container-fluid py-4">
-      {/* Status and Action Bar */}
-      <div className="card mb-4">
-        <div className="card-body d-flex justify-content-between align-items-center">
-          <div className="d-flex align-items-center">
-            <h4 className="mb-0 me-3">QA Evaluation</h4>
-            {getStatusBadge()}
-            {humanEvaluation.moderatedBy && humanEvaluation.moderatedAt && (
-              <span className="ms-3 text-muted small">
-                Moderated by {humanEvaluation.moderatedBy} on {format(new Date(humanEvaluation.moderatedAt), 'MMM d, yyyy h:mm a')}
-              </span>
-            )}
-          </div>
-          
-          <div className="d-flex gap-2">
-            <button 
-              className="btn btn-outline-primary"
-              onClick={() => navigate('/dashboard')}
-            >
-              Back to Dashboard
-            </button>
-            
-            {isAdmin && !isEditMode && (
-              <button 
-                className="btn btn-primary"
-                onClick={() => setIsEditMode(true)}
-              >
-                <Edit size={16} className="me-2" />
-                Edit Evaluation
-              </button>
-            )}
-            
-            {isAdmin && isEditMode && (
-              <>
-                <button 
-                  className="btn btn-outline-secondary"
-                  onClick={() => setIsEditMode(false)}
-                  disabled={isSaving}
-                >
-                  Cancel
-                </button>
-                <button 
-                  className="btn btn-primary"
-                  onClick={() => saveHumanEvaluation(false)}
-                  disabled={isSaving}
-                >
-                  {isSaving ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save size={16} className="me-2" />
-                      Save Evaluation
-                    </>
-                  )}
-                </button>
-                {!humanEvaluation.isPublished && (
-                  <button 
-                    className="btn btn-success"
-                    onClick={publishEvaluation}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm me-2" />
-                        Publishing...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle size={16} className="me-2" />
-                        Publish Evaluation
-                      </>
-                    )}
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+    const getCustomerSentiment = () => {
+      if (!evaluation?.evaluation?.customerSentiment) return 'neutral';
       
-      {/* Save messages */}
-      {saveError && (
-        <div className="alert alert-danger alert-dismissible fade show" role="alert">
-          <AlertTriangle size={16} className="me-2" />
-          {saveError}
-          <button 
-            type="button" 
-            className="btn-close" 
-            onClick={() => setSaveError(null)}
-          ></button>
-        </div>
-      )}
-      
-      {saveSuccess && (
-        <div className="alert alert-success alert-dismissible fade show" role="alert">
-          <CheckCircle size={16} className="me-2" />
-          {saveSuccess}
-          <button 
-            type="button" 
-            className="btn-close" 
-            onClick={() => setSaveSuccess(null)}
-          ></button>
-        </div>
-      )}
+      return Array.isArray(evaluation.evaluation.customerSentiment) 
+        ? evaluation.evaluation.customerSentiment[0] 
+        : evaluation.evaluation.customerSentiment;
+    };
 
-      {/* Header */}
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h1 className="h3 mb-0">QA Evaluation Details</h1>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="row g-3 mb-4">
-        <ScoreCard 
-          title="Overall Score" 
-          value={getOverallScore()}
-          bgColor="bg-primary"
-        />
-        <ScoreCard 
-          title="Agent Sentiment" 
-          value={getAgentSentiment()}
-          bgColor={getSentimentColor(getAgentSentiment())}
-        />
-        <ScoreCard 
-          title="Customer Sentiment" 
-          value={getCustomerSentiment()}
-          bgColor={getSentimentColor(getCustomerSentiment())}
-        />
-        <ScoreCard 
-          title="Intent" 
-          value={evaluation.evaluation?.intent?.[0] || 'N/A'}
-          bgColor="bg-secondary"
-        />
-      </div>
-
-      {/* Sentiment Analysis Section */}
+    return (
       <div className="card mb-4">
         <div className="card-header">
           <h5 className="card-title mb-0">Sentiment Analysis</h5>
@@ -1112,8 +836,12 @@ const QADetail = async () => {
           </div>
         </div>
       </div>
+    );
+  };
 
-      {/* Call Summary */}
+  // Render Call Summary Section
+  const renderCallSummary = () => {
+    return (
       <div className="card mb-4">
         <div className="card-header">
           <h5 className="card-title mb-0">Call Summary</h5>
@@ -1162,7 +890,7 @@ const QADetail = async () => {
                   </tr>
                   <tr>
                     <td><strong>Direction:</strong></td>
-                    <td className="text-capitalize">{(evaluation.interaction?.direction) ? 'Inbound' : 'Outbound'}</td>
+                    <td className="text-capitalize">{(evaluation.interaction?.direction === 0) ? 'Inbound' : 'Outbound'}</td>
                   </tr>
                   <tr>
                     <td><strong>Channel / Queue:</strong></td>
@@ -1178,7 +906,7 @@ const QADetail = async () => {
                   </tr>
                   <tr>
                     <td><strong>Evaluation Date:</strong></td>
-                    <td>{evaluation.createdAt ? format(new Date(evaluation.createdAt), 'MMM d, yyyy h:mm a') : 'N/A'}</td>
+                    <td>{evaluation.createdAt ? new Date(evaluation.createdAt).toLocaleString() : 'N/A'}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1191,10 +919,330 @@ const QADetail = async () => {
               {evaluation.evaluation?.summary || 'No summary available'}
             </p>
           </div>
+        </div>
       </div>
-    </div>
+    );
+  };
 
-      {/* Human QA Additional Comments Section */}
+  // Render Areas of Improvement Section
+  const renderAreasOfImprovement = () => {
+    if (!evaluation.evaluation?.areasOfImprovement?.length) return null;
+
+    return (
+      <div className="card mb-4">
+        <div className="card-header">
+          <h5 className="card-title mb-0">Areas of Improvement</h5>
+        </div>
+        <div className="card-body p-0">
+          <ul className="list-group list-group-flush">
+            {evaluation.evaluation.areasOfImprovement.map((area, index) => (
+              <li key={index} className="list-group-item">
+                <i className="bi bi-exclamation-triangle text-warning me-2"></i>
+                {area}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  };
+
+  // Render What the Agent Did Well Section
+  const renderAgentStrengths = () => {
+    if (!evaluation.evaluation?.whatTheAgentDidWell?.length) return null;
+
+    return (
+      <div className="card mb-4">
+        <div className="card-header">
+          <h5 className="card-title mb-0">What the Agent Did Well</h5>
+        </div>
+        <div className="card-body p-0">
+          <ul className="list-group list-group-flush">
+            {evaluation.evaluation.whatTheAgentDidWell.map((strength, index) => (
+              <li key={index} className="list-group-item">
+                <i className="bi bi-check-circle text-success me-2"></i>
+                {strength}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  };
+
+  // Render Silence Periods Section
+  const renderSilencePeriods = () => {
+    if (!evaluation.evaluation?.silencePeriods?.length) return null;
+
+    return (
+      <div className="card mb-4">
+        <div className="card-header">
+          <h5 className="card-title mb-0">Silence Periods</h5>
+        </div>
+        <div className="card-body">
+          <div className="table-responsive">
+            <table className="table table-hover">
+              <thead>
+                <tr>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {evaluation.evaluation.silencePeriods.map((period, index) => (
+                  <tr key={index}>
+                    <td>{period.fromTimeStamp}</td>
+                    <td>{period.toTimeStamp}</td>
+                    <td>{period.silenceDuration} seconds</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Render Transcription Section
+  const renderTranscription = () => {
+    // Check if transcription exists
+    const hasTranscription = () => {
+      const transcriptionSources = [
+        evaluation.transcription,
+        evaluation.recordedTranscription,
+        evaluation.transcriptionAnalysis
+      ];
+
+      return transcriptionSources.some(source => 
+        source && 
+        ((Array.isArray(source) && source.length > 0) || 
+         (typeof source === 'object' && Object.keys(source).length > 0))
+      );
+    };
+
+    // Get transcription data
+    const getTranscriptionData = () => {
+      if (!evaluation) return [];
+
+      // Prioritize recordedTranscription, then transcription
+      if (Array.isArray(evaluation.recordedTranscription) && evaluation.recordedTranscription.length > 0) {
+        return evaluation.recordedTranscription;
+      }
+
+      if (Array.isArray(evaluation.transcription) && evaluation.transcription.length > 0) {
+        return evaluation.transcription.map(message => {
+          const timestamp = Object.keys(message)[0];
+          let msg = message[timestamp];
+          msg.timestamp = new Date(parseInt(timestamp)).toLocaleTimeString();
+          return msg;
+        });
+      }
+
+      return [];
+    };
+
+    // If no transcription, return null
+    if (!hasTranscription()) return null;
+
+    return (
+      <div className="card mb-4">
+        <div className="card-header d-flex justify-content-between align-items-center">
+          <h5 className="card-title mb-0">
+            Conversation Transcription 
+            {evaluation.transcriptionVersion && (
+              <span className="ms-2 badge bg-info">
+                {evaluation.transcriptionVersion}
+              </span>
+            )}
+          </h5>
+          <button
+            className="btn btn-sm btn-outline-primary"
+            onClick={() => setShowTranscription(!showTranscription)}
+          >
+            {showTranscription ? (
+              <>
+                <EyeOff size={16} className="me-1" />
+                Hide Transcription
+              </>
+            ) : (
+              <>
+                <Eye size={16} className="me-1" />
+                Show Transcription
+              </>
+            )}
+          </button>
+        </div>
+        
+        {showTranscription && (
+          <div className="card-body">
+            <div className="table-responsive">
+              <table className="table table-hover mb-0">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Speaker</th>
+                    <th>Message</th>
+                    <th>Language</th>
+                    <th>Sentiment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {getTranscriptionData().map((entry, index) => (
+                    <tr key={index}>
+                      <td className="text-nowrap">
+                        {entry.timestamp || 'N/A'}
+                      </td>
+                      <td>
+                        <span className={`badge bg-${
+                          entry.speaker_id?.includes('agent') ? 'primary' : 'success'
+                        }`}>
+                          {entry.speaker_id?.includes('agent') ? 'Agent' : 'Customer'}
+                        </span>
+                      </td>
+                      <td>
+                        <div>{entry.translated_text || entry.original_text}</div>
+                        {entry.original_text && entry.translated_text !== entry.original_text && (
+                          <small className="text-muted d-block">
+                            Original: {entry.original_text}
+                          </small>
+                        )}
+                      </td>
+                      <td>
+                        <span className="badge bg-info">
+                          {entry.language?.toUpperCase() || 'N/A'}
+                        </span>
+                      </td>
+                      <td>
+                        <div className={`badge bg-${
+                          entry.sentiment?.sentiment === 'positive' ? 'success' :
+                          entry.sentiment?.sentiment === 'negative' ? 'danger' : 'warning'
+                        }`}>
+                          {entry.sentiment?.sentiment || 'neutral'}
+                        </div>
+                        {entry.sentiment?.score && (
+                          <small className="d-block text-muted mt-1">
+                            {(entry.sentiment.score * 100).toFixed(0)}%
+                          </small>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Render Transcription Analysis Section
+  const renderTranscriptionAnalysis = () => {
+    if (!evaluation.transcriptionAnalysis) return null;
+
+    return (
+      <div className="card mb-4">
+        <div className="card-header">
+          <h5 className="card-title mb-0">Transcription Analysis</h5>
+        </div>
+        <div className="card-body">
+          {/* Sentiment Distribution */}
+          <div className="row mb-4">
+            <div className="col-md-12">
+              <h6 className="mb-3">Sentiment Distribution</h6>
+              <div className="d-flex justify-content-between">
+                <div className="text-center flex-grow-1">
+                  <span className="badge bg-success">Positive</span>
+                  <h3>{evaluation.transcriptionAnalysis.sentimentDistribution?.positive?.toFixed(1) || 0}%</h3>
+                </div>
+                <div className="text-center flex-grow-1">
+                  <span className="badge bg-danger">Negative</span>
+                  <h3>{evaluation.transcriptionAnalysis.sentimentDistribution?.negative?.toFixed(1) || 0}%</h3>
+                </div>
+                <div className="text-center flex-grow-1">
+                  <span className="badge bg-warning">Neutral</span>
+                  <h3>{evaluation.transcriptionAnalysis.sentimentDistribution?.neutral?.toFixed(1) || 0}%</h3>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Languages */}
+          <div className="row mb-4">
+            <div className="col-md-12">
+              <h6 className="mb-3">Languages Detected</h6>
+              <div>
+                {Object.entries(evaluation.transcriptionAnalysis.languages || {})
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([language, count]) => (
+                    <span key={language} className="badge bg-info me-2 mb-2">
+                      {language.toUpperCase()}: {count}
+                    </span>
+                  ))
+                }
+              </div>
+            </div>
+          </div>
+
+          {/* Intents */}
+          <div className="row">
+            <div className="col-md-12">
+              <h6 className="mb-3">Detected Intents</h6>
+              <div>
+                {evaluation.transcriptionAnalysis.intents?.map((intent, index) => (
+                  <span key={index} className="badge bg-secondary me-2 mb-2">
+                    {intent}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Additional Metrics */}
+          <div className="row mt-4">
+            <div className="col-md-6">
+              <div className="card">
+                <div className="card-body">
+                  <h6 className="card-subtitle mb-2 text-muted">Total Tokens</h6>
+                  <h4>{evaluation.transcriptionAnalysis.totalTokens || 0}</h4>
+                </div>
+              </div>
+            </div>
+            <div className="col-md-6">
+              <div className="card">
+                <div className="card-body">
+                  <h6 className="card-subtitle mb-2 text-muted">Message Count</h6>
+                  <h4>{evaluation.transcriptionAnalysis.messageCount || 0}</h4>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Handle additional comments change
+  const handleAdditionalCommentsChange = (value) => {
+    setHumanEvaluation(prev => ({
+      ...prev,
+      additionalComments: value
+    }));
+  };
+
+  // Handle agent comments change
+  const handleAgentCommentsChange = (value) => {
+    setHumanEvaluation(prev => ({
+      ...prev,
+      agentComments: value
+    }));
+  };
+
+  // Render QA Evaluator Comments Section
+  const renderQAEvaluatorComments = () => {
+    return (
       <div className="card mb-4">
         <div className="card-header">
           <h5 className="card-title mb-0">QA Evaluator Comments</h5>
@@ -1223,650 +1271,528 @@ const QADetail = async () => {
           )}
         </div>
       </div>
+    );
+  };
 
-      {/* Agent Comments Section - Only visible if user is an agent or if comments exist */}
-      {(isAgent || humanEvaluation.agentComments) && (
-        <div className="card mb-4">
-          <div className="card-header">
-            <h5 className="card-title mb-0">Agent Response</h5>
+  // Render Agent Comments Section
+  const renderAgentCommentsSection = () => {
+    // Only show if user is an agent or comments exist
+    if (!(isAgent || humanEvaluation.agentComments)) return null;
+
+    return (
+      <div className="card mb-4">
+        <div className="card-header">
+          <h5 className="card-title mb-0">Agent Response</h5>
+        </div>
+        <div className="card-body">
+          {isAgent ? (
+            <div className="form-group">
+              <textarea
+                className="form-control"
+                rows="4"
+                value={humanEvaluation.agentComments}
+                onChange={(e) => handleAgentCommentsChange(e.target.value)}
+                placeholder="Enter your response to this evaluation..."
+                disabled={!humanEvaluation.isPublished}
+              />
+              {!humanEvaluation.isPublished && (
+                <div className="alert alert-warning mt-2">
+                  <Lock size={16} className="me-2" />
+                  You cannot respond until this evaluation is published.
+                </div>
+              )}
+              {humanEvaluation.isPublished && (
+                <button 
+                  className="btn btn-primary mt-2"
+                  onClick={() => saveHumanEvaluation(true)}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare size={16} className="me-2" />
+                      Save Response
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          ) : humanEvaluation.agentComments ? (
+            <div className="p-3 border rounded bg-light">
+              <p className="mb-0">{humanEvaluation.agentComments}</p>
+            </div>
+          ) : (
+            <p className="text-muted mb-0">No response from agent yet.</p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Main render method
+  return (
+    <div className="container-fluid py-4">
+      {/* Status and Action Bar */}
+      <div className="card mb-4">
+        <div className="card-body d-flex justify-content-between align-items-center">
+          <div className="d-flex align-items-center">
+            <h4 className="mb-0 me-3">QA Evaluation</h4>
+            {humanEvaluation.isPublished ? (
+              <span className="badge bg-success">Published</span>
+            ) : (
+              <span className="badge bg-warning">Not Published</span>
+            )}
           </div>
-          <div className="card-body">
-            {isAgent ? (
-              <div className="form-group">
-                <textarea
-                  className="form-control"
-                  rows="4"
-                  value={humanEvaluation.agentComments}
-                  onChange={(e) => handleAgentCommentsChange(e.target.value)}
-                  placeholder="Enter your response to this evaluation..."
-                  disabled={!humanEvaluation.isPublished}
-                />
+          
+          <div className="d-flex gap-2">
+            {isAdmin && !isEditMode && (
+              <button 
+                className="btn btn-primary"
+                onClick={() => setIsEditMode(true)}
+              >
+                <Edit size={16} className="me-2" />
+                Edit Evaluation
+              </button>
+            )}
+            
+            {isAdmin && isEditMode && (
+              <>
+                <button 
+                  className="btn btn-outline-secondary"
+                  onClick={() => setIsEditMode(false)}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => saveHumanEvaluation(false)}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={16} className="me-2" />
+                      Save Evaluation
+                    </>
+                  )}
+                </button>
                 {!humanEvaluation.isPublished && (
-                  <div className="alert alert-warning mt-2">
-                    <Lock size={16} className="me-2" />
-                    You cannot respond until this evaluation is published.
-                  </div>
-                )}
-                {humanEvaluation.isPublished && (
                   <button 
-                    className="btn btn-primary mt-2"
+                    className="btn btn-success"
                     onClick={() => saveHumanEvaluation(true)}
                     disabled={isSaving}
                   >
                     {isSaving ? (
                       <>
                         <span className="spinner-border spinner-border-sm me-2" />
-                        Saving...
+                        Publishing...
                       </>
                     ) : (
                       <>
-                        <MessageSquare size={16} className="me-2" />
-                        Save Response
+                        <CheckCircle size={16} className="me-2" />
+                        Publish Evaluation
                       </>
                     )}
                   </button>
                 )}
-              </div>
-            ) : humanEvaluation.agentComments ? (
-              <div className="p-3 border rounded bg-light">
-                <p className="mb-0">{humanEvaluation.agentComments}</p>
-              </div>
-            ) : (
-              <p className="text-muted mb-0">No response from agent yet.</p>
+              </>
             )}
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Save/Publish Messages */}
+      {renderSaveMessages()}
+
+      {/* Evaluation Criteria */}
+      {renderEvaluationCriteria()}
+
+      {/* Sentiment Analysis Section */}
+      {renderSentimentAnalysis()}
+
+      {/* Call Summary Section */}
+      {renderCallSummary()}
 
       {/* Areas of Improvement */}
-      {evaluation.evaluation?.areasOfImprovement?.length > 0 && (
-        <div className="card mb-4">
-          <div className="card-header">
-            <h5 className="card-title mb-0">Areas of Improvement</h5>
-          </div>
-          <div className="card-body p-0">
-            <ul className="list-group list-group-flush">
-              {evaluation.evaluation.areasOfImprovement.map((area, index) => (
-                <li key={index} className="list-group-item">
-                  <i className="bi bi-exclamation-triangle text-warning me-2"></i>
-                  {area}
-                </li>
-              ))}
-            </ul>
-          </div>
+      <div className="row">
+        <div className="col-md-6">
+          {renderAreasOfImprovement()}
         </div>
-      )}
-      
-      {/* What the Agent Did Well */}
-      {evaluation.evaluation?.whatTheAgentDidWell?.length > 0 && (
-        <div className="card mb-4">
-          <div className="card-header">
-            <h5 className="card-title mb-0">What the Agent Did Well</h5>
-          </div>
-          <div className="card-body p-0">
-            <ul className="list-group list-group-flush">
-              {evaluation.evaluation.whatTheAgentDidWell.map((strength, index) => (
-                <li key={index} className="list-group-item">
-                  <i className="bi bi-check-circle text-success me-2"></i>
-                  {strength}
-                </li>
-              ))}
-            </ul>
-          </div>
+        
+        {/* Agent Strengths */}
+        <div className="col-md-6">
+          {renderAgentStrengths()}
         </div>
-      )}
-
-      {qaForm && (
-        <SectionWiseScores evaluation={evaluation} qaForm={qaForm} />
-      )}
-
-      {/* Evaluation Criteria Section with Human QA Modification */}
-      {evaluation.evaluation?.scores?.categories && Object.keys(evaluation.evaluation.scores.categories).length > 0 && (
-        <div className="card mb-4">
-          <div className="card-header d-flex justify-content-between align-items-center">
-            <h5 className="card-title mb-0">Evaluation Criteria</h5>
-            {isAdmin && !isEditMode && (
-              <button 
-                className="btn btn-sm btn-outline-primary"
-                onClick={() => setIsEditMode(true)}
-              >
-                <Edit size={14} className="me-1" />
-                Edit Criteria
-              </button>
-            )}
-          </div>
-          <div className="card-body">
-          <div className="table-responsive">
-            <table className="table table-hover">
-              <thead>
-                <tr>
-                  <th style={{width: "20%"}}>Criterion</th>
-                  <th style={{width: "10%"}}>Classification</th>
-                  <th style={{width: "10%"}}>AI Score</th>
-                  {(isEditMode || humanEvaluation.isModerated) && (
-                    <th style={{width: "10%"}}>Human Score</th>
-                  )}
-                  <th style={{width: "50%"}}>Explanation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(evaluation.evaluation.scores.categories).map(([criterion, data]) => (
-                  <tr key={criterion}>
-                    <td>
-                      {criterion}
-                      {formParams && formParams[criterion] && (
-                        <div className="mt-1">
-                          <span className="badge bg-secondary">
-                            {formParams[criterion].scoringType === 'binary' ? 'Binary' : 'Variable'} 
-                            (0-{formParams[criterion].maxScore || 5})
-                          </span>
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      {isEditMode ? (
-                        <Select
-                          options={[
-                            { value: "none", label: "N/A" },
-                            { value: "minor", label: "Minor" },
-                            { value: "moderate", label: "Moderate" },
-                            { value: "major", label: "Major" }
-                          ]}
-                          value={{
-                            value: humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification || "minor",
-                            label: (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification || "minor").charAt(0).toUpperCase() + 
-                                  (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification || "minor").slice(1)
-                          }}
-                          onChange={(selected) => handleClassificationChange(criterion, selected.value)}
-                          isSearchable={false}
-                          menuPlacement="auto"
-                          styles={{
-                            control: (base) => ({
-                              ...base,
-                              minHeight: '32px',
-                              height: '32px'
-                            }),
-                            valueContainer: (base) => ({
-                              ...base,
-                              height: '32px',
-                              padding: '0 8px'
-                            }),
-                            indicatorsContainer: (base) => ({
-                              ...base,
-                              height: '32px'
-                            })
-                          }}
-                        />
-                      ) : (
-                        <span className={`badge bg-${
-                          (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification) === 'major' ? 'danger' :
-                          (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification) === 'moderate' ? 'warning' : 
-                          (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification) === 'none' ? 'secondary' : 'info'
-                        }`}>
-                          {(humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification) === 'none' ? 'N/A' :
-                          (humanEvaluation.parameters[criterion]?.classification || formParams?.[criterion]?.classification || 'minor')}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`badge bg-${
-                        data.score === -1 ? 'secondary' :
-                        data.score >= 4 ? 'success' :
-                        data.score >= 3 ? 'warning' : 'danger'
-                      }`}>
-                        {data.score === -1 ? 'N/A' : `${data.score}/${formParams?.[criterion]?.maxScore || 5}`}
-                      </span>
-                      <div className="mt-1 small text-muted text-capitalize">
-                        {data.confidence || 'medium'} confidence
-                      </div>
-                    </td>
-                    
-                    {/* Human Score Column */}
-                    {isEditMode && (
-                      <td>
-                        <select 
-                          className="form-select"
-                          value={humanEvaluation.parameters[criterion]?.humanScore !== undefined ? 
-                                humanEvaluation.parameters[criterion].humanScore : data.score}
-                          onChange={(e) => handleHumanScoreChange(criterion, e.target.value)}
-                        >
-                          <option value="-1">N/A</option>
-                          {getScoreOptions(criterion)
-                            .filter(option => option.value !== -1) // Filter out N/A option from getScoreOptions
-                            .map(option => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                          ))}
-                        </select>
-                      </td>
-                    )}
-                    
-                    {/* Display Human Score when not in edit mode */}
-                    {!isEditMode && humanEvaluation.isModerated && (
-                      <td>
-                        {humanEvaluation.parameters[criterion]?.humanScore === -1 ? (
-                          <span className="badge bg-secondary">N/A</span>
-                        ) : (
-                          <span className={`badge bg-${
-                            humanEvaluation.parameters[criterion]?.humanScore >= 4 ? 'success' :
-                            humanEvaluation.parameters[criterion]?.humanScore >= 3 ? 'warning' : 'danger'
-                          }`}>
-                            {humanEvaluation.parameters[criterion]?.humanScore}/{formParams?.[criterion]?.maxScore || 5}
-                          </span>
-                        )}
-                        {humanEvaluation.parameters[criterion]?.humanScore !== data.score && (
-                          <span className="ms-2 badge bg-secondary">Adjusted</span>
-                        )}
-                      </td>
-                    )}
-                    
-                    {/* Explanation Column */}
-                    <td>
-                      {isEditMode ? (
-                        <div>
-                          <div className="mb-2">
-                            <small className="text-muted">AI Explanation:</small>
-                            <p className="mb-2">{data.explanation}</p>
-                          </div>
-                          <div>
-                            <small className="text-muted">Human Explanation:</small>
-                            <textarea
-                              className="form-control mt-1"
-                              rows="3"
-                              value={humanEvaluation.parameters[criterion]?.humanExplanation || ''}
-                              onChange={(e) => handleHumanExplanationChange(criterion, e.target.value)}
-                              placeholder="Add your explanation here..."
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          {humanEvaluation.isModerated && humanEvaluation.parameters[criterion]?.humanExplanation ? (
-                            <div>
-                              <div className="mb-2">
-                                <small className="text-muted">AI:</small>
-                                <p className="mb-0">{data.explanation}</p>
-                              </div>
-                              <div className="mt-2 p-2 border-start border-primary border-3 bg-light">
-                                <small className="text-primary">Human QA:</small>
-                                <p className="mb-0">{humanEvaluation.parameters[criterion].humanExplanation}</p>
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="mb-0">{data.explanation}</p>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {evaluation.sectionScores && (
-        <div className="card mb-4">
-          <div className="card-header">
-            <h5 className="card-title mb-0">Section-Level Scores</h5>
-          </div>
-          <div className="card-body">
-            <p className="text-muted mb-3">
-              Section scores reflect the impact of classifications. When a section contains a question 
-              with a classification, the section's actual earned points (not the maximum possible) are 
-              reduced by the defined percentage.
-            </p>
-            
-            <div className="table-responsive">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Section</th>
-                    <th>Raw Score</th>
-                    <th>Classification Impact</th>
-                    <th>Deduction</th>
-                    <th>Final Score</th>
-                    <th>Percentage</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(evaluation.sectionScores.sections).map(([sectionId, section]) => {
-                    // Calculate deduction amount
-                    const deduction = section.rawScore - section.adjustedScore;
-                    
-                    return (
-                      <tr key={sectionId}>
-                        <td>{section.name}</td>
-                        <td>{section.rawScore.toFixed(1)} / {section.maxScore}</td>
-                        <td>
-                          {section.classifications.major ? (
-                            <span className="d-flex align-items-center">
-                              <span className="badge bg-danger me-2">Major</span>
-                              <span>({section.highestClassificationImpact}%)</span>
-                            </span>
-                          ) : section.classifications.moderate ? (
-                            <span className="d-flex align-items-center">
-                              <span className="badge bg-warning me-2">Moderate</span>
-                              <span>({section.highestClassificationImpact}%)</span>
-                            </span>
-                          ) : section.classifications.minor ? (
-                            <span className="d-flex align-items-center">
-                              <span className="badge bg-info me-2">Minor</span>
-                              <span>({section.highestClassificationImpact}%)</span>
-                            </span>
-                          ) : (
-                            <span className="badge bg-secondary">None</span>
-                          )}
-                        </td>
-                        <td>
-                          {deduction > 0 ? (
-                            <span className="text-danger">-{deduction.toFixed(1)}</span>
-                          ) : (
-                            <span>0</span>
-                          )}
-                        </td>
-                        <td>{section.adjustedScore.toFixed(1)} / {section.maxScore}</td>
-                        <td>
-                          <div className={`badge bg-${
-                            section.percentage >= 80 ? 'success' :
-                            section.percentage >= 60 ? 'warning' : 'danger'
-                          }`}>
-                            {section.percentage}%
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  <tr className="table-active fw-bold">
-                    <td>Overall</td>
-                    <td>{evaluation.sectionScores.overall.rawScore.toFixed(1)} / {evaluation.sectionScores.overall.maxScore}</td>
-                    <td>-</td>
-                    <td>
-                      {(evaluation.sectionScores.overall.rawScore - evaluation.sectionScores.overall.adjustedScore) > 0 ? (
-                        <span className="text-danger">
-                          -{(evaluation.sectionScores.overall.rawScore - evaluation.sectionScores.overall.adjustedScore).toFixed(1)}
-                        </span>
-                      ) : (
-                        <span>0</span>
-                      )}
-                    </td>
-                    <td>{evaluation.sectionScores.overall.adjustedScore.toFixed(1)} / {evaluation.sectionScores.overall.maxScore}</td>
-                    <td>
-                      <div className={`badge bg-${
-                        evaluation.sectionScores.overall.percentage >= 80 ? 'success' :
-                        evaluation.sectionScores.overall.percentage >= 60 ? 'warning' : 'danger'
-                      }`}>
-                        {evaluation.sectionScores.overall.percentage}%
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            
-            <div className="alert alert-info mt-3">
-              <h6 className="mb-2">How Classification Impacts Are Applied:</h6>
-              <ul className="mb-0">
-                <li>When a section contains questions with different classifications, the highest classification is applied.</li>
-                <li>The deduction is calculated based on the actual earned points in that section, not the maximum possible.</li>
-                <li>For example, if a section has earned 20 points and contains a "moderate" question with a 25% impact, 5 points (25% of 20) will be deducted.</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* Silence Periods */}
-      {evaluation.evaluation?.silencePeriods?.length > 0 && (
-        <div className="card mb-4">
-          <div className="card-header">
-            <h5 className="card-title mb-0">Silence Periods</h5>
-          </div>
-          <div className="card-body">
-            <div className="table-responsive">
-              <table className="table table-hover">
-                <thead>
-                  <tr>
-                    <th>From</th>
-                    <th>To</th>
-                    <th>Duration</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {evaluation.evaluation.silencePeriods.map((period, index) => (
-                    <tr key={index}>
-                      <td>{period.fromTimeStamp}</td>
-                      <td>{period.toTimeStamp}</td>
-                      <td>{period.silenceDuration} seconds</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderSilencePeriods()}
 
       {/* Transcription */}
-      {hasTranscription() && (
-        <div className="card mb-4">
-          <div className="card-header d-flex justify-content-between align-items-center">
-            <h5 className="card-title mb-0">
-              Conversation Transcription 
-              {evaluation.transcriptionVersion && (
-                <span className="ms-2 badge bg-info">
-                  {evaluation.transcriptionVersion}
-                </span>
-              )}
-            </h5>
-            <button
-              className="btn btn-sm btn-outline-primary"
-              onClick={() => setShowTranscription(!showTranscription)}
-            >
-              {showTranscription ? (
-                <>
-                  <EyeOff size={16} className="me-1" />
-                  Hide Transcription
-                </>
-              ) : (
-                <>
-                  <Eye size={16} className="me-1" />
-                  Show Transcription
-                </>
-              )}
-            </button>
-          </div>
-          
-          {showTranscription && (
-            <div className="card-body">
-              <div className="table-responsive">
-                <table className="table table-hover mb-0">
-                  <thead>
-                    <tr>
-                      <th>Timestamp</th>
-                      <th>Speaker</th>
-                      <th>Message</th>
-                      <th>Language</th>
-                      <th>Sentiment</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {getTranscriptionData().map((entry, index) => (
-                      <tr key={index}>
-                        <td className="text-nowrap">
-                          {entry.timestamp || 'N/A'}
-                        </td>
-                        <td>
-                          <span className={`badge bg-${
-                            entry.speaker_id?.includes('agent') ? 'primary' : 'success'
-                          }`}>
-                            {entry.speaker_id?.includes('agent') ? 'Agent' : 'Customer'}
-                          </span>
-                        </td>
-                        <td>
-                          <div>{getTranslatedText(entry)}</div>
-                          {entry.original_text && getTranslatedText(entry) !== entry.original_text && (
-                            <small className="text-muted d-block">
-                              Original: {entry.original_text}
-                            </small>
-                          )}
-                        </td>
-                        <td>
-                          <span className="badge bg-info">
-                            {entry.language?.toUpperCase() || 'N/A'}
-                          </span>
-                        </td>
-                        <td>
-                          <div className={`badge bg-${
-                            entry.sentiment?.sentiment === 'positive' ? 'success' :
-                            entry.sentiment?.sentiment === 'negative' ? 'danger' : 'warning'
-                          }`}>
-                            {entry.sentiment?.sentiment || 'neutral'}
-                          </div>
-                          {entry.sentiment?.score && (
-                            <small className="d-block text-muted mt-1">
-                              {(entry.sentiment.score * 100).toFixed(0)}%
-                            </small>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      {renderTranscription()}
 
-      {/* Transcription Analysis Section */}
-      {evaluation.transcriptionAnalysis && (
-        <div className="card mb-4">
-          <div className="card-header">
-            <h5 className="card-title mb-0">Transcription Analysis</h5>
-          </div>
-          <div className="card-body">
-            {/* Sentiment Distribution */}
-            <div className="row mb-4">
-              <div className="col-md-12">
-                <h6 className="mb-3">Sentiment Distribution</h6>
-                <div className="d-flex justify-content-between">
-                  <div className="text-center flex-grow-1">
-                    <span className="badge bg-success">Positive</span>
-                    <h3>{evaluation.transcriptionAnalysis.sentimentDistribution?.positive?.toFixed(1) || 0}%</h3>
-                  </div>
-                  <div className="text-center flex-grow-1">
-                    <span className="badge bg-danger">Negative</span>
-                    <h3>{evaluation.transcriptionAnalysis.sentimentDistribution?.negative?.toFixed(1) || 0}%</h3>
-                  </div>
-                  <div className="text-center flex-grow-1">
-                    <span className="badge bg-warning">Neutral</span>
-                    <h3>{evaluation.transcriptionAnalysis.sentimentDistribution?.neutral?.toFixed(1) || 0}%</h3>
-                  </div>
-                </div>
-              </div>
-            </div>
+      {/* Transcription Analysis */}
+      {renderTranscriptionAnalysis()}
 
-            {/* Languages */}
-            <div className="row mb-4">
-              <div className="col-md-12">
-                <h6 className="mb-3">Languages Detected</h6>
-                <div>
-                  {Object.entries(evaluation.transcriptionAnalysis.languages || {})
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([language, count]) => (
-                      <span key={language} className="badge bg-info me-2 mb-2">
-                        {language.toUpperCase()}: {count}
-                      </span>
-                    ))
-                  }
-                </div>
-              </div>
-            </div>
+      {/* QA Evaluator Comments */}
+      {renderQAEvaluatorComments()}
 
-            {/* Speakers Analysis */}
-            <div className="row mb-4">
-              <div className="col-md-12">
-                <h6 className="mb-3">Speakers Analysis</h6>
-                <div className="table-responsive">
-                  <table className="table table-sm">
-                    <thead>
-                      <tr>
-                        <th>Speaker</th>
-                        <th>Messages</th>
-                        <th>Average Sentiment</th>
-                        <th>Languages</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {evaluation.transcriptionAnalysis.speakers?.map((speaker, index) => (
-                        <tr key={index}>
-                          <td>{speaker.id}</td>
-                          <td>{speaker.messageCount}</td>
-                          <td>
-                            <span className={`badge ${
-                              speaker.averageSentiment > 0.2 ? 'bg-success' :
-                              speaker.averageSentiment < -0.2 ? 'bg-danger' : 'bg-warning'
-                            }`}>
-                              {speaker.averageSentiment.toFixed(2)}
-                            </span>
-                          </td>
-                          <td>
-                            {speaker.languages.map((lang, langIndex) => (
-                              <span key={langIndex} className="badge bg-secondary me-1">
-                                {lang.toUpperCase()}
-                              </span>
-                            ))}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+      {/* Agent Comments Section */}
+      {renderAgentCommentsSection()}
 
-            {/* Intents */}
-            <div className="row">
-              <div className="col-md-12">
-                <h6 className="mb-3">Detected Intents</h6>
-                <div>
-                  {evaluation.transcriptionAnalysis.intents?.map((intent, index) => (
-                    <span key={index} className="badge bg-secondary me-2 mb-2">
-                      {intent}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Additional Metrics */}
-            <div className="row mt-4">
-              <div className="col-md-6">
-                <div className="card">
-                  <div className="card-body">
-                    <h6 className="card-subtitle mb-2 text-muted">Total Tokens</h6>
-                    <h4>{evaluation.transcriptionAnalysis.totalTokens || 0}</h4>
-                  </div>
-                </div>
-              </div>
-              <div className="col-md-6">
-                <div className="card">
-                  <div className="card-body">
-                    <h6 className="card-subtitle mb-2 text-muted">Message Count</h6>
-                    <h4>{evaluation.transcriptionAnalysis.messageCount || 0}</h4>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Section-wise Scores */}
+      {qaForm && (
+        <SectionWiseScores 
+          evaluation={evaluation} 
+          qaForm={qaForm} 
+        />
       )}
     </div>
   );
 };
 
-export default QADetail;
+// Utility Functions
+const useQADetailLogic = (id) => {
+  // Comprehensive state management
+  const [evaluation, setEvaluation] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showTranscription, setShowTranscription] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAgent, setIsAgent] = useState(false);
+  const [formParams, setFormParams] = useState(null);
+  const [qaForm, setQaForm] = useState(null);
+
+  // Human Evaluation State
+  const [humanEvaluation, setHumanEvaluation] = useState({
+    parameters: {},
+    additionalComments: '',
+    agentComments: '',
+    isModerated: false,
+    isPublished: false,
+    moderatedBy: null,
+    moderatedAt: null
+  });
+
+  // Editing State
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [saveSuccess, setSaveSuccess] = useState(null);
+
+  // Utility Functions
+  const formatDate = useCallback((dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleString();
+  }, []);
+
+  const formatDurationHumanReadable = useCallback((seconds) => {
+    if (!seconds || isNaN(seconds)) return 'N/A';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    
+    let result = '';
+    
+    if (hours > 0) {
+      result += `${hours} ${hours === 1 ? 'hr' : 'hrs'} `;
+    }
+    
+    if (minutes > 0 || hours > 0) {
+      result += `${minutes} ${minutes === 1 ? 'min' : 'mins'} `;
+    }
+    
+    if (remainingSeconds > 0 || (hours === 0 && minutes === 0)) {
+      result += `${remainingSeconds} ${remainingSeconds === 1 ? 'sec' : 'secs'}`;
+    }
+    
+    return result.trim();
+  }, []);
+
+  // Sentiment and Classification Utilities
+  const getSentimentColor = useCallback((sentiment) => {
+    return sentiment === 'positive' ? 'bg-success' :
+           sentiment === 'negative' ? 'bg-danger' : 'bg-warning';
+  }, []);
+
+  const getScoreOptions = useCallback((criterion) => {
+    if (!formParams || !formParams[criterion]) return [];
+    
+    const param = formParams[criterion];
+    const maxScore = param.maxScore || 5;
+    const scoringType = param.scoringType || 'variable';
+    
+    if (scoringType === 'binary') {
+      // Binary scoring only has 0 or max
+      return [
+        { value: 0, label: '0 - Failed' },
+        { value: maxScore, label: `${maxScore} - Passed` }
+      ];
+    } else {
+      // Variable scoring has 0 to max
+      return Array.from({ length: maxScore + 1 }, (_, i) => ({
+        value: i,
+        label: `${i} - ${i === 0 ? 'Failed' : i === maxScore ? 'Excellent' : i < maxScore / 2 ? 'Needs Improvement' : 'Good'}`
+      }));
+    }
+  }, [formParams]);
+
+  // Calculation of adjusted score based on classification
+  const calculateAdjustedScore = useCallback((score, maxScore, classification) => {
+    if (!classification) return score;
+    
+    const impactMap = {
+      minor: 0.10,    // 10% impact
+      moderate: 0.25, // 25% impact
+      major: 0.50     // 50% impact
+    };
+    
+    const impact = impactMap[classification] || 0;
+    const maxDeduction = maxScore * impact;
+    const scoreDeficit = maxScore - score;
+    const actualDeduction = Math.min(maxDeduction, scoreDeficit);
+    
+    return Math.max(0, score - actualDeduction);
+  }, []);
+
+  // Fetch evaluation data
+  const fetchEvaluation = useCallback(async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`/api/qa/evaluation/${id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch evaluation');
+      }
+
+      const data = await response.json();
+      
+      // Set evaluation data
+      setEvaluation(data);
+      
+      // Initialize human evaluation state
+      const initialParameters = {};
+      if (data.evaluation?.scores?.categories) {
+        Object.entries(data.evaluation.scores.categories).forEach(([criterion, criterionData]) => {
+          initialParameters[criterion] = {
+            score: criterionData.score,
+            explanation: criterionData.explanation,
+            humanExplanation: '',
+            humanScore: criterionData.score,
+            classification: data.evaluation.classification || 'minor'
+          };
+        });
+      }
+      
+      setHumanEvaluation({
+        parameters: initialParameters,
+        additionalComments: data.humanEvaluation?.additionalComments || '',
+        agentComments: data.humanEvaluation?.agentComments || '',
+        isModerated: data.humanEvaluation?.isModerated || false,
+        isPublished: data.status === 'published',
+        moderatedBy: data.humanEvaluation?.moderatedBy || null,
+        moderatedAt: data.humanEvaluation?.moderatedAt || null
+      });
+      
+      // Fetch QA form if form ID exists
+      if (data.qaFormId) {
+        await fetchQAForm(data.qaFormId);
+      }
+      
+      // Check user permissions
+      await checkUserPermissions();
+    } catch (err) {
+      console.error('Error fetching evaluation:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  // Fetch QA Form details
+  const fetchQAForm = useCallback(async (formId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/qa-forms/${formId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch QA form');
+      }
+      
+      const formData = await response.json();
+      setQaForm(formData);
+      
+      // Map parameters for easy access
+      const paramsMap = {};
+      formData.parameters.forEach(param => {
+        paramsMap[param.name] = param;
+      });
+      
+      setFormParams(paramsMap);
+    } catch (err) {
+      console.error('Error fetching QA form:', err);
+    }
+  }, []);
+
+  // Check user permissions
+  const checkUserPermissions = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/user/permissions', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch permissions');
+      }
+      
+      const permissions = await response.json();
+      
+      // Determine user role
+      const isUserAdmin = permissions["qa-forms"]?.write === true;
+      const isUserAgent = permissions["qa-forms"]?.read === true && !isUserAdmin;
+
+      setIsAdmin(isUserAdmin);
+      setIsAgent(isUserAgent);
+    } catch (err) {
+      console.error('Error checking permissions:', err);
+      // Default to basic permissions if check fails
+      setIsAdmin(false);
+      setIsAgent(true);
+    }
+  }, []);
+
+  // Save human evaluation
+  const saveHumanEvaluation = useCallback(async (publish = false) => {
+    try {
+      setIsSaving(true);
+      setSaveError(null);
+      setSaveSuccess(null);
+      
+      // Prepare data for submission
+      const updatedEvaluation = {
+        ...humanEvaluation,
+        isModerated: true,
+        isPublished: publish,
+        moderatedBy: 'Current User', // Replace with actual user identification
+        moderatedAt: new Date().toISOString()
+      };
+      
+      // Make API call to save evaluation
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/qa/evaluation/${id}/moderate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updatedEvaluation)
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save evaluation');
+      }
+      
+      // Update local state
+      const updatedData = await response.json();
+      setHumanEvaluation(updatedEvaluation);
+      setEvaluation(updatedData);
+      setIsEditMode(false);
+      setSaveSuccess(publish ? 'Evaluation published successfully' : 'Evaluation saved successfully');
+    } catch (err) {
+      console.error('Error saving evaluation:', err);
+      setSaveError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [id, humanEvaluation]);
+
+  // Handle parameter score changes
+  const handleParameterScoreChange = useCallback((criterion, value) => {
+    setHumanEvaluation(prev => ({
+      ...prev,
+      parameters: {
+        ...prev.parameters,
+        [criterion]: {
+          ...prev.parameters[criterion],
+          humanScore: parseInt(value)
+        }
+      }
+    }));
+  }, []);
+
+  // Handle parameter explanation changes
+  const handleParameterExplanationChange = useCallback((criterion, value) => {
+    setHumanEvaluation(prev => ({
+      ...prev,
+      parameters: {
+        ...prev.parameters,
+        [criterion]: {
+          ...prev.parameters[criterion],
+          humanExplanation: value
+        }
+      }
+    }));
+  }, []);
+
+  // Return all the necessary state and methods
+  return {
+    // State
+    evaluation,
+    loading,
+    error,
+    showTranscription,
+    isAdmin,
+    isAgent,
+    formParams,
+    qaForm,
+    humanEvaluation,
+    isEditMode,
+    isSaving,
+    saveError,
+    saveSuccess,
+
+    // Methods
+    setShowTranscription,
+    setIsEditMode,
+    fetchEvaluation,
+    saveHumanEvaluation,
+    handleParameterScoreChange,
+    handleParameterExplanationChange,
+
+    // Utility Functions
+    formatDate,
+    formatDurationHumanReadable,
+    getSentimentColor,
+    getScoreOptions,
+    calculateAdjustedScore
+  };
+};
+
+export { SectionWiseScores, useQADetailLogic, QADetail };
