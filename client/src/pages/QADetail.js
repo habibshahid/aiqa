@@ -1,9 +1,58 @@
+// Enhanced QA Detail Component with improved scoring, classification, and editing
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Edit, Eye, EyeOff, MessageSquare, CheckCircle, XCircle, AlertTriangle, Save, Lock } from 'lucide-react';
+import { Edit, Eye, EyeOff, MessageSquare, CheckCircle, XCircle, AlertTriangle, Save, Lock, AlertCircle } from 'lucide-react';
 import Select from 'react-select';
 
-// Section-wise Scoring Component
-const SectionWiseScores = ({ evaluation, qaForm }) => {
+// Classification Badge Component with improved visibility and interaction
+const ClassificationBadge = ({ classification, onRemove = null, disabled = false }) => {
+  if (!classification) return <span className="badge bg-secondary">None</span>;
+  
+  const classificationMap = {
+    minor: { label: 'Minor', color: 'info', impact: 10 },
+    moderate: { label: 'Moderate', color: 'warning', impact: 25 },
+    major: { label: 'Major', color: 'danger', impact: 50 },
+    none: { label: 'None', color: 'secondary', impact: 0 }
+  };
+  
+  const config = classificationMap[classification] || { label: classification, color: 'secondary', impact: 0 };
+  
+  return (
+    <div className="d-inline-flex align-items-center">
+      <span
+        className={`badge bg-${config.color} me-1`}
+        title={`${config.label} issues deduct up to ${config.impact}% of score`}
+      >
+        {config.label}
+      </span>
+      {onRemove && !disabled && (
+        <button 
+          className="btn btn-sm btn-link text-muted p-0 ms-1" 
+          onClick={onRemove} 
+          title="Remove classification"
+        >
+          <XCircle size={14} />
+        </button>
+      )}
+    </div>
+  );
+};
+
+// Enhanced Score Card Component
+const ScoreCard = ({ title, value, maxValue, percentage, bgColor = 'bg-primary', subtitle = null }) => (
+  <div className="col-md-3">
+    <div className="card mb-3">
+      <div className={`card-body ${bgColor} text-white`}>
+        <h6 className="card-subtitle mb-2">{title}</h6>
+        <h2 className="card-title mb-0">{value} / {maxValue} ({percentage}%)</h2>
+        {subtitle && <small>{subtitle}</small>}
+      </div>
+    </div>
+  </div>
+);
+
+// Enhanced Section-wise Scores Component
+const SectionWiseScores = ({ evaluation, qaForm, updatedScores = null }) => {
   // Ensure we have the necessary data
   if (!evaluation || !qaForm) return null;
 
@@ -12,6 +61,12 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
     sections: {},
     overall: { rawScore: 0, adjustedScore: 0, maxScore: 0, percentage: 0 }
   };
+
+  // Incorporate any updated scores if provided
+  const mergedScores = updatedScores ? {
+    sections: { ...sectionScores.sections, ...updatedScores.sections },
+    overall: updatedScores.overall || sectionScores.overall
+  } : sectionScores;
 
   // Map all group IDs to names
   const groupMap = {};
@@ -60,7 +115,23 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
               </tr>
             </thead>
             <tbody>
-              {Object.entries(sectionScores.sections).map(([sectionId, section]) => {
+              {/* Render all groups from QA form, not just those with scores */}
+              {qaForm.groups.map(group => {
+                const sectionId = group.id;
+                const sectionName = group.name;
+                
+                // Get section data if it exists, or create placeholder data
+                const section = mergedScores.sections[sectionId] || {
+                  name: sectionName,
+                  rawScore: 0,
+                  maxScore: 0,
+                  adjustedScore: 0,
+                  percentage: 0,
+                  classifications: { minor: false, moderate: false, major: false },
+                  highestClassification: null,
+                  highestClassificationImpact: 0
+                };
+                
                 // Calculate deduction amount
                 const deduction = section.rawScore - section.adjustedScore;
                 
@@ -69,17 +140,17 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
                     <td>{section.name}</td>
                     <td>{section.rawScore.toFixed(1)} / {section.maxScore}</td>
                     <td>
-                      {section.classifications.major ? (
+                      {section.classifications?.major ? (
                         <span className="d-flex align-items-center">
                           <span className="badge bg-danger me-2">Major</span>
                           <span>({section.highestClassificationImpact}%)</span>
                         </span>
-                      ) : section.classifications.moderate ? (
+                      ) : section.classifications?.moderate ? (
                         <span className="d-flex align-items-center">
                           <span className="badge bg-warning me-2">Moderate</span>
                           <span>({section.highestClassificationImpact}%)</span>
                         </span>
-                      ) : section.classifications.minor ? (
+                      ) : section.classifications?.minor ? (
                         <span className="d-flex align-items-center">
                           <span className="badge bg-info me-2">Minor</span>
                           <span>({section.highestClassificationImpact}%)</span>
@@ -109,24 +180,24 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
               })}
               <tr className="table-active fw-bold">
                 <td>Overall</td>
-                <td>{sectionScores.overall.rawScore.toFixed(1)} / {sectionScores.overall.maxScore}</td>
+                <td>{mergedScores.overall.rawScore.toFixed(1)} / {mergedScores.overall.maxScore}</td>
                 <td>-</td>
                 <td>
-                  {(sectionScores.overall.rawScore - sectionScores.overall.adjustedScore) > 0 ? (
+                  {(mergedScores.overall.rawScore - mergedScores.overall.adjustedScore) > 0 ? (
                     <span className="text-danger">
-                      -{(sectionScores.overall.rawScore - sectionScores.overall.adjustedScore).toFixed(1)}
+                      -{(mergedScores.overall.rawScore - mergedScores.overall.adjustedScore).toFixed(1)}
                     </span>
                   ) : (
                     <span>0</span>
                   )}
                 </td>
-                <td>{sectionScores.overall.adjustedScore.toFixed(1)} / {sectionScores.overall.maxScore}</td>
+                <td>{mergedScores.overall.adjustedScore.toFixed(1)} / {mergedScores.overall.maxScore}</td>
                 <td>
                   <div className={`badge bg-${
-                    sectionScores.overall.percentage >= 80 ? 'success' :
-                    sectionScores.overall.percentage >= 60 ? 'warning' : 'danger'
+                    mergedScores.overall.percentage >= 80 ? 'success' :
+                    mergedScores.overall.percentage >= 60 ? 'warning' : 'danger'
                   }`}>
-                    {sectionScores.overall.percentage}%
+                    {mergedScores.overall.percentage}%
                   </div>
                 </td>
               </tr>
@@ -147,52 +218,176 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
   );
 };
 
-// Classification Options
-const classificationOptions = [
-  { value: 'minor', label: 'Minor' },
-  { value: 'moderate', label: 'Moderate' },
-  { value: 'major', label: 'Major' }
-];
-
-// Classification Badge Component
-const ClassificationBadge = ({ classification }) => {
-  if (!classification) return null;
-  
-  const classificationMap = {
-    minor: { label: 'Minor', color: 'info', impact: 10 },
-    moderate: { label: 'Moderate', color: 'warning', impact: 25 },
-    major: { label: 'Major', color: 'danger', impact: 50 }
+// Real-time score calculation function
+const calculateScores = (parameters, qaForm) => {
+  // Base structure for scores
+  const result = {
+    sections: {},
+    overall: { rawScore: 0, adjustedScore: 0, maxScore: 0, percentage: 0 }
   };
   
-  const config = classificationMap[classification] || { label: classification, color: 'secondary', impact: 0 };
+  // Classification impact map
+  const classificationImpacts = {};
+  if (qaForm && qaForm.classifications) {
+    qaForm.classifications.forEach(classification => {
+      classificationImpacts[classification.type] = classification.impactPercentage / 100;
+    });
+  } else {
+    // Default classification impacts
+    classificationImpacts.minor = 0.1;    // 10%
+    classificationImpacts.moderate = 0.25; // 25%
+    classificationImpacts.major = 0.5;    // 50%
+  }
+  
+  // Initialize sections based on groups in QA form
+  if (qaForm && qaForm.groups) {
+    qaForm.groups.forEach(group => {
+      result.sections[group.id] = {
+        name: group.name,
+        parameters: [],
+        rawScore: 0,
+        maxScore: 0,
+        adjustedScore: 0,
+        percentage: 0,
+        classifications: { minor: false, moderate: false, major: false },
+        highestClassification: null,
+        highestClassificationImpact: 0
+      };
+    });
+  }
+  
+  // Process each parameter
+  if (qaForm && qaForm.parameters && parameters) {
+    qaForm.parameters.forEach(paramDef => {
+      const paramName = paramDef.name;
+      const paramData = parameters[paramName];
+      
+      if (!paramData) return;
+      
+      // Skip N/A scores
+      if (paramData.humanScore === -1) return;
+      
+      const groupId = paramDef.group || 'default';
+      if (!result.sections[groupId]) return;
+      
+      const section = result.sections[groupId];
+      
+      // Get score and classification
+      const score = paramData.humanScore || 0;
+      const maxScore = paramDef.maxScore || 5;
+      const classification = paramData.classification || paramDef.classification || null;
+      
+      // Add to section data
+      section.parameters.push({
+        name: paramName,
+        score: score,
+        maxScore: maxScore,
+        classification: classification
+      });
+      
+      // Update section raw totals
+      section.rawScore += score;
+      section.maxScore += maxScore;
+      
+      // Track classifications
+      if (classification) {
+        section.classifications[classification] = true;
+        
+        // Track highest classification impact
+        const currentClassificationImpact = classificationImpacts[classification] || 0;
+        if (!section.highestClassification || 
+            currentClassificationImpact > classificationImpacts[section.highestClassification]) {
+          section.highestClassification = classification;
+          section.highestClassificationImpact = currentClassificationImpact * 100; // Convert to percentage
+        }
+      }
+    });
+  }
+  
+  // Calculate adjusted scores and percentages for each section
+  let overallRawScore = 0;
+  let overallMaxScore = 0;
+  let overallAdjustedScore = 0;
+  
+  Object.values(result.sections).forEach(section => {
+    if (section.maxScore === 0) return; // Skip empty sections
+    
+    // Apply classification impact to calculate adjusted score
+    const impact = section.highestClassificationImpact / 100; // Convert back to decimal
+    const deduction = section.rawScore * impact;
+    section.adjustedScore = Math.max(0, section.rawScore - deduction);
+    
+    // Calculate percentage
+    section.percentage = Math.round((section.adjustedScore / section.maxScore) * 100);
+    
+    // Accumulate overall scores
+    overallRawScore += section.rawScore;
+    overallMaxScore += section.maxScore;
+    overallAdjustedScore += section.adjustedScore;
+  });
+  
+  // Set overall scores
+  result.overall.rawScore = overallRawScore;
+  result.overall.maxScore = overallMaxScore;
+  result.overall.adjustedScore = overallAdjustedScore;
+  result.overall.percentage = overallMaxScore > 0 
+    ? Math.round((overallAdjustedScore / overallMaxScore) * 100) 
+    : 0;
+  
+  return result;
+};
+
+// Classification Options for Dropdown
+const classificationOptions = [
+  { value: 'none', label: 'None', color: '#6c757d' },
+  { value: 'minor', label: 'Minor', color: '#17a2b8' },
+  { value: 'moderate', label: 'Moderate', color: '#ffc107' },
+  { value: 'major', label: 'Major', color: '#dc3545' }
+];
+
+// Custom Select Component for Classifications
+const ClassificationSelect = ({ value, onChange, isDisabled }) => {
+  // Convert value for react-select
+  const selectedOption = classificationOptions.find(option => option.value === value) || 
+                         classificationOptions.find(option => option.value === 'none');
+  
+  // Custom styles
+  const customStyles = {
+    option: (provided, state) => ({
+      ...provided,
+      backgroundColor: state.isSelected ? state.data.color : provided.backgroundColor,
+      color: state.isSelected ? 'white' : provided.color
+    }),
+    control: (provided, state) => ({
+      ...provided,
+      borderColor: value !== 'none' ? classificationOptions.find(o => o.value === value)?.color : provided.borderColor,
+      boxShadow: state.isFocused ? `0 0 0 0.2rem rgba(0, 123, 255, 0.25)` : 'none'
+    }),
+    singleValue: (provided) => ({
+      ...provided,
+      color: value !== 'none' ? classificationOptions.find(o => o.value === value)?.color : provided.color,
+      fontWeight: 'bold'
+    })
+  };
   
   return (
-    <div className="position-relative d-inline-block" style={{ cursor: 'help' }}>
-      <span
-        className={`badge bg-${config.color} me-1`}
-        title={`${config.label} issues deduct up to ${config.impact}% of score`}
-      >
-        {config.label}
-      </span>
-    </div>
+    <Select
+      options={classificationOptions}
+      value={selectedOption}
+      onChange={(option) => onChange(option.value)}
+      isDisabled={isDisabled}
+      styles={customStyles}
+      className="classification-select"
+    />
   );
 };
 
-// Score Card Component
-const ScoreCard = ({ title, value, bgColor = 'bg-primary', subtitle = null }) => (
-  <div className="col-md-3">
-    <div className="card mb-3">
-      <div className={`card-body ${bgColor} text-white`}>
-        <h6 className="card-subtitle mb-2">{title}</h6>
-        <h2 className="card-title mb-0">{value}</h2>
-        {subtitle && <small>{subtitle}</small>}
-      </div>
-    </div>
-  </div>
-);
-
 // Main QA Detail Component
 const QADetail = () => {
+  // Extract ID from URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const id = urlParams.get('id') || window.location.pathname.split('/').pop();
+  
   // State Management
   const [evaluation, setEvaluation] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -214,38 +409,14 @@ const QADetail = () => {
     moderatedAt: null
   });
   
-  // Classification State
-  const [humanEvaluationModifications, setHumanEvaluationModifications] = useState({
-    parameters: {},
-    classifications: {}
-  });
-
+  // Live calculation of scores based on current edits
+  const [calculatedScores, setCalculatedScores] = useState(null);
+  
   // Editing State
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(null);
-
-  // Placeholder function for navigation (to be replaced with actual navigation logic)
-  const navigate = (path) => {
-    console.log(`Navigating to: ${path}`);
-  };
-
-  // Utility Functions - These will be implemented in subsequent artifacts
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleString();
-  };
-
-  const getStatusBadge = () => {
-    if (!humanEvaluation.isModerated) {
-      return <span className="badge bg-warning">Awaiting Human Moderation</span>;
-    } else if (humanEvaluation.isPublished) {
-      return <span className="badge bg-success">Published</span>;
-    } else {
-      return <span className="badge bg-secondary">Not Published</span>;
-    }
-  };
 
   // Fetch evaluation data
   const fetchEvaluation = useCallback(async () => {
@@ -277,17 +448,26 @@ const QADetail = () => {
       const initialParameters = {};
       if (data.evaluation?.scores?.categories) {
         Object.entries(data.evaluation.scores.categories).forEach(([criterion, criterionData]) => {
+          // Safety check for null criterionData
+          if (!criterionData) return;
+          
+          // Get existing human evaluation data if available
+          const existingHumanData = data.humanEvaluation?.parameters?.[criterion] || {};
+          
           initialParameters[criterion] = {
-            score: criterionData.score,
-            explanation: criterionData.explanation,
-            humanExplanation: '',
-            humanScore: criterionData.score,
-            classification: data.evaluation.classification || 'minor'
+            score: criterionData.score || 0,
+            explanation: criterionData.explanation || '',
+            // Use existing human data if available, otherwise use AI data
+            humanExplanation: existingHumanData.humanExplanation || '',
+            humanScore: existingHumanData.humanScore !== undefined ? 
+              existingHumanData.humanScore : (criterionData.score || 0),
+            classification: existingHumanData.classification || 
+              criterionData.classification || 'none'
           };
         });
       }
       
-      setHumanEvaluation({
+      const humanEvalData = {
         parameters: initialParameters,
         additionalComments: data.humanEvaluation?.additionalComments || '',
         agentComments: data.humanEvaluation?.agentComments || '',
@@ -295,7 +475,9 @@ const QADetail = () => {
         isPublished: data.status === 'published',
         moderatedBy: data.humanEvaluation?.moderatedBy || null,
         moderatedAt: data.humanEvaluation?.moderatedAt || null
-      });
+      };
+      
+      setHumanEvaluation(humanEvalData);
       
       // Fetch QA form if form ID exists
       if (data.qaFormId) {
@@ -371,6 +553,16 @@ const QADetail = () => {
     }
   };
 
+  // Recalculate scores whenever human evaluation changes in edit mode
+  useEffect(() => {
+    if (isEditMode && qaForm && humanEvaluation.parameters) {
+      const scores = calculateScores(humanEvaluation.parameters, qaForm);
+      setCalculatedScores(scores);
+    } else {
+      setCalculatedScores(null);
+    }
+  }, [isEditMode, qaForm, humanEvaluation.parameters]);
+
   // Fetch evaluation on component mount
   useEffect(() => {
     if (id) {
@@ -378,73 +570,42 @@ const QADetail = () => {
     }
   }, [id, fetchEvaluation]);
 
-  // Render loading state
-  if (loading) {
-    return (
-      <div className="d-flex justify-content-center align-items-center" style={{ height: '80vh' }}>
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
-        </div>
-      </div>
-    );
-  }
-
-  // Render error state
-  if (error || !evaluation) {
-    return (
-      <div className="text-center my-5">
-        <div className="alert alert-danger">
-          <h4>Failed to load evaluation</h4>
-          <p>{error || 'Evaluation not found'}</p>
-          <button 
-            className="btn btn-primary mt-3"
-            onClick={() => {
-              // Placeholder for navigation
-              console.log('Navigate to dashboard');
-            }}
-          >
-            Return to Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // Handler for human score changes
   const handleHumanScoreChange = (criterion, value) => {
-    const scoreValue = parseInt(value);
+    // Convert value to number or -1 for N/A
+    const scoreValue = value === '-1' ? -1 : parseInt(value);
     
-    setHumanEvaluation(prev => ({
-      ...prev,
-      parameters: {
-        ...prev.parameters,
-        [criterion]: {
-          ...prev.parameters[criterion],
-          humanScore: scoreValue
+    setHumanEvaluation(prev => {
+      // Make sure parameters object exists
+      const currentParameters = prev.parameters || {};
+      
+      // Make sure parameter object exists for this criterion
+      const currentParam = currentParameters[criterion] || {
+        score: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0,
+        explanation: evaluation.evaluation?.scores?.categories?.[criterion]?.explanation || ''
+      };
+      
+      return {
+        ...prev,
+        parameters: {
+          ...currentParameters,
+          [criterion]: {
+            ...currentParam,
+            humanScore: scoreValue
+          }
         }
-      }
-    }));
+      };
+    });
   };
 
   // Handler for human explanation changes
   const handleHumanExplanationChange = (criterion, value) => {
-    setHumanEvaluation(prev => ({
-      ...prev,
-      parameters: {
-        ...prev.parameters,
-        [criterion]: {
-          ...prev.parameters[criterion],
-          humanExplanation: value
-        }
-      }
-    }));
-  };
-
-  // Handler for classification changes
-  const handleClassificationChange = (criterion, value) => {
     setHumanEvaluation(prev => {
-      // Create the parameter entry if it doesn't exist
-      const paramEntry = prev.parameters[criterion] || {
+      // Make sure parameters object exists
+      const currentParameters = prev.parameters || {};
+      
+      // Make sure parameter object exists for this criterion
+      const currentParam = currentParameters[criterion] || {
         score: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0,
         explanation: evaluation.evaluation?.scores?.categories?.[criterion]?.explanation || '',
         humanScore: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0
@@ -453,14 +614,45 @@ const QADetail = () => {
       return {
         ...prev,
         parameters: {
-          ...prev.parameters,
+          ...currentParameters,
           [criterion]: {
-            ...paramEntry,
+            ...currentParam,
+            humanExplanation: value
+          }
+        }
+      };
+    });
+  };
+
+  // Handler for classification changes
+  const handleClassificationChange = (criterion, value) => {
+    setHumanEvaluation(prev => {
+      // Make sure parameters object exists
+      const currentParameters = prev.parameters || {};
+      
+      // Make sure parameter object exists for this criterion
+      const currentParam = currentParameters[criterion] || {
+        score: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0,
+        explanation: evaluation.evaluation?.scores?.categories?.[criterion]?.explanation || '',
+        humanScore: evaluation.evaluation?.scores?.categories?.[criterion]?.score || 0
+      };
+      
+      return {
+        ...prev,
+        parameters: {
+          ...currentParameters,
+          [criterion]: {
+            ...currentParam,
             classification: value
           }
         }
       };
     });
+  };
+
+  // Handler for removing classification
+  const handleRemoveClassification = (criterion) => {
+    handleClassificationChange(criterion, 'none');
   };
 
   // Save human evaluation
@@ -478,6 +670,11 @@ const QADetail = () => {
         moderatedBy: 'Current User', // Replace with actual user identification
         moderatedAt: new Date().toISOString()
       };
+      
+      // Include calculated scores in the payload
+      if (calculatedScores) {
+        updatedEvaluation.calculatedScores = calculatedScores;
+      }
       
       // Make API call to save evaluation
       const token = localStorage.getItem('token');
@@ -500,6 +697,9 @@ const QADetail = () => {
       setEvaluation(updatedData);
       setIsEditMode(false);
       setSaveSuccess(publish ? 'Evaluation published successfully' : 'Evaluation saved successfully');
+      
+      // Refresh data to ensure we have the latest
+      await fetchEvaluation();
     } catch (err) {
       console.error('Error saving evaluation:', err);
       setSaveError(err.message);
@@ -508,10 +708,100 @@ const QADetail = () => {
     }
   };
 
+  // Handle additional comments change
+  const handleAdditionalCommentsChange = (value) => {
+    setHumanEvaluation(prev => ({
+      ...prev,
+      additionalComments: value
+    }));
+  };
+
+  // Handle agent comments change
+  const handleAgentCommentsChange = (value) => {
+    setHumanEvaluation(prev => ({
+      ...prev,
+      agentComments: value
+    }));
+  };
+
+  // Navigate function (to be replaced with actual navigation)
+  const navigate = (path) => {
+    window.location.href = path;
+  };
+
+  // Utility Functions
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleString();
+  };
+
+  const formatDurationHumanReadable = (seconds) => {
+    if (!seconds || isNaN(seconds)) return 'N/A';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    
+    let result = '';
+    
+    if (hours > 0) {
+      result += `${hours} ${hours === 1 ? 'hr' : 'hrs'} `;
+    }
+    
+    if (minutes > 0 || hours > 0) {
+      result += `${minutes} ${minutes === 1 ? 'min' : 'mins'} `;
+    }
+    
+    if (remainingSeconds > 0 || (hours === 0 && minutes === 0)) {
+      result += `${remainingSeconds} ${remainingSeconds === 1 ? 'sec' : 'secs'}`;
+    }
+    
+    return result.trim();
+  };
+
+  const getStatusBadge = () => {
+    if (!humanEvaluation.isModerated) {
+      return <span className="badge bg-warning">Awaiting Human Moderation</span>;
+    } else if (humanEvaluation.isPublished) {
+      return <span className="badge bg-success">Published</span>;
+    } else {
+      return <span className="badge bg-secondary">Not Published</span>;
+    }
+  };
+
+  // Render loading state
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ height: '80vh' }}>
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Render error state
+  if (error || !evaluation) {
+    return (
+      <div className="text-center my-5">
+        <div className="alert alert-danger">
+          <h4>Failed to load evaluation</h4>
+          <p>{error || 'Evaluation not found'}</p>
+          <button 
+            className="btn btn-primary mt-3"
+            onClick={() => navigate('/dashboard')}
+          >
+            Return to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Render method for evaluation criteria
   const renderEvaluationCriteria = () => {
     if (!evaluation?.evaluation?.scores?.categories) return null;
-
+  
     return (
       <div className="card mb-4">
         <div className="card-header d-flex justify-content-between align-items-center">
@@ -532,112 +822,164 @@ const QADetail = () => {
               <thead>
                 <tr>
                   <th style={{width: "20%"}}>Criterion</th>
-                  <th style={{width: "10%"}}>Classification</th>
+                  <th style={{width: "15%"}}>Classification</th>
                   <th style={{width: "10%"}}>AI Score</th>
                   {(isEditMode || humanEvaluation.isModerated) && (
                     <th style={{width: "10%"}}>Human Score</th>
                   )}
-                  <th style={{width: "50%"}}>Explanation</th>
+                  <th style={{width: "45%"}}>Explanation</th>
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(evaluation.evaluation.scores.categories).map(([criterion, data]) => (
-                  <tr key={criterion}>
-                    <td>{criterion}</td>
-                    <td>
-                      {isEditMode ? (
-                        <select
-                          className="form-select"
-                          value={humanEvaluation.parameters[criterion]?.classification || 'minor'}
-                          onChange={(e) => handleClassificationChange(criterion, e.target.value)}
-                        >
-                          <option value="minor">Minor</option>
-                          <option value="moderate">Moderate</option>
-                          <option value="major">Major</option>
-                        </select>
-                      ) : (
-                        <span className={`badge bg-${
-                          humanEvaluation.parameters[criterion]?.classification === 'major' ? 'danger' :
-                          humanEvaluation.parameters[criterion]?.classification === 'moderate' ? 'warning' : 'info'
-                        }`}>
-                          {humanEvaluation.parameters[criterion]?.classification || 'minor'}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`badge bg-${
-                        data.score >= 4 ? 'success' :
-                        data.score >= 3 ? 'warning' : 'danger'
-                      }`}>
-                        {data.score}/{formParams?.[criterion]?.maxScore || 5}
-                      </span>
-                    </td>
-                    {(isEditMode || humanEvaluation.isModerated) && (
+                {Object.entries(evaluation.evaluation.scores.categories).map(([criterion, data]) => {
+                  // Find parameter definition in QA form
+                  const paramDef = formParams?.[criterion];
+                  
+                  return (
+                    <tr key={criterion}>
                       <td>
-                        {isEditMode ? (
-                          <select 
-                            className="form-select"
-                            value={humanEvaluation.parameters[criterion]?.humanScore || data.score}
-                            onChange={(e) => handleHumanScoreChange(criterion, e.target.value)}
-                          >
-                            {[...Array(6).keys()].map(score => (
-                              <option key={score} value={score}>
-                                {score} {score === 0 ? '- Failed' : score === 5 ? '- Excellent' : ''}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span className={`badge bg-${
-                            humanEvaluation.parameters[criterion]?.humanScore >= 4 ? 'success' :
-                            humanEvaluation.parameters[criterion]?.humanScore >= 3 ? 'warning' : 'danger'
-                          }`}>
-                            {humanEvaluation.parameters[criterion]?.humanScore}/{formParams?.[criterion]?.maxScore || 5}
-                          </span>
-                        )}
-                      </td>
-                    )}
-                    <td>
-                      {isEditMode ? (
-                        <div>
-                          <div className="mb-2">
-                            <small className="text-muted">AI Explanation:</small>
-                            <p className="mb-2">{data.explanation}</p>
-                          </div>
-                          <div>
-                            <small className="text-muted">Human Explanation:</small>
-                            <textarea
-                              className="form-control mt-1"
-                              rows="3"
-                              value={humanEvaluation.parameters[criterion]?.humanExplanation || ''}
-                              onChange={(e) => handleHumanExplanationChange(criterion, e.target.value)}
-                              placeholder="Add your explanation here..."
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          {humanEvaluation.isModerated && humanEvaluation.parameters[criterion]?.humanExplanation ? (
-                            <div>
-                              <div className="mb-2">
-                                <small className="text-muted">AI:</small>
-                                <p className="mb-0">{data.explanation}</p>
-                              </div>
-                              <div className="mt-2 p-2 border-start border-primary border-3 bg-light">
-                                <small className="text-primary">Human QA:</small>
-                                <p className="mb-0">{humanEvaluation.parameters[criterion].humanExplanation}</p>
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="mb-0">{data.explanation}</p>
+                        <div className="d-flex flex-column">
+                          <strong>{criterion}</strong>
+                          {paramDef && (
+                            <small className="text-muted">
+                              Group: {qaForm?.groups.find(g => g.id === paramDef.group)?.name || 'Unknown'}
+                              <br/>
+                              Type: {paramDef.scoringType || 'variable'}
+                            </small>
                           )}
                         </div>
+                      </td>
+                      <td>
+                        {isEditMode ? (
+                          <ClassificationSelect
+                            value={humanEvaluation.parameters[criterion]?.classification || 'none'}
+                            onChange={(value) => handleClassificationChange(criterion, value)}
+                            isDisabled={isSaving}
+                          />
+                        ) : (
+                          <ClassificationBadge 
+                            classification={humanEvaluation.parameters[criterion]?.classification || 'none'}
+                            onRemove={isAdmin ? () => handleRemoveClassification(criterion) : null}
+                            disabled={!isAdmin}
+                          />
+                        )}
+                      </td>
+                      <td>
+                        <span className={`badge bg-${
+                          data.score >= 4 ? 'success' :
+                          data.score >= 3 ? 'warning' : 'danger'
+                        }`}>
+                          {data.score}/{paramDef?.maxScore || 5}
+                        </span>
+                      </td>
+                      {(isEditMode || humanEvaluation.isModerated) && (
+                        <td>
+                          {isEditMode ? (
+                            paramDef?.scoringType === 'binary' ? (
+                              // Binary scoring type - only 0 or maxScore
+                              <select 
+                                className="form-select"
+                                value={humanEvaluation.parameters[criterion]?.humanScore !== undefined ? 
+                                  humanEvaluation.parameters[criterion].humanScore : 
+                                  data.score}
+                                onChange={(e) => handleHumanScoreChange(criterion, e.target.value)}
+                                disabled={isSaving}
+                              >
+                                <option value="-1">N/A</option>
+                                <option value="0">0 - Failed</option>
+                                <option value={paramDef.maxScore || 5}>{paramDef.maxScore || 5} - Passed</option>
+                              </select>
+                            ) : (
+                              // Variable scoring type - 0 to maxScore
+                              <select 
+                                className="form-select"
+                                value={humanEvaluation.parameters[criterion]?.humanScore !== undefined ? 
+                                  humanEvaluation.parameters[criterion].humanScore : 
+                                  data.score}
+                                onChange={(e) => handleHumanScoreChange(criterion, e.target.value)}
+                                disabled={isSaving}
+                              >
+                                <option value="-1">N/A</option>
+                                {[...Array(parseInt(paramDef?.maxScore || 5) + 1).keys()].map(score => (
+                                  <option key={score} value={score}>
+                                    {score} {score === 0 ? '- Failed' : score === parseInt(paramDef?.maxScore || 5) ? '- Excellent' : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            )
+                          ) : (
+                            humanEvaluation.parameters[criterion]?.humanScore === -1 ? (
+                              <span className="badge bg-secondary">N/A</span>
+                            ) : (
+                              <span className={`badge bg-${
+                                (humanEvaluation.parameters[criterion]?.humanScore || 0) >= 4 ? 'success' :
+                                (humanEvaluation.parameters[criterion]?.humanScore || 0) >= 3 ? 'warning' : 'danger'
+                              }`}>
+                                {humanEvaluation.parameters[criterion]?.humanScore !== undefined ? 
+                                  humanEvaluation.parameters[criterion].humanScore : 
+                                  data.score}
+                                /{paramDef?.maxScore || 5}
+                              </span>
+                            )
+                          )}
+                        </td>
                       )}
-                    </td>
-                  </tr>
-                ))}
+                      <td>
+                        {isEditMode ? (
+                          <div>
+                            <div className="mb-2">
+                              <small className="text-muted">AI Explanation:</small>
+                              <p className="mb-2">{data.explanation}</p>
+                            </div>
+                            <div>
+                              <small className="text-muted">Human Explanation:</small>
+                              <textarea
+                                className="form-control mt-1"
+                                rows="3"
+                                value={humanEvaluation.parameters[criterion]?.humanExplanation || ''}
+                                onChange={(e) => handleHumanExplanationChange(criterion, e.target.value)}
+                                placeholder="Add your explanation here..."
+                                disabled={isSaving}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            {humanEvaluation.isModerated && humanEvaluation.parameters[criterion]?.humanExplanation ? (
+                              <div>
+                                <div className="mb-2">
+                                  <small className="text-muted">AI:</small>
+                                  <p className="mb-0">{data.explanation}</p>
+                                </div>
+                                <div className="mt-2 p-2 border-start border-primary border-3 bg-light">
+                                  <small className="text-primary">Human QA:</small>
+                                  <p className="mb-0">{humanEvaluation.parameters[criterion].humanExplanation}</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="mb-0">{data.explanation}</p>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+          
+          {isEditMode && (
+            <div className="alert alert-info mt-3">
+              <AlertCircle size={16} className="me-2" />
+              <strong>Important:</strong> 
+              <ul className="mb-0 mt-1">
+                <li>Binary questions can only be scored as 0 or full marks.</li>
+                <li>Variable questions can be scored from 0 to the maximum score.</li>
+                <li>Changes to scores and classifications will be immediately reflected in the section scores below.</li>
+              </ul>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -678,31 +1020,6 @@ const QADetail = () => {
   const getSentimentColor = (sentiment) => {
     return sentiment === 'positive' ? 'bg-success' :
            sentiment === 'negative' ? 'bg-danger' : 'bg-warning';
-  };
-
-  // Utility function to format duration
-  const formatDurationHumanReadable = (seconds) => {
-    if (!seconds || isNaN(seconds)) return 'N/A';
-    
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = seconds % 60;
-    
-    let result = '';
-    
-    if (hours > 0) {
-      result += `${hours} ${hours === 1 ? 'hr' : 'hrs'} `;
-    }
-    
-    if (minutes > 0 || hours > 0) {
-      result += `${minutes} ${minutes === 1 ? 'min' : 'mins'} `;
-    }
-    
-    if (remainingSeconds > 0 || (hours === 0 && minutes === 0)) {
-      result += `${remainingSeconds} ${remainingSeconds === 1 ? 'sec' : 'secs'}`;
-    }
-    
-    return result.trim();
   };
 
   // Render Sentiment Analysis Section
@@ -1224,22 +1541,6 @@ const QADetail = () => {
     );
   };
 
-  // Handle additional comments change
-  const handleAdditionalCommentsChange = (value) => {
-    setHumanEvaluation(prev => ({
-      ...prev,
-      additionalComments: value
-    }));
-  };
-
-  // Handle agent comments change
-  const handleAgentCommentsChange = (value) => {
-    setHumanEvaluation(prev => ({
-      ...prev,
-      agentComments: value
-    }));
-  };
-
   // Render QA Evaluator Comments Section
   const renderQAEvaluatorComments = () => {
     return (
@@ -1256,6 +1557,7 @@ const QADetail = () => {
                 value={humanEvaluation.additionalComments}
                 onChange={(e) => handleAdditionalCommentsChange(e.target.value)}
                 placeholder="Enter additional comments or feedback for this evaluation..."
+                disabled={isSaving}
               />
             </div>
           ) : (
@@ -1293,7 +1595,7 @@ const QADetail = () => {
                 value={humanEvaluation.agentComments}
                 onChange={(e) => handleAgentCommentsChange(e.target.value)}
                 placeholder="Enter your response to this evaluation..."
-                disabled={!humanEvaluation.isPublished}
+                disabled={!humanEvaluation.isPublished || isSaving}
               />
               {!humanEvaluation.isPublished && (
                 <div className="alert alert-warning mt-2">
@@ -1341,11 +1643,7 @@ const QADetail = () => {
         <div className="card-body d-flex justify-content-between align-items-center">
           <div className="d-flex align-items-center">
             <h4 className="mb-0 me-3">QA Evaluation</h4>
-            {humanEvaluation.isPublished ? (
-              <span className="badge bg-success">Published</span>
-            ) : (
-              <span className="badge bg-warning">Not Published</span>
-            )}
+            {getStatusBadge()}
           </div>
           
           <div className="d-flex gap-2">
@@ -1363,7 +1661,11 @@ const QADetail = () => {
               <>
                 <button 
                   className="btn btn-outline-secondary"
-                  onClick={() => setIsEditMode(false)}
+                  onClick={() => {
+                    setIsEditMode(false);
+                    // Reset any unsaved changes
+                    fetchEvaluation();
+                  }}
                   disabled={isSaving}
                 >
                   Cancel
@@ -1385,25 +1687,23 @@ const QADetail = () => {
                     </>
                   )}
                 </button>
-                {!humanEvaluation.isPublished && (
-                  <button 
-                    className="btn btn-success"
-                    onClick={() => saveHumanEvaluation(true)}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm me-2" />
-                        Publishing...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle size={16} className="me-2" />
-                        Publish Evaluation
-                      </>
-                    )}
-                  </button>
-                )}
+                <button 
+                  className="btn btn-success"
+                  onClick={() => saveHumanEvaluation(true)}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" />
+                      Publishing...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle size={16} className="me-2" />
+                      {humanEvaluation.isPublished ? 'Update & Publish' : 'Publish Evaluation'}
+                    </>
+                  )}
+                </button>
               </>
             )}
           </div>
@@ -1413,8 +1713,44 @@ const QADetail = () => {
       {/* Save/Publish Messages */}
       {renderSaveMessages()}
 
+      {/* Overall Score Summary */}
+      <div className="row mb-4">
+        <ScoreCard 
+          title="Overall Score" 
+          value={isEditMode && calculatedScores ? 
+            calculatedScores.overall.adjustedScore.toFixed(1) : 
+            evaluation.evaluation?.totalScore || evaluation.evaluation?.scores?.overall?.average || 0}
+          maxValue={isEditMode && calculatedScores ? 
+            calculatedScores.overall.maxScore : 
+            evaluation.evaluation?.maxScore || evaluation.evaluation?.scores?.overall?.maxScore || 100}
+          percentage={isEditMode && calculatedScores ? 
+            calculatedScores.overall.percentage : 
+            Math.round(((evaluation.evaluation?.totalScore || evaluation.evaluation?.scores?.overall?.average || 0) / 
+              (evaluation.evaluation?.maxScore || evaluation.evaluation?.scores?.overall?.maxScore || 100)) * 100) || 0}
+          bgColor={
+            (isEditMode && calculatedScores ? calculatedScores.overall.percentage : 
+            Math.round(((evaluation.evaluation?.totalScore || evaluation.evaluation?.scores?.overall?.average || 0) / 
+              (evaluation.evaluation?.maxScore || evaluation.evaluation?.scores?.overall?.maxScore || 100)) * 100) || 0) >= 80 ? 
+            'bg-success' : 
+            (isEditMode && calculatedScores ? calculatedScores.overall.percentage : 
+            Math.round(((evaluation.evaluation?.totalScore || evaluation.evaluation?.scores?.overall?.average || 0) / 
+              (evaluation.evaluation?.maxScore || evaluation.evaluation?.scores?.overall?.maxScore || 100)) * 100) || 0) >= 60 ? 
+            'bg-warning' : 'bg-danger'
+          }
+        />
+      </div>
+
       {/* Evaluation Criteria */}
       {renderEvaluationCriteria()}
+
+      {/* Section-wise Scores */}
+      {qaForm && (
+        <SectionWiseScores 
+          evaluation={evaluation} 
+          qaForm={qaForm} 
+          updatedScores={calculatedScores}
+        />
+      )}
 
       {/* Sentiment Analysis Section */}
       {renderSentimentAnalysis()}
@@ -1422,13 +1758,12 @@ const QADetail = () => {
       {/* Call Summary Section */}
       {renderCallSummary()}
 
-      {/* Areas of Improvement */}
+      {/* Areas of Improvement and Agent Strengths */}
       <div className="row">
         <div className="col-md-6">
           {renderAreasOfImprovement()}
         </div>
         
-        {/* Agent Strengths */}
         <div className="col-md-6">
           {renderAgentStrengths()}
         </div>
@@ -1448,351 +1783,8 @@ const QADetail = () => {
 
       {/* Agent Comments Section */}
       {renderAgentCommentsSection()}
-
-      {/* Section-wise Scores */}
-      {qaForm && (
-        <SectionWiseScores 
-          evaluation={evaluation} 
-          qaForm={qaForm} 
-        />
-      )}
     </div>
   );
 };
 
-// Utility Functions
-const useQADetailLogic = (id) => {
-  // Comprehensive state management
-  const [evaluation, setEvaluation] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [showTranscription, setShowTranscription] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isAgent, setIsAgent] = useState(false);
-  const [formParams, setFormParams] = useState(null);
-  const [qaForm, setQaForm] = useState(null);
-
-  // Human Evaluation State
-  const [humanEvaluation, setHumanEvaluation] = useState({
-    parameters: {},
-    additionalComments: '',
-    agentComments: '',
-    isModerated: false,
-    isPublished: false,
-    moderatedBy: null,
-    moderatedAt: null
-  });
-
-  // Editing State
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
-  const [saveSuccess, setSaveSuccess] = useState(null);
-
-  // Utility Functions
-  const formatDate = useCallback((dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleString();
-  }, []);
-
-  const formatDurationHumanReadable = useCallback((seconds) => {
-    if (!seconds || isNaN(seconds)) return 'N/A';
-    
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = seconds % 60;
-    
-    let result = '';
-    
-    if (hours > 0) {
-      result += `${hours} ${hours === 1 ? 'hr' : 'hrs'} `;
-    }
-    
-    if (minutes > 0 || hours > 0) {
-      result += `${minutes} ${minutes === 1 ? 'min' : 'mins'} `;
-    }
-    
-    if (remainingSeconds > 0 || (hours === 0 && minutes === 0)) {
-      result += `${remainingSeconds} ${remainingSeconds === 1 ? 'sec' : 'secs'}`;
-    }
-    
-    return result.trim();
-  }, []);
-
-  // Sentiment and Classification Utilities
-  const getSentimentColor = useCallback((sentiment) => {
-    return sentiment === 'positive' ? 'bg-success' :
-           sentiment === 'negative' ? 'bg-danger' : 'bg-warning';
-  }, []);
-
-  const getScoreOptions = useCallback((criterion) => {
-    if (!formParams || !formParams[criterion]) return [];
-    
-    const param = formParams[criterion];
-    const maxScore = param.maxScore || 5;
-    const scoringType = param.scoringType || 'variable';
-    
-    if (scoringType === 'binary') {
-      // Binary scoring only has 0 or max
-      return [
-        { value: 0, label: '0 - Failed' },
-        { value: maxScore, label: `${maxScore} - Passed` }
-      ];
-    } else {
-      // Variable scoring has 0 to max
-      return Array.from({ length: maxScore + 1 }, (_, i) => ({
-        value: i,
-        label: `${i} - ${i === 0 ? 'Failed' : i === maxScore ? 'Excellent' : i < maxScore / 2 ? 'Needs Improvement' : 'Good'}`
-      }));
-    }
-  }, [formParams]);
-
-  // Calculation of adjusted score based on classification
-  const calculateAdjustedScore = useCallback((score, maxScore, classification) => {
-    if (!classification) return score;
-    
-    const impactMap = {
-      minor: 0.10,    // 10% impact
-      moderate: 0.25, // 25% impact
-      major: 0.50     // 50% impact
-    };
-    
-    const impact = impactMap[classification] || 0;
-    const maxDeduction = maxScore * impact;
-    const scoreDeficit = maxScore - score;
-    const actualDeduction = Math.min(maxDeduction, scoreDeficit);
-    
-    return Math.max(0, score - actualDeduction);
-  }, []);
-
-  // Fetch evaluation data
-  const fetchEvaluation = useCallback(async () => {
-    try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-
-      const response = await fetch(`/api/qa/evaluation/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch evaluation');
-      }
-
-      const data = await response.json();
-      
-      // Set evaluation data
-      setEvaluation(data);
-      
-      // Initialize human evaluation state
-      const initialParameters = {};
-      if (data.evaluation?.scores?.categories) {
-        Object.entries(data.evaluation.scores.categories).forEach(([criterion, criterionData]) => {
-          initialParameters[criterion] = {
-            score: criterionData.score,
-            explanation: criterionData.explanation,
-            humanExplanation: '',
-            humanScore: criterionData.score,
-            classification: data.evaluation.classification || 'minor'
-          };
-        });
-      }
-      
-      setHumanEvaluation({
-        parameters: initialParameters,
-        additionalComments: data.humanEvaluation?.additionalComments || '',
-        agentComments: data.humanEvaluation?.agentComments || '',
-        isModerated: data.humanEvaluation?.isModerated || false,
-        isPublished: data.status === 'published',
-        moderatedBy: data.humanEvaluation?.moderatedBy || null,
-        moderatedAt: data.humanEvaluation?.moderatedAt || null
-      });
-      
-      // Fetch QA form if form ID exists
-      if (data.qaFormId) {
-        await fetchQAForm(data.qaFormId);
-      }
-      
-      // Check user permissions
-      await checkUserPermissions();
-    } catch (err) {
-      console.error('Error fetching evaluation:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  // Fetch QA Form details
-  const fetchQAForm = useCallback(async (formId) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/qa-forms/${formId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch QA form');
-      }
-      
-      const formData = await response.json();
-      setQaForm(formData);
-      
-      // Map parameters for easy access
-      const paramsMap = {};
-      formData.parameters.forEach(param => {
-        paramsMap[param.name] = param;
-      });
-      
-      setFormParams(paramsMap);
-    } catch (err) {
-      console.error('Error fetching QA form:', err);
-    }
-  }, []);
-
-  // Check user permissions
-  const checkUserPermissions = useCallback(async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/user/permissions', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch permissions');
-      }
-      
-      const permissions = await response.json();
-      
-      // Determine user role
-      const isUserAdmin = permissions["qa-forms"]?.write === true;
-      const isUserAgent = permissions["qa-forms"]?.read === true && !isUserAdmin;
-
-      setIsAdmin(isUserAdmin);
-      setIsAgent(isUserAgent);
-    } catch (err) {
-      console.error('Error checking permissions:', err);
-      // Default to basic permissions if check fails
-      setIsAdmin(false);
-      setIsAgent(true);
-    }
-  }, []);
-
-  // Save human evaluation
-  const saveHumanEvaluation = useCallback(async (publish = false) => {
-    try {
-      setIsSaving(true);
-      setSaveError(null);
-      setSaveSuccess(null);
-      
-      // Prepare data for submission
-      const updatedEvaluation = {
-        ...humanEvaluation,
-        isModerated: true,
-        isPublished: publish,
-        moderatedBy: 'Current User', // Replace with actual user identification
-        moderatedAt: new Date().toISOString()
-      };
-      
-      // Make API call to save evaluation
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/qa/evaluation/${id}/moderate`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(updatedEvaluation)
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to save evaluation');
-      }
-      
-      // Update local state
-      const updatedData = await response.json();
-      setHumanEvaluation(updatedEvaluation);
-      setEvaluation(updatedData);
-      setIsEditMode(false);
-      setSaveSuccess(publish ? 'Evaluation published successfully' : 'Evaluation saved successfully');
-    } catch (err) {
-      console.error('Error saving evaluation:', err);
-      setSaveError(err.message);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [id, humanEvaluation]);
-
-  // Handle parameter score changes
-  const handleParameterScoreChange = useCallback((criterion, value) => {
-    setHumanEvaluation(prev => ({
-      ...prev,
-      parameters: {
-        ...prev.parameters,
-        [criterion]: {
-          ...prev.parameters[criterion],
-          humanScore: parseInt(value)
-        }
-      }
-    }));
-  }, []);
-
-  // Handle parameter explanation changes
-  const handleParameterExplanationChange = useCallback((criterion, value) => {
-    setHumanEvaluation(prev => ({
-      ...prev,
-      parameters: {
-        ...prev.parameters,
-        [criterion]: {
-          ...prev.parameters[criterion],
-          humanExplanation: value
-        }
-      }
-    }));
-  }, []);
-
-  // Return all the necessary state and methods
-  return {
-    // State
-    evaluation,
-    loading,
-    error,
-    showTranscription,
-    isAdmin,
-    isAgent,
-    formParams,
-    qaForm,
-    humanEvaluation,
-    isEditMode,
-    isSaving,
-    saveError,
-    saveSuccess,
-
-    // Methods
-    setShowTranscription,
-    setIsEditMode,
-    fetchEvaluation,
-    saveHumanEvaluation,
-    handleParameterScoreChange,
-    handleParameterExplanationChange,
-
-    // Utility Functions
-    formatDate,
-    formatDurationHumanReadable,
-    getSentimentColor,
-    getScoreOptions,
-    calculateAdjustedScore
-  };
-};
-
-export { SectionWiseScores, useQADetailLogic, QADetail };
+export default QADetail;

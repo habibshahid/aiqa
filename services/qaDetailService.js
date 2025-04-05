@@ -1,4 +1,4 @@
-// services/qaDetailService.js
+// services/qaDetailService.js - Fix for score retrieval
 const { InteractionAIQA, InteractionTranscription, Interactions } = require('../config/mongodb');
 const mongoose = require('mongoose');
 
@@ -30,7 +30,7 @@ const qaDetailService = {
       // Convert string ID to ObjectId
       const objectId = new mongoose.Types.ObjectId(id);
 
-      // Get the evaluation using aggregation to ensure we get all fields
+      // Get the evaluation
       const evaluation = await InteractionAIQA.findById(objectId)
       .select({
         interactionId: 1, 
@@ -47,7 +47,8 @@ const qaDetailService = {
         'evaluationData.evaluation': 1,
         'evaluationData.usage': 1,
         'interactionData.queue': 1,
-        humanEvaluation: 1 
+        humanEvaluation: 1,
+        sectionScores: 1 // Include section scores
       })
       .lean();
 
@@ -56,6 +57,19 @@ const qaDetailService = {
         return null;
       }
 
+      // Debug scoring information
+      console.log('Evaluation found:');
+      console.log('  evaluationData.totalScore:', evaluation.evaluationData?.evaluation?.totalScore);
+      console.log('  evaluationData.maxScore:', evaluation.evaluationData?.evaluation?.maxScore);
+      
+      if (evaluation.sectionScores?.overall) {
+        console.log('  sectionScores.overall.rawScore:', evaluation.sectionScores.overall.rawScore);
+        console.log('  sectionScores.overall.adjustedScore:', evaluation.sectionScores.overall.adjustedScore);
+        console.log('  sectionScores.overall.maxScore:', evaluation.sectionScores.overall.maxScore);
+        console.log('  sectionScores.overall.percentage:', evaluation.sectionScores.overall.percentage);
+      }
+
+      // Get transcription and other related data
       const transcription = await InteractionTranscription.findOne({
         interactionId: evaluation.interactionId
       })
@@ -82,80 +96,27 @@ const qaDetailService = {
         _id: 0
       }).lean();
 
-      console.log('Interaction found:', !!interaction);
+      // Normalize data
+      const transcriptionAnalysis = transcription?.transcriptionAnalysis;
+      const normalizedTranscription = transcription?.transcription ? 
+        transcription.transcription : [];
+      const normalizedRecordedTranscription = transcription?.recordedTranscription ? 
+        transcription.recordedTranscription : [];
 
-      // Normalize intent data for transcriptionAnalysis
-      let transcriptionAnalysis = null;
-      if (transcription?.transcriptionAnalysis) {
-        transcriptionAnalysis = { ...transcription.transcriptionAnalysis };
-        
-        // Normalize intents in transcriptionAnalysis
-        if (transcriptionAnalysis.intents) {
-          transcriptionAnalysis.intents = normalizeIntents(transcriptionAnalysis.intents);
-        }
-      }
-
-      // Normalize transcription data
-      let normalizedTranscription = [];
-      if (transcription?.transcription && Array.isArray(transcription.transcription)) {
-        normalizedTranscription = transcription.transcription.map(message => {
-          const timestamp = Object.keys(message)[0];
-          if (timestamp && message[timestamp]) {
-            const data = { ...message[timestamp] };
-            
-            // Normalize intent data in each message
-            if (data.intent) {
-              data.intent = normalizeIntents(data.intent);
-            }
-            
-            return { [timestamp]: data };
-          }
-          return message;
-        });
-      }
-
-      // Normalize recorded transcription if it exists
-      let normalizedRecordedTranscription = [];
-      if (transcription?.recordedTranscription && Array.isArray(transcription.recordedTranscription)) {
-        normalizedRecordedTranscription = transcription.recordedTranscription.map(entry => {
-          const newEntry = { ...entry };
-          
-          // Normalize intent data in each entry
-          if (newEntry.intent) {
-            newEntry.intent = normalizeIntents(newEntry.intent);
-          }
-          
-          return newEntry;
-        });
-      }
-
-      // Calculate overall score using human scores if available
+      // CRITICAL: Use the correct scores with classification impacts
+      // Default to scores from evaluation data
       let totalScore = evaluation.evaluationData?.evaluation?.totalScore || 0;
       let maxScore = evaluation.evaluationData?.evaluation?.maxScore || 0;
 
-      // If human evaluation exists and has parameters, recalculate the overall score
-      if (evaluation.humanEvaluation && evaluation.humanEvaluation.parameters) {
-        let humanTotalScore = 0;
-        let humanMaxScore = 0;
+      // If we have section scores, use the adjusted score that includes classification impacts
+      if (evaluation.sectionScores && evaluation.sectionScores.overall) {
+        // Use adjustedScore which has classification impacts applied
+        totalScore = evaluation.sectionScores.overall.adjustedScore || totalScore;
+        maxScore = evaluation.sectionScores.overall.maxScore || maxScore;
         
-        // Loop through parameters to calculate total
-        for (const [paramName, paramData] of Object.entries(evaluation.humanEvaluation.parameters)) {
-          if (paramData.humanScore !== undefined && paramData.humanScore !== null) {
-            // Access the parameter using object notation instead of Map.get()
-            const originalParam = evaluation.evaluationData.evaluation.parameters[paramName];
-            if (originalParam) {
-              const maxParam = originalParam.maxScore || 5;
-              humanTotalScore += paramData.humanScore;
-              humanMaxScore += maxParam;
-            }
-          }
-        }
-        
-        // Only update if we have valid scores
-        if (humanMaxScore > 0) {
-          totalScore = humanTotalScore;
-          maxScore = humanMaxScore;
-        }
+        console.log('Using sectionScores (includes classification impacts):');
+        console.log('  adjustedScore:', totalScore);
+        console.log('  maxScore:', maxScore);
       }
 
       // Process the evaluation data
@@ -169,25 +130,28 @@ const qaDetailService = {
         status: evaluation.status,
         evaluator: evaluation.evaluator || { id: 'system', name: 'AI System' },
         humanEvaluation: evaluation.humanEvaluation,
-        // Keep the original data structure for backward compatibility 
+        // For backward compatibility
         agent: evaluation.interactionData?.agent,
         evaluation: {
           scores: {
             overall: {
-              average: totalScore,
+              average: totalScore, // Use the adjusted score with classification impacts
               summary: evaluation.evaluationData?.evaluation?.summary,
               maxScore: maxScore,
             },
-            categories: evaluation.evaluationData?.evaluation?.parameters || {} // Updated path
+            categories: evaluation.evaluationData?.evaluation?.parameters || {}
           },
-          areasOfImprovement: evaluation.evaluationData?.evaluation?.areasOfImprovements || [], // Updated path
-          whatTheAgentDidWell: evaluation.evaluationData?.evaluation?.whatTheAgentDidWell || [], 
+          areasOfImprovement: evaluation.evaluationData?.evaluation?.areasOfImprovements || [],
+          whatTheAgentDidWell: evaluation.evaluationData?.evaluation?.whatTheAgentDidWell || [],
           problemAreas: evaluation.evaluationData?.evaluation?.problemAreas || [],
-          summary: evaluation.evaluationData?.evaluation?.summary, // Updated path
-          intent: normalizeIntents(evaluation.evaluationData?.evaluation?.intent || []), // Normalize intent
-          customerSentiment: evaluation.evaluationData?.evaluation?.customerSentiment || [], // Updated path
-          agentSentiment: evaluation.evaluationData?.evaluation?.agentSentiment || [], // Updated path
-          silencePeriods: evaluation.evaluationData?.evaluation?.silencePeriods || [] // Updated path
+          summary: evaluation.evaluationData?.evaluation?.summary,
+          intent: evaluation.evaluationData?.evaluation?.intent || [],
+          customerSentiment: evaluation.evaluationData?.evaluation?.customerSentiment || [],
+          agentSentiment: evaluation.evaluationData?.evaluation?.agentSentiment || [],
+          silencePeriods: evaluation.evaluationData?.evaluation?.silencePeriods || [],
+          // Add top-level properties for easier access - use the adjusted scores
+          totalScore: totalScore,
+          maxScore: maxScore
         },
         interaction: {
           id: evaluation.interactionId,
@@ -207,26 +171,18 @@ const qaDetailService = {
         transcription: normalizedTranscription,
         transcriptionVersion: transcription?.transcriptionVersion || 'realtime',
         recordedTranscription: normalizedRecordedTranscription,
-        // Add normalized transcription analysis
         transcriptionAnalysis: transcriptionAnalysis,
-        // Add original data structure
         evaluationData: evaluation.evaluationData || {},
-        interactionData: evaluation.interactionData || {}
+        interactionData: evaluation.interactionData || {},
+        // Include the section scores if available - important for classification impacts
+        sectionScores: evaluation.sectionScores || null
       };
       
-      // Add debug logging for processed data
-      console.log('Processed data structure:', {
-        hasAgentInfo: !!processed.agent,
-        hasEvaluationScores: !!processed.evaluation.scores,
-        categoriesCount: Object.keys(processed.evaluation.scores.categories).length,
-        hasTranscription: processed.transcription.length > 0,
-        hasEvaluationData: !!processed.evaluationData,
-        sentiment: {
-          agent: processed.evaluation.agentSentiment,
-          customer: processed.evaluation.customerSentiment
-        }
-      });
-
+      // Final debug output showing scores in processed data
+      console.log('Final processed data scores:');
+      console.log('  totalScore:', processed.evaluation.totalScore);
+      console.log('  maxScore:', processed.evaluation.maxScore);
+      console.log('  percentage:', (processed.evaluation.totalScore / processed.evaluation.maxScore * 100) || 0);
       console.log('=== QA Detail Service: Complete ===\n');
 
       return processed;

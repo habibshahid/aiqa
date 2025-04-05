@@ -711,8 +711,8 @@ const processEvaluation = async (evaluation) => {
 
     try {
       const interaction = await Interactions.findById(interactionId);
-	  const interactionData = interaction ? interaction.toObject ? interaction.toObject() : interaction : null;
-	  channel = interactionData.channel;
+      const interactionData = interaction ? interaction.toObject ? interaction.toObject() : interaction : null;
+      channel = interactionData.channel;
       direction = interactionData.direction;
       duration = interactionData.connect.duration || 0;
       interactionStartTime = interactionData?.connect?.startDtTime || new Date();
@@ -794,8 +794,8 @@ const processEvaluation = async (evaluation) => {
     if (!qaForm) {
       throw new Error('QA Form not found');
     }
-    
-	// Step 7: Format QA form parameters into instructions
+  
+	  // Step 7: Format QA form parameters into instructions
     const formattedQAForm = {
       formId: qaForm._id,
       formName: qaForm.name,
@@ -805,11 +805,12 @@ const processEvaluation = async (evaluation) => {
         maxScore: param.maxScore,
         scoringType: param.scoringType,
 		    classification: param.classification
-      }))
+      })),
+      classifications: qaForm.classifications 
     };
     
     const instructions = formatInstructions(formattedQAForm);
-    
+    console.log('instructions', instructions)
     // Step 8: Create simplified transcription
     const simplifiedTranscription = createFormattedTranscriptionText(processedTranscription.transcription);
     
@@ -826,7 +827,7 @@ const processEvaluation = async (evaluation) => {
       interactionId,
       qaForm._id,
       qaForm.name,
-	    agent, 
+      agent, 
       caller, 
       channel, 
       direction,
@@ -839,9 +840,10 @@ const processEvaluation = async (evaluation) => {
     
     // Step 11: insert into collection
     const aiqaDoc = await InteractionAIQA.create(processedDocument);
+    console.log('InteractionAIQA Document Created with ID:', aiqaDoc._id);
+    console.log('Total Score:', aiqaDoc.evaluationData.evaluation.totalScore);
+    console.log('Max Score:', aiqaDoc.evaluationData.evaluation.maxScore);
     
-    console.log('InteractionAIQA Document Created');
-	
     const interactionObjectId = mongoose.Types.ObjectId.isValid(interactionId) 
       ? new mongoose.Types.ObjectId(interactionId) 
       : interactionId;
@@ -857,12 +859,19 @@ const processEvaluation = async (evaluation) => {
       }
     );
 
-    return { success: true, qaForm: { 
-      formId: qaForm._id, 
-      formName: qaForm.name, 
-      evaluationId: aiqaDoc._id.toString() 
-    } };
-    
+    return { 
+      success: true, 
+      qaForm: { 
+        formId: qaForm._id, 
+        formName: qaForm.name, 
+        evaluationId: aiqaDoc._id.toString() 
+      },
+      scores: {
+        totalScore: aiqaDoc.evaluationData.evaluation.totalScore,
+        maxScore: aiqaDoc.evaluationData.evaluation.maxScore,
+        percentage: aiqaDoc.sectionScores?.overall?.percentage || 0
+      }
+    };
   } catch (error) {
     console.error(`Error processing evaluation for interaction ${evaluation.interactionId}:`, error);
     return {
@@ -895,80 +904,182 @@ const processEvaluation = async (evaluation) => {
   }
 };
 
+/**
+ * Calculate group scores for the evaluation
+ * @param {Object} qaForm - The QA form
+ * @param {Object} parameters - Evaluation parameters
+ */
 const calculateGroupScores = (qaForm, parameters) => {
-  const groupScores = {};
-  const classificationImpacts = {};
+  const result = {
+    sections: {},
+    overall: { rawScore: 0, adjustedScore: 0, maxScore: 0, percentage: 0 }
+  };
   
-  // Prepare classification impacts
-  qaForm.classifications.forEach(classification => {
-    classificationImpacts[classification.type] = classification.impactPercentage / 100;
-  });
-
-  // Initialize group scores
-  qaForm.groups.forEach(group => {
-    groupScores[group.name] = {
+  // Initialize sections based on groups in QA form
+  if (qaForm.groups && Array.isArray(qaForm.groups)) {
+    qaForm.groups.forEach(group => {
+      result.sections[group.id] = {
+        name: group.name,
+        rawScore: 0,
+        maxScore: 0,
+        adjustedScore: 0,
+        percentage: 0,
+        parameters: [],
+        classifications: {
+          minor: false,
+          moderate: false,
+          major: false
+        },
+        highestClassification: null,
+        highestClassificationImpact: 0
+      };
+    });
+  } else {
+    // Default group if none exists
+    result.sections.default = {
+      name: "Default Group",
       rawScore: 0,
       maxScore: 0,
       adjustedScore: 0,
-      applicableScore: 0,
-      applicableMaxScore: 0,
+      percentage: 0,
+      parameters: [],
+      classifications: {
+        minor: false,
+        moderate: false,
+        major: false
+      },
       highestClassification: null,
-      classificationImpact: 0,
-      naQuestions: [] // Track N/A questions
+      highestClassificationImpact: 0
     };
+  }
+  
+  // Process parameters
+  let totalRawScore = 0;
+  let totalMaxScore = 0;
+  
+  Object.entries(parameters).forEach(([paramName, paramData]) => {
+    // Skip N/A scores
+    if (paramData.score === -1) return;
+    
+    // Find parameter definition in QA form
+    const paramDef = qaForm.parameters.find(p => p.name === paramName);
+    if (!paramDef) return;
+    
+    // Get group and max score
+    const groupId = paramDef.group || 'default';
+    const maxScore = paramDef.maxScore || 5;
+    
+    // Get section for this group
+    const section = result.sections[groupId] || result.sections.default;
+    
+    // Add parameter to section
+    section.parameters.push({
+      name: paramName,
+      score: paramData.score || 0,
+      maxScore: maxScore,
+      classification: paramDef.classification || 'none'
+    });
+    
+    // Update section scores
+    section.rawScore += paramData.score || 0;
+    section.maxScore += maxScore;
+    
+    // Update overall totals
+    totalRawScore += paramData.score || 0;
+    totalMaxScore += maxScore;
   });
-
-  // Calculate group scores
-  qaForm.parameters.forEach(param => {
-    const paramData = parameters[param.name] || {};
-    const score = paramData.score || 0;
-    const maxScore = param.maxScore;
-    const classification = param.classification || 'minor';
-    const groupName = qaForm.groups.find(g => g.id === param.group)?.name || 'Default';
-
-    const groupScore = groupScores[groupName];
-
-    // Check if score is -1 (Not Applicable)
-    if (score === -1) {
-      groupScore.naQuestions.push({
-        name: param.name,
-        maxScore: maxScore
-      });
-      return; // Skip this parameter
+  
+  // Calculate percentages and adjusted scores (no classification impacts for now)
+  Object.values(result.sections).forEach(section => {
+    if (section.maxScore > 0) {
+      section.adjustedScore = section.rawScore; // No classification impact for now
+      section.percentage = Math.round((section.adjustedScore / section.maxScore) * 100);
     }
-
-    // Add to total scores
-    groupScore.rawScore += score;
-    groupScore.maxScore += maxScore;
-    groupScore.applicableScore += score;
-    groupScore.applicableMaxScore += maxScore;
-
-    // Track highest classification
-    const currentClassificationImpact = classificationImpacts[classification] || 0;
-    if (!groupScore.highestClassification || 
-        currentClassificationImpact > classificationImpacts[groupScore.highestClassification]) {
-      groupScore.highestClassification = classification;
-      groupScore.classificationImpact = currentClassificationImpact;
-    }
   });
-
-  // Apply classification impacts
-  Object.values(groupScores).forEach(groupScore => {
-    // Only apply impact to applicable scores
-    const impact = groupScore.classificationImpact;
-    const deduction = groupScore.applicableScore * impact;
-    groupScore.adjustedScore = Math.max(0, groupScore.applicableScore - deduction);
-  });
-
-  return groupScores;
+  
+  // Calculate overall scores
+  result.overall.rawScore = totalRawScore;
+  result.overall.adjustedScore = totalRawScore; // No classification impact for now
+  result.overall.maxScore = totalMaxScore;
+  if (totalMaxScore > 0) {
+    result.overall.percentage = Math.round((totalRawScore / totalMaxScore) * 100);
+  }
+  
+  return result;
 };
 
 const calculateTotalScore = (groupScores) => {
   return Object.values(groupScores).reduce((total, group) => total + group.adjustedScore, 0);
 };
 
+/**
+ * Calculate scores based on parameters with proper scoring type handling
+ * @param {Object} parameters - Evaluation parameters
+ * @param {Object} qaForm - QA form with parameter definitions
+ * @returns {Object} Raw score, max score, and percentage
+ */
+const calculateScoresWithTypes = (parameters, qaForm) => {
+  let rawScore = 0;
+  let maxScore = 0;
+  let validParams = 0;
+
+  // Process each parameter
+  Object.entries(parameters).forEach(([paramName, paramData]) => {
+    // Skip N/A parameters
+    if (paramData.score === -1) {
+      console.log(`Parameter ${paramName} has N/A score, skipping`);
+      return;
+    }
+    
+    // Find parameter definition in QA form
+    const paramDef = qaForm.parameters.find(p => p.name === paramName);
+    if (!paramDef) {
+      console.log(`Parameter ${paramName} not found in QA form, using defaults`);
+      rawScore += paramData.score || 0;
+      maxScore += 5; // Default
+      validParams++;
+      return;
+    }
+    
+    // Get max score from definition
+    const paramMaxScore = paramDef.maxScore || 5;
+    
+    // Handle different scoring types
+    let finalScore = paramData.score || 0;
+    
+    // For binary scoring type, only 0 or maxScore is valid
+    if (paramDef.scoringType === 'binary') {
+      // Round to nearest valid value (0 or maxScore)
+      finalScore = finalScore > (paramMaxScore / 2) ? paramMaxScore : 0;
+      console.log(`Binary parameter ${paramName}: Adjusted score from ${paramData.score} to ${finalScore}`);
+    } 
+    // For variable scoring type, any value from 0 to maxScore is valid
+    else {
+      // Ensure the score doesn't exceed maxScore
+      finalScore = Math.min(finalScore, paramMaxScore);
+      console.log(`Variable parameter ${paramName}: Score ${finalScore}/${paramMaxScore}`);
+    }
+    
+    // Add to totals
+    rawScore += finalScore;
+    maxScore += paramMaxScore;
+    validParams++;
+  });
+
+  // Calculate percentage
+  const percentage = maxScore > 0 ? Math.round((rawScore / maxScore) * 100) : 0;
+  
+  console.log(`Calculated scores: ${rawScore}/${maxScore} (${percentage}%, ${validParams} valid parameters)`);
+  
+  return { rawScore, maxScore, percentage, validParams };
+};
+
+/**
+ * Process evaluation response with proper scoring type handling
+ */
 const processEvaluationResponse = async (apiResponse, interactionId, qaFormId, qaFormName, agent, caller, channel, direction, duration, evaluator, queue) => {
   try {
+    // Load the QA form to properly calculate scores
     const qaForm = await QAForm.findById(qaFormId);
     if (!qaForm) {
       throw new Error('QA Form not found');
@@ -977,12 +1088,8 @@ const processEvaluationResponse = async (apiResponse, interactionId, qaFormId, q
     // Ensure parameters exist
     const parameters = apiResponse.evaluation.parameters || {};
 
-    // Calculate group scores
-    const groupScores = calculateGroupScores(qaForm, parameters);
-
-    // Ensure we always have a total score, even if 0
-    const totalScore = Object.values(groupScores).reduce((total, group) => total + group.adjustedScore, 0);
-    const maxScore = Object.values(groupScores).reduce((total, group) => total + group.maxScore, 0);
+    // Calculate scores with proper scoring type handling
+    const { rawScore, maxScore, percentage } = calculateScoresWithTypes(parameters, qaForm);
 
     // Prepare the QA document
     const qaDocument = {
@@ -994,12 +1101,11 @@ const processEvaluationResponse = async (apiResponse, interactionId, qaFormId, q
         usage: apiResponse.usage || {},
         evaluation: {
           parameters,
-          groupScores,
-          totalScore: totalScore,
+          // Set scores correctly
+          totalScore: rawScore,
           maxScore: maxScore,
-          rawScore: Object.values(groupScores).reduce((total, group) => total + group.rawScore, 0),
           
-          // Existing evaluation details (rest of the code remains the same)
+          // Include other evaluation details
           silencePeriods: Array.isArray(apiResponse.evaluation.silencePeriods) 
             ? apiResponse.evaluation.silencePeriods.map(period => ({
                 fromTimeStamp: period.fromTimeStamp,
@@ -1037,6 +1143,107 @@ const processEvaluationResponse = async (apiResponse, interactionId, qaFormId, q
       createdAt: new Date(),
       updatedAt: new Date()
     };
+
+    // Initialize sectionScores with default group
+    qaDocument.sectionScores = {
+      sections: {},
+      overall: {
+        rawScore: rawScore,
+        adjustedScore: rawScore,
+        maxScore: maxScore,
+        percentage: percentage
+      }
+    };
+    
+    // Group parameters by their group
+    const groupedParameters = {};
+    
+    // Process each parameter
+    Object.entries(parameters).forEach(([paramName, paramData]) => {
+      // Skip N/A parameters
+      if (paramData.score === -1) return;
+      
+      // Find parameter definition in QA form
+      const paramDef = qaForm.parameters.find(p => p.name === paramName);
+      if (!paramDef) return;
+      
+      // Get group and max score
+      const groupId = paramDef.group || 'default';
+      const paramMaxScore = paramDef.maxScore || 5;
+      
+      // Initialize group if not exists
+      if (!groupedParameters[groupId]) {
+        groupedParameters[groupId] = {
+          name: qaForm.groups.find(g => g.id === groupId)?.name || 'Default Group',
+          parameters: [],
+          rawScore: 0,
+          maxScore: 0
+        };
+      }
+      
+      // Calculate final score based on scoring type
+      let finalScore = paramData.score || 0;
+      if (paramDef.scoringType === 'binary') {
+        finalScore = finalScore > (paramMaxScore / 2) ? paramMaxScore : 0;
+      } else {
+        finalScore = Math.min(finalScore, paramMaxScore);
+      }
+      
+      // Add parameter to group
+      groupedParameters[groupId].parameters.push({
+        name: paramName,
+        score: finalScore,
+        maxScore: paramMaxScore,
+        classification: paramDef.classification || 'none'
+      });
+      
+      // Update group totals
+      groupedParameters[groupId].rawScore += finalScore;
+      groupedParameters[groupId].maxScore += paramMaxScore;
+    });
+    
+    // Create section scores from grouped parameters
+    Object.entries(groupedParameters).forEach(([groupId, groupData]) => {
+      qaDocument.sectionScores.sections[groupId] = {
+        name: groupData.name,
+        rawScore: groupData.rawScore,
+        maxScore: groupData.maxScore,
+        adjustedScore: groupData.rawScore, // No classification impact for new evaluations
+        percentage: groupData.maxScore > 0 ? Math.round((groupData.rawScore / groupData.maxScore) * 100) : 0,
+        parameters: groupData.parameters,
+        classifications: {
+          minor: false,
+          moderate: false,
+          major: false
+        },
+        highestClassification: null,
+        highestClassificationImpact: 0
+      };
+    });
+    
+    // If no groups created, use a default group
+    if (Object.keys(qaDocument.sectionScores.sections).length === 0) {
+      qaDocument.sectionScores.sections.default = {
+        name: "Default Group",
+        rawScore: rawScore,
+        maxScore: maxScore,
+        adjustedScore: rawScore,
+        percentage: percentage,
+        parameters: [],
+        classifications: {
+          minor: false,
+          moderate: false,
+          major: false
+        },
+        highestClassification: null,
+        highestClassificationImpact: 0
+      };
+    }
+
+    console.log('Processed QA Document:');
+    console.log('Total Score:', qaDocument.evaluationData.evaluation.totalScore);
+    console.log('Max Score:', qaDocument.evaluationData.evaluation.maxScore);
+    console.log('Section Scores:', Object.keys(qaDocument.sectionScores.sections).length, 'sections');
 
     return qaDocument;
   } catch (error) {
@@ -1095,7 +1302,7 @@ function formatInstructions(form) {
   instructions += 'Please provide your evaluation with a score for each question, along with an explanation of your reasoning. Also include an overall assessment of the interaction.';
   
   // Additional instructions for handling question classifications
-  instructions += '\nPlease consider the classifications when determining overall impact. MAJOR issues should have more significant impact on the overall score than MINOR issues. When summarizing areas of improvement, prioritize MAJOR issues first, followed by MODERATE and then MINOR issues.';
+  instructions += '\nassign a tag to the question response.';
   instructions += '\nwhen returning the response do not include the text Question in parameter name, just the label name';
   
   instructions += process.env.AIQA_SAMPLE_RESPONSE;
@@ -1206,6 +1413,7 @@ async function callQAEvaluationApi(transcription, instructions, interactionId) {
 }
 
 module.exports = {
+  processEvaluationResponse,
   processEvaluation,
   processTranscript,
   processTranscriptV2,

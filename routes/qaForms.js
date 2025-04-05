@@ -33,8 +33,16 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create QA Form
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    // Extract form data
-    const { name, description, isActive, parameters, groups } = req.body;
+    // Extract form data including classifications
+    const { 
+      name, 
+      description, 
+      isActive, 
+      parameters, 
+      groups, 
+      classifications,
+      moderationRequired
+    } = req.body;
     
     // Ensure we have at least one parameter
     if (!parameters || parameters.length === 0) {
@@ -46,13 +54,41 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'At least one group is required' });
     }
     
-    // Create new QA form
+    // Validate classifications
+    const requiredClassificationTypes = ['minor', 'moderate', 'major'];
+    if (classifications) {
+      // Make sure all required types are present
+      const hasAllTypes = requiredClassificationTypes.every(type => 
+        classifications.some(c => c.type === type)
+      );
+      
+      if (!hasAllTypes) {
+        return res.status(400).json({ 
+          message: 'All classification types (minor, moderate, major) must be provided'
+        });
+      }
+      
+      // Validate percentage ranges
+      const validPercentages = classifications.every(c => 
+        c.impactPercentage >= 0 && c.impactPercentage <= 100
+      );
+      
+      if (!validPercentages) {
+        return res.status(400).json({
+          message: 'Classification impact percentages must be between 0 and 100'
+        });
+      }
+    }
+    
+    // Create new QA form with all provided data
     const newForm = new QAForm({
       name,
       description,
       isActive,
       parameters,
       groups,
+      classifications: classifications || undefined, // Use default if not provided
+      moderationRequired: moderationRequired !== undefined ? moderationRequired : true,
       createdBy: req.user.id,
       updatedBy: req.user.id
     });
@@ -61,15 +97,23 @@ router.post('/', authenticateToken, async (req, res) => {
     res.status(201).json(newForm);
   } catch (error) {
     console.error('Error creating QA form:', error);
-    res.status(500).json({ message: 'Error creating QA form' });
+    res.status(500).json({ message: 'Error creating QA form', error: error.message });
   }
 });
 
 // Update QA Form
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
-    // Extract form data
-    const { name, description, isActive, parameters, groups } = req.body;
+    // Extract form data including classifications
+    const { 
+      name, 
+      description, 
+      isActive, 
+      parameters, 
+      groups, 
+      classifications,
+      moderationRequired
+    } = req.body;
     
     // Ensure we have at least one parameter
     if (!parameters || parameters.length === 0) {
@@ -81,7 +125,33 @@ router.put('/:id', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'At least one group is required' });
     }
     
-    // Update the form
+    // Validate classifications
+    const requiredClassificationTypes = ['minor', 'moderate', 'major'];
+    if (classifications) {
+      // Make sure all required types are present
+      const hasAllTypes = requiredClassificationTypes.every(type => 
+        classifications.some(c => c.type === type)
+      );
+      
+      if (!hasAllTypes) {
+        return res.status(400).json({ 
+          message: 'All classification types (minor, moderate, major) must be provided'
+        });
+      }
+      
+      // Validate percentage ranges
+      const validPercentages = classifications.every(c => 
+        c.impactPercentage >= 0 && c.impactPercentage <= 100
+      );
+      
+      if (!validPercentages) {
+        return res.status(400).json({
+          message: 'Classification impact percentages must be between 0 and 100'
+        });
+      }
+    }
+    
+    // Update the form with all provided data
     const updatedForm = await QAForm.findByIdAndUpdate(
       req.params.id,
       {
@@ -90,6 +160,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
         isActive,
         parameters,
         groups,
+        classifications: classifications || undefined,
+        moderationRequired: moderationRequired !== undefined ? moderationRequired : true,
         updatedBy: req.user.id
       },
       { new: true }
@@ -102,7 +174,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     res.json(updatedForm);
   } catch (error) {
     console.error('Error updating QA form:', error);
-    res.status(500).json({ message: 'Error updating QA form' });
+    res.status(500).json({ message: 'Error updating QA form', error: error.message });
   }
 });
 

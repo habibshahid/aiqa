@@ -1,109 +1,296 @@
-// services/scoringService.js
-const calculateSectionScores = (evaluation, qaForm) => {
-  if (!evaluation || !qaForm) {
+// services/scoringService.js - Enhanced with scoring type handling
+
+/**
+ * Calculate evaluation scores with proper handling of different scoring types
+ * @param {Object} evaluation - The evaluation object
+ * @param {String} formId - QA Form ID
+ * @returns {Promise<Object>} - Section scores and overall score
+ */
+const calculateEvaluationScores = async (evaluation, formId) => {
+  try {
+    if (!evaluation || !formId) {
+      return {
+        sections: {},
+        overall: { 
+          rawScore: 0, 
+          adjustedScore: 0, 
+          maxScore: 0, 
+          percentage: 0 
+        }
+      };
+    }
+
+    // Get the QA form to determine groups and classifications
+    const { QAForm } = require('../config/mongodb');
+    const qaForm = await QAForm.findById(formId);
+    
+    if (!qaForm) {
+      throw new Error(`QA Form not found: ${formId}`);
+    }
+    
+    // Classification impact definitions from QA form
+    const classificationImpacts = {};
+    if (qaForm.classifications && Array.isArray(qaForm.classifications)) {
+      qaForm.classifications.forEach(classification => {
+        classificationImpacts[classification.type] = classification.impactPercentage / 100;
+      });
+    } else {
+      // Default classification impacts
+      classificationImpacts.minor = 0.1;    // 10%
+      classificationImpacts.moderate = 0.25; // 25%
+      classificationImpacts.major = 0.5;    // 50%
+      classificationImpacts.none = 0;       // 0%
+    }
+    
+    console.log('Classification impacts:', Object.entries(classificationImpacts)
+      .map(([type, impact]) => `${type}: ${(impact * 100).toFixed(0)}%`)
+      .join(', '));
+    
+    // Initialize section scores for each group
+    const sectionScores = {};
+    
+    if (qaForm.groups && Array.isArray(qaForm.groups)) {
+      qaForm.groups.forEach(group => {
+        sectionScores[group.id] = {
+          name: group.name,
+          rawScore: 0,
+          maxScore: 0,
+          adjustedScore: 0,
+          percentage: 0,
+          parameters: [],
+          classifications: {
+            minor: false,
+            moderate: false,
+            major: false
+          },
+          highestClassification: null,
+          highestClassificationImpact: 0
+        };
+      });
+    } else {
+      // Default group if none exists
+      sectionScores.default = {
+        name: "Default Group",
+        rawScore: 0,
+        maxScore: 0,
+        adjustedScore: 0,
+        percentage: 0,
+        parameters: [],
+        classifications: {
+          minor: false,
+          moderate: false,
+          major: false
+        },
+        highestClassification: null,
+        highestClassificationImpact: 0
+      };
+    }
+    
+    // Get evaluation parameters - first try human evaluation, then AI evaluation
+    let evaluationParams = {};
+    
+    if (evaluation.humanEvaluation && evaluation.humanEvaluation.parameters) {
+      // Use human evaluation parameters if available
+      Object.entries(evaluation.humanEvaluation.parameters).forEach(([key, value]) => {
+        // Skip null or undefined values
+        if (!value) return;
+        
+        // Find parameter definition in QA form
+        const paramDef = qaForm.parameters.find(p => p.name === key);
+        const scoringType = paramDef ? paramDef.scoringType : 'variable';
+        const maxScore = paramDef ? paramDef.maxScore || 5 : 5;
+        
+        // Skip N/A scores
+        if (value.humanScore === -1) return;
+        
+        // Adjust score based on scoring type
+        let finalScore = value.humanScore;
+        if (finalScore !== undefined && finalScore !== null) {
+          if (scoringType === 'binary') {
+            // Binary parameters can only be 0 or maxScore
+            finalScore = finalScore > (maxScore / 2) ? maxScore : 0;
+          } else {
+            // Variable parameters can be any value from 0 to maxScore
+            finalScore = Math.min(finalScore, maxScore);
+          }
+        } else {
+          finalScore = value.score || 0;
+        }
+        
+        evaluationParams[key] = {
+          score: finalScore,
+          classification: value.classification || 'none',
+          name: key,
+          scoringType: scoringType,
+          maxScore: maxScore
+        };
+      });
+    }
+    
+    // If human evaluation parameters didn't exist or were empty, use AI evaluation
+    if (Object.keys(evaluationParams).length === 0 && 
+        evaluation.evaluation && 
+        evaluation.evaluation.scores && 
+        evaluation.evaluation.scores.categories) {
+      
+      Object.entries(evaluation.evaluation.scores.categories).forEach(([key, value]) => {
+        // Skip null or undefined values
+        if (!value) return;
+        
+        // Find parameter definition in QA form
+        const paramDef = qaForm.parameters.find(p => p.name === key);
+        const scoringType = paramDef ? paramDef.scoringType : 'variable';
+        const maxScore = paramDef ? paramDef.maxScore || 5 : 5;
+        
+        // Skip N/A scores
+        if (value.score === -1) return;
+        
+        // Adjust score based on scoring type
+        let finalScore = value.score;
+        if (scoringType === 'binary') {
+          // Binary parameters can only be 0 or maxScore
+          finalScore = finalScore > (maxScore / 2) ? maxScore : 0;
+        } else {
+          // Variable parameters can be any value from 0 to maxScore
+          finalScore = Math.min(finalScore, maxScore);
+        }
+        
+        evaluationParams[key] = {
+          score: finalScore,
+          classification: value.classification || 'none',
+          name: key,
+          scoringType: scoringType,
+          maxScore: maxScore
+        };
+      });
+    }
+    
+    // Process each parameter
+    Object.values(evaluationParams).forEach(paramData => {
+      // Skip N/A scores
+      if (paramData.score === -1) return;
+      
+      // Find parameter definition in QA form
+      const paramDef = qaForm.parameters.find(p => p.name === paramData.name);
+      if (!paramDef) return;
+      
+      // Get group and max score
+      const groupId = paramDef.group || 'default';
+      const section = sectionScores[groupId] || sectionScores.default;
+      
+      if (!section) return;
+      
+      // Add parameter to section
+      section.parameters.push({
+        name: paramData.name,
+        score: paramData.score || 0,
+        maxScore: paramData.maxScore,
+        classification: paramData.classification || 'none',
+        scoringType: paramData.scoringType
+      });
+      
+      // Update raw scores
+      section.rawScore += paramData.score || 0;
+      section.maxScore += paramData.maxScore;
+      
+      // Track classifications
+      const classification = paramData.classification;
+      if (classification && classification !== 'none') {
+        section.classifications[classification] = true;
+        
+        // Check if this is the highest impact classification
+        const impact = classificationImpacts[classification] || 0;
+        if (!section.highestClassification || 
+            impact > (classificationImpacts[section.highestClassification] || 0)) {
+          section.highestClassification = classification;
+          section.highestClassificationImpact = impact * 100; // Store as percentage
+        }
+      }
+    });
+    
+    // Calculate adjusted scores based on classification impacts
+    let totalRawScore = 0;
+    let totalMaxScore = 0;
+    let totalAdjustedScore = 0;
+    
+    Object.values(sectionScores).forEach(section => {
+      if (section.maxScore === 0) return; // Skip empty sections
+      
+      // Apply classification impact to calculate adjusted score
+      const impact = section.highestClassification ? 
+        (classificationImpacts[section.highestClassification] || 0) : 0;
+        
+      // Calculate deduction
+      const deduction = section.rawScore * impact;
+      section.adjustedScore = Math.max(0, section.rawScore - deduction);
+      
+      console.log(`Section ${section.name}: ${section.highestClassification || 'none'} classification (${impact * 100}% impact)`);
+      console.log(`  Raw score: ${section.rawScore}, Deduction: ${deduction}, Adjusted: ${section.adjustedScore}`);
+      
+      // Calculate percentage
+      section.percentage = Math.round((section.adjustedScore / section.maxScore) * 100);
+      
+      // Add to overall totals
+      totalRawScore += section.rawScore;
+      totalMaxScore += section.maxScore;
+      totalAdjustedScore += section.adjustedScore;
+    });
+    
+    // Overall score calculations
+    const overallPercentage = totalMaxScore > 0 ? 
+      Math.round((totalAdjustedScore / totalMaxScore) * 100) : 0;
+    
+    console.log('Overall scores:');
+    console.log(`  Raw score: ${totalRawScore}, Adjusted: ${totalAdjustedScore}, Max: ${totalMaxScore}`);
+    console.log(`  Percentage: ${overallPercentage}%`);
+    
     return {
-      sections: {},
-      overall: { totalScore: 0, maxScore: 0, percentage: 0 }
+      sections: sectionScores,
+      overall: {
+        rawScore: totalRawScore,
+        adjustedScore: totalAdjustedScore,
+        maxScore: totalMaxScore,
+        percentage: overallPercentage
+      }
     };
+  } catch (error) {
+    console.error('Error calculating evaluation scores:', error);
+    throw error;
+  }
+};
+
+/**
+ * Calculate impact of classification on a parameter's score
+ * @param {number} score - Original score value
+ * @param {number} maxScore - Maximum possible score
+ * @param {string} classification - Classification type (minor, moderate, major)
+ * @param {Object} impactMap - Map of classification types to impact percentages
+ * @returns {number} Adjusted score after applying classification impact
+ */
+const calculateClassificationImpact = (score, maxScore, classification, impactMap = null) => {
+  // Default impact percentages if not provided
+  const impacts = impactMap || {
+    minor: 0.1,     // 10%
+    moderate: 0.25, // 25%
+    major: 0.5      // 50%
+  };
+  
+  // No impact for undefined classification or 'none'
+  if (!classification || classification === 'none') {
+    return score;
   }
   
-  // Get classification definitions from the form
-  const classificationImpacts = {};
-  qaForm.classifications.forEach(classification => {
-    classificationImpacts[classification.type] = classification.impactPercentage / 100;
-  });
-
-  // Initialize sections based on groups
-  const sections = {};
-  qaForm.groups.forEach(group => {
-    sections[group.id] = {
-      name: group.name,
-      parameters: [],
-      rawScore: 0,
-      maxScore: 0,
-      adjustedScore: 0,
-      percentage: 0,
-      highestClassification: null,
-      classificationImpact: 0
-    };
-  });
-
-  // Process each parameter
-  let evaluationParams = evaluation.evaluation?.scores?.categories || {};
+  // Get impact percentage
+  const impact = impacts[classification] || 0;
   
-  // First pass: collect parameter details and calculate raw scores
-  Object.entries(evaluationParams).forEach(([paramName, paramData]) => {
-    // Find parameter definition in form
-    const paramDef = qaForm.parameters.find(p => p.name === paramName);
-    if (!paramDef) return;
-
-    const sectionId = paramDef.group || 'default';
-    if (!sections[sectionId]) return;
-
-    // Extract score data
-    const score = paramData.score || 0;
-    const maxScore = paramDef.maxScore || 5;
-    const classification = paramDef.classification || 'minor';
-
-    // Add to section data
-    sections[sectionId].parameters.push({
-      name: paramName,
-      score: score,
-      maxScore: maxScore,
-      classification: classification
-    });
-
-    // Update section raw totals
-    sections[sectionId].rawScore += score;
-    sections[sectionId].maxScore += maxScore;
-
-    // Track highest classification impact for the section
-    const currentClassificationImpact = classificationImpacts[classification] || 0;
-    if (!sections[sectionId].highestClassification || 
-        currentClassificationImpact > classificationImpacts[sections[sectionId].highestClassification]) {
-      sections[sectionId].highestClassification = classification;
-      sections[sectionId].classificationImpact = currentClassificationImpact;
-    }
-  });
-
-  // Second pass: apply classification impacts
-  let overallRawScore = 0;
-  let overallMaxScore = 0;
-  let overallAdjustedScore = 0;
-
-  Object.values(sections).forEach(section => {
-    // Apply classification impact
-    const impact = section.classificationImpact;
-    const deduction = section.rawScore * impact;
-    section.adjustedScore = Math.max(0, section.rawScore - deduction);
-    
-    // Calculate percentage
-    section.percentage = section.maxScore > 0 
-      ? Math.round((section.adjustedScore / section.maxScore) * 100) 
-      : 0;
-
-    // Accumulate overall scores
-    overallRawScore += section.rawScore;
-    overallMaxScore += section.maxScore;
-    overallAdjustedScore += section.adjustedScore;
-  });
-
-  // Calculate overall percentage
-  const overallPercentage = overallMaxScore > 0 
-    ? Math.round((overallAdjustedScore / overallMaxScore) * 100) 
-    : 0;
-
-  return {
-    sections,
-    overall: {
-      rawScore: overallRawScore,
-      adjustedScore: overallAdjustedScore,
-      maxScore: overallMaxScore,
-      percentage: overallPercentage
-    }
-  };
+  // Calculate deduction based on score (not max score)
+  const deduction = score * impact;
+  
+  // Return adjusted score (never below 0)
+  return Math.max(0, score - deduction);
 };
 
 module.exports = {
-  calculateSectionScores
+  calculateEvaluationScores,
+  calculateClassificationImpact
 };
