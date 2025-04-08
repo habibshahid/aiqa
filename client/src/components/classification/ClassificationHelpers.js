@@ -18,6 +18,9 @@ const ClassificationInfo = () => {
         </p>
         <ul className="mb-0">
           <li>
+            <strong className="text-secondary">None</strong>: No impact on scoring (0% score deduction)
+          </li>
+          <li>
             <strong className="text-info">Minor</strong>: Small issues with minimal impact on quality (10% score deduction)
           </li>
           <li>
@@ -36,6 +39,7 @@ const ClassificationInfo = () => {
 const ClassificationSelect = ({ value, onChange, disabled = false, customOptions = null }) => {
   // Use provided custom options or fall back to defaults
   const classificationOptions = customOptions || [
+    { value: 'none', label: 'None', color: 'secondary', impact: 0 },
     { value: 'minor', label: 'Minor', color: 'info', impact: 10 },
     { value: 'moderate', label: 'Moderate', color: 'warning', impact: 25 },
     { value: 'major', label: 'Major', color: 'danger', impact: 50 }
@@ -72,7 +76,7 @@ const ClassificationSelect = ({ value, onChange, disabled = false, customOptions
       >
         {classificationOptions.map(option => (
           <option key={option.value} value={option.value}>
-            {option.label} (-{option.impact}% impact)
+            {option.label} {option.impact > 0 ? `(-${option.impact}% impact)` : '(no impact)'}
           </option>
         ))}
       </select>

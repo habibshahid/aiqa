@@ -844,7 +844,7 @@ const QADetail = () => {
                             <small className="text-muted">
                               Group: {qaForm?.groups.find(g => g.id === paramDef.group)?.name || 'Unknown'}
                               <br/>
-                              Type: {paramDef.scoringType || 'variable'}
+                              Scoring Type: {paramDef.scoringType || 'variable'}
                             </small>
                           )}
                         </div>

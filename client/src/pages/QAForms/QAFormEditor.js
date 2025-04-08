@@ -18,10 +18,11 @@ const initialParameterState = {
   scoringType: 'variable',
   context: '',
   group: 'default',
-  classification: 'minor'
+  classification: 'none'
 };
 
 const baseClassificationOptions = [
+  { value: 'none', label: 'None', color: 'secondary', impact: 0 },
   { value: 'minor', label: 'Minor', color: 'info', impact: 10 },
   { value: 'moderate', label: 'Moderate', color: 'warning', impact: 25 },
   { value: 'major', label: 'Major', color: 'danger', impact: 50 }
@@ -57,6 +58,11 @@ const QAFormEditor = () => {
     parameters: [{ ...initialParameterState }],
     groups: [{ id: 'default', name: 'Default Group' }],
     classifications: [
+      { 
+        type: 'none',  // Added 'none' classification type
+        impactPercentage: 0,
+        description: 'No classification has no impact on the score.'
+      },
       { 
         type: 'minor', 
         impactPercentage: 10, 
@@ -99,6 +105,15 @@ const QAFormEditor = () => {
         
         if (!data.classifications || data.classifications.length === 0) {
           data.classifications = formData.classifications;
+        } else {
+          // Ensure 'none' classification exists
+          if (!data.classifications.find(c => c.type === 'none')) {
+            data.classifications.push({
+              type: 'none',
+              impactPercentage: 0,
+              description: 'No classification has no impact on the score.'
+            });
+          }
         }
         
         // Normalize parameters
@@ -106,7 +121,7 @@ const QAFormEditor = () => {
           data.parameters = data.parameters.map(param => ({
             ...param,
             group: param.group || 'default',
-            classification: param.classification || 'minor'
+            classification: param.classification || 'none'  // Default to 'none' instead of 'minor'
           }));
         }
         
@@ -330,6 +345,14 @@ const QAFormEditor = () => {
 
   // Classification change handler
   const handleClassificationsChange = (classifications) => {
+    if (!classifications.find(c => c.type === 'none')) {
+      classifications.push({
+        type: 'none',
+        impactPercentage: 0,
+        description: 'No classification has no impact on the score.'
+      });
+    }
+
     setFormData(prev => ({
       ...prev,
       classifications
@@ -341,7 +364,8 @@ const QAFormEditor = () => {
       if (classification) {
         return {
           ...option,
-          label: `${option.value.charAt(0).toUpperCase() + option.value.slice(1)}`,
+          label: option.value === 'none' ? 'None' : 
+                 `${option.value.charAt(0).toUpperCase() + option.value.slice(1)}`,
           impact: classification.impactPercentage
         };
       }

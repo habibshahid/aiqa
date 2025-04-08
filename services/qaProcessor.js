@@ -1,4 +1,5 @@
 // services/qaProcessor.js
+require('dotenv').config();
 const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
@@ -810,7 +811,6 @@ const processEvaluation = async (evaluation) => {
     };
     
     const instructions = formatInstructions(formattedQAForm);
-    console.log('instructions', instructions)
     // Step 8: Create simplified transcription
     const simplifiedTranscription = createFormattedTranscriptionText(processedTranscription.transcription);
     
@@ -821,8 +821,8 @@ const processEvaluation = async (evaluation) => {
       interactionId
     );
     
-    // Step 10: process evaluation response
-	  const processedDocument = await processEvaluationResponse(
+	// Step 10: process evaluation response
+	const processedDocument = await processEvaluationResponse(
       evaluationResult,
       interactionId,
       qaForm._id,
@@ -843,6 +843,8 @@ const processEvaluation = async (evaluation) => {
     console.log('InteractionAIQA Document Created with ID:', aiqaDoc._id);
     console.log('Total Score:', aiqaDoc.evaluationData.evaluation.totalScore);
     console.log('Max Score:', aiqaDoc.evaluationData.evaluation.maxScore);
+    
+    updateEvaluationForClassification(evaluationResult, aiqaDoc, qaFormId);
     
     const interactionObjectId = mongoose.Types.ObjectId.isValid(interactionId) 
       ? new mongoose.Types.ObjectId(interactionId) 
@@ -903,6 +905,82 @@ const processEvaluation = async (evaluation) => {
     }
   }
 };
+
+const updateEvaluationForClassification = async (evaluationResult, aiqaDoc, qaFormId) => {
+  try {
+    console.log('Applying classification impacts directly...');
+    const qaForm = await QAForm.findById(qaFormId);
+    // Create moderation data structure
+    const moderationData = {
+      parameters: {},
+      isModerated: true,
+      isPublished: false  // Don't publish automatically
+    };
+    
+    // Extract parameters with their classifications from evaluation result
+    if (evaluationResult.evaluation && evaluationResult.evaluation.parameters) {
+      Object.entries(evaluationResult.evaluation.parameters).forEach(([name, data]) => {
+        // Skip invalid entries
+        if (!data) return;
+        
+        moderationData.parameters[name] = {
+          score: data.score,
+          explanation: data.explanation || '',
+          humanScore: data.score,  // Use AI score as human score initially
+          classification: data.classification || 'none'
+        };
+      });
+    }
+    
+    // Calculate scores based on classifications using the scoring service
+    const { calculateEvaluationScores } = require('../services/scoringService');
+    
+    // Create temporary document with necessary properties for scoring
+    const tempDoc = {
+      qaFormId: qaForm._id,
+      humanEvaluation: {
+        parameters: moderationData.parameters
+      }
+    };
+    
+    // Calculate the scores with classification impacts
+    const calculatedScores = await calculateEvaluationScores(tempDoc, qaForm._id);
+    console.log('Calculated scores with classification impacts:', 
+      JSON.stringify(calculatedScores.overall, null, 2));
+    
+    // Update the document directly with the new scores and moderation data
+    const updatedDoc = await InteractionAIQA.findByIdAndUpdate(
+      aiqaDoc._id,
+      {
+        $set: {
+          'evaluationData.evaluation.totalScore': calculatedScores.overall.adjustedScore,
+          'evaluationData.evaluation.maxScore': calculatedScores.overall.maxScore,
+          'sectionScores': calculatedScores,
+          'humanEvaluation': {
+            parameters: moderationData.parameters,
+            additionalComments: '',
+            agentComments: '',
+            isModerated: true,
+            isPublished: false,
+            moderatedBy: 'System',
+            moderatedByUserId: '1',
+            moderatedAt: new Date()
+          },
+          'status': 'moderated'
+        }
+      },
+      { new: true }
+    );
+    
+    console.log('Classification impacts applied successfully');
+    console.log('Updated total score:', updatedDoc.evaluationData.evaluation.totalScore);   
+    return true; 
+  } catch (moderationError) {
+    console.error('Error applying classification impacts:', moderationError);
+    // Continue without classification impacts if the call fails
+    return false;
+  }
+}
 
 /**
  * Calculate group scores for the evaluation

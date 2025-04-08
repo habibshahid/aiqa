@@ -37,8 +37,8 @@ const parameterSchema = new mongoose.Schema({
   // New field to classify the parameter
   classification: {
     type: String,
-    enum: ['minor', 'moderate', 'major'],
-    default: 'minor',
+    enum: ['none', 'minor', 'moderate', 'major'],
+    default: 'none',
     required: true
   }
 });
@@ -60,7 +60,7 @@ const groupSchema = new mongoose.Schema({
 const classificationDefinitionSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['minor', 'moderate', 'major'],
+    enum: ['minor', 'moderate', 'major', 'none'],
     required: true
   },
   impactPercentage: {

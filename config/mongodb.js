@@ -43,8 +43,14 @@ const usageDetailsSchema = new mongoose.Schema({
 const evaluationCriteriaSchema = new mongoose.Schema({
   explanation: String,
   confidence: String,
-  score: Number
+  score: Number,
+  classification: {
+    type: String,
+    enum: ['none', 'minor', 'moderate', 'major'],
+    default: 'none'
+  }
 });
+
 
 const silencePeriodSchema = new mongoose.Schema({
   fromTimeStamp: String,
@@ -127,14 +133,19 @@ const transcriptionSchema = new mongoose.Schema({
 });
 
 const humanEvaluationSchema = new mongoose.Schema({
-  // Parameter evaluations with human scores and explanations
+  // Parameter evaluations with human scores, explanations, and classifications
   parameters: {
     type: Map,
     of: new mongoose.Schema({
       score: Number,  // Original AI score
       explanation: String, // Original AI explanation
       humanScore: Number, // Human score
-      humanExplanation: String // Human explanation
+      humanExplanation: String, // Human explanation
+      classification: {
+        type: String,
+        enum: ['none', 'minor', 'moderate', 'major'],
+        default: null
+      } // Human-assigned classification
     }, { _id: false, strict: false })
   },
   
@@ -180,6 +191,41 @@ const humanEvaluationSchema = new mongoose.Schema({
   }
 }, { _id: false, strict: false });
 
+// Add this to the interactionAIQASchema in config/mongodb.js
+const sectionScoresSchema = new mongoose.Schema({
+  sections: {
+    type: Map,
+    of: new mongoose.Schema({
+      name: String,
+      rawScore: Number,
+      maxScore: Number,
+      adjustedScore: Number,
+      percentage: Number,
+      parameters: [
+        new mongoose.Schema({
+          name: String,
+          score: Number,
+          maxScore: Number,
+          classification: String
+        }, { _id: false, strict: false })
+      ],
+      classifications: {
+        minor: Boolean,
+        moderate: Boolean,
+        major: Boolean
+      },
+      highestClassification: String,
+      highestClassificationImpact: Number
+    }, { _id: false, strict: false })
+  },
+  overall: {
+    rawScore: Number,
+    adjustedScore: Number,
+    maxScore: Number,
+    percentage: Number
+  }
+}, { _id: false, strict: false });
+
 const interactionAIQASchema = new mongoose.Schema({
   interactionId: { type: String, required: true },
   qaFormName: { type: String, required: true },
@@ -187,6 +233,10 @@ const interactionAIQASchema = new mongoose.Schema({
   evaluator: {     // Add this new field
     id: String,
     name: String
+  },
+  sectionScores: {
+    type: sectionScoresSchema,
+    default: null
   },
   evaluationData: {
     usage: usageDetailsSchema,
@@ -226,35 +276,196 @@ const interactionAIQASchema = new mongoose.Schema({
 // Interactions Schema
 const Interactions = require('../models/interaction');
 
-interactionAIQASchema.pre('save', async function(next) {
+// Fixed version of the pre-save hook that properly handles null values
+// Enhanced pre-save hook that ensures totalScore and maxScore are properly saved
+/*interactionAIQASchema.pre('save', async function(next) {
   try {
-    // If new evaluation and status is 'completed' (AI just finished)
-    if (this.isNew && this.status === 'completed') {
-      // Check if the QA form requires moderation
-      const QAForm = mongoose.model('AIQAForm');
-      const form = await QAForm.findById(this.qaFormId);
+    // If this is a newly moderated evaluation or scores have changed
+    if (this.isModified('humanEvaluation') || this.isModified('evaluationData.evaluation') || !this.evaluationData?.evaluation?.totalScore) {
+      console.log('Human evaluation or evaluation data modified, recalculating scores');
       
-      // If form doesn't require moderation, auto-publish
-      if (form && form.moderationRequired === false) {
-        this.status = 'published';
+      // Skip calculation if no QA form ID
+      if (!this.qaFormId) {
+        console.log('No QA form ID, skipping score calculation');
+        return next();
+      }
+      
+      // Calculate scores manually first as a fallback
+      let rawScore = 0;
+      let maxScore = 0;
+      
+      // Safe access to parameters - either from human evaluation or AI evaluation
+      let parameters = {};
+      
+      // Safely check humanEvaluation parameters
+      if (this.humanEvaluation && this.humanEvaluation.parameters) {
+        parameters = this.humanEvaluation.parameters;
+      } 
+      // Fallback to AI evaluation parameters
+      else if (this.evaluationData && this.evaluationData.evaluation && this.evaluationData.evaluation.parameters) {
+        parameters = this.evaluationData.evaluation.parameters;
+      }
+      
+      // Calculate from parameters - with safer checking for null values
+      if (parameters) {
+        // Handle both Map objects and plain objects
+        const paramEntries = parameters instanceof Map ? 
+          Array.from(parameters.entries()) : 
+          Object.entries(parameters);
+          
+        for (const [paramName, paramData] of paramEntries) {
+          // Skip if paramData is null or undefined
+          if (!paramData) continue;
+          
+          // Get humanScore safely
+          const humanScore = paramData.humanScore !== undefined ? paramData.humanScore : null;
+          
+          // Get score safely
+          const aiScore = paramData.score !== undefined ? paramData.score : null;
+          
+          // Skip N/A scores with safe null checks
+          if ((humanScore !== null && humanScore === -1) || 
+              (humanScore === null && aiScore !== null && aiScore === -1)) {
+            continue;
+          }
+          
+          // Get score from human evaluation if available, otherwise from AI
+          const score = humanScore !== null ? humanScore : (aiScore || 0);
+            
+          // Add to totals
+          rawScore += score;
+          
+          // Default max score is 5
+          maxScore += 5;
+        }
+      }
+      
+      // Set the scores directly - with safe initialization
+      if (!this.evaluationData) {
+        this.evaluationData = { evaluation: {} };
+      }
+      if (!this.evaluationData.evaluation) {
+        this.evaluationData.evaluation = {};
+      }
+      
+      console.log('Calculated scores:', rawScore, maxScore);
+      
+      // CRITICAL: Save totalScore and maxScore directly to ensure dashboard compatibility
+      this.evaluationData.evaluation.totalScore = rawScore;
+      this.evaluationData.evaluation.maxScore = maxScore;
+      
+      // Ensure they're marked as modified
+      this.markModified('evaluationData');
+      this.markModified('evaluationData.evaluation');
+      this.markModified('evaluationData.evaluation.totalScore');
+      this.markModified('evaluationData.evaluation.maxScore');
+      
+      // Safely initialize or update sectionScores
+      const percentage = maxScore > 0 ? Math.round((rawScore / maxScore) * 100) : 0;
+      
+      // Initialize sectionScores if not present or has null sections
+      if (!this.sectionScores || !this.sectionScores.sections) {
+        this.sectionScores = {
+          sections: {
+            default: {
+              name: "Default Group",
+              rawScore: rawScore,
+              maxScore: maxScore,
+              adjustedScore: rawScore, // No classification impact applied in this simple fix
+              percentage: percentage,
+              parameters: [],
+              classifications: {
+                minor: false,
+                moderate: false,
+                major: false
+              },
+              highestClassification: null,
+              highestClassificationImpact: 0
+            }
+          },
+          overall: {
+            rawScore: rawScore,
+            adjustedScore: rawScore, // No classification impact in simple fix
+            maxScore: maxScore,
+            percentage: percentage
+          }
+        };
+      } else {
+        // Update existing sectionScores with null checking
+        if (!this.sectionScores.overall) {
+          this.sectionScores.overall = {};
+        }
         
-        // Initialize humanEvaluation with default published state
-        if (!this.humanEvaluation) {
-          this.humanEvaluation = {
-            isModerated: true,
-            isPublished: true,
-            moderatedBy: 'system',
-            moderatedAt: new Date()
+        this.sectionScores.overall.rawScore = rawScore;
+        this.sectionScores.overall.adjustedScore = rawScore;
+        this.sectionScores.overall.maxScore = maxScore;
+        this.sectionScores.overall.percentage = percentage;
+        
+        // Update default section if it exists
+        if (this.sectionScores.sections && this.sectionScores.sections.default) {
+          this.sectionScores.sections.default.rawScore = rawScore;
+          this.sectionScores.sections.default.maxScore = maxScore;
+          this.sectionScores.sections.default.adjustedScore = rawScore;
+          this.sectionScores.sections.default.percentage = percentage;
+        } else if (this.sectionScores.sections) {
+          // Create default section if missing
+          this.sectionScores.sections.default = {
+            name: "Default Group",
+            rawScore: rawScore,
+            maxScore: maxScore,
+            adjustedScore: rawScore,
+            percentage: percentage,
+            parameters: [],
+            classifications: {
+              minor: false,
+              moderate: false,
+              major: false
+            },
+            highestClassification: null,
+            highestClassificationImpact: 0
           };
         }
       }
+      
+      // Mark sectionScores as modified
+      this.markModified('sectionScores');
+      
+      // Then try to use the scoring service for a more accurate calculation
+      try {
+        const scoringService = require('../services/scoringService');
+        const scores = await scoringService.calculateEvaluationScores(this, this.qaFormId);
+        
+        // Update with the more accurate scores if valid
+        if (scores && scores.overall) {
+          this.sectionScores = scores;
+          
+          // CRITICAL: Update both places to ensure dashboard compatibility
+          this.evaluationData.evaluation.totalScore = scores.overall.adjustedScore;
+          this.evaluationData.evaluation.maxScore = scores.overall.maxScore;
+          
+          // Mark these as modified again to be sure
+          this.markModified('evaluationData');
+          this.markModified('evaluationData.evaluation');
+          this.markModified('evaluationData.evaluation.totalScore');
+          this.markModified('evaluationData.evaluation.maxScore');
+          this.markModified('sectionScores');
+        }
+      } catch (scoreError) {
+        console.warn('Error using scoring service:', scoreError.message);
+        // Continue with the manually calculated scores
+      }
+      
+      console.log('Final scores in pre-save hook:',
+        'totalScore:', this.evaluationData.evaluation.totalScore,
+        'maxScore:', this.evaluationData.evaluation.maxScore);
     }
     
     next();
   } catch (error) {
+    console.error('Error in pre-save hook:', error);
     next(error);
   }
-});
+});*/
 
 // Create models
 const InteractionAIQA = mongoose.model('InteractionAIQA', interactionAIQASchema);

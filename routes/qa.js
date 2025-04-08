@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
+const { authenticateTokenWithSystemAccess } = require('../middleware/systemAuth');
 const analyticsService = require('../services/analyticsService');
 const qaDetailService = require('../services/qaDetailService');
 const transcriptionService = require('../services/transcriptionService');
@@ -12,7 +13,7 @@ const mongoose = require('mongoose');
 router.use(authenticateToken);
 
 // Get QA dashboard data
-router.get('/dashboard', async (req, res) => {
+router.get('/dashboard', authenticateToken, async (req, res) => {
   try {
     const { agentId, queueId, startDate, endDate, formId } = req.query;
     
@@ -34,7 +35,7 @@ router.get('/dashboard', async (req, res) => {
 });
 
 // Get filter options
-router.get('/filters', async (req, res) => {
+router.get('/filters', authenticateToken, async (req, res) => {
   try {
     const options = await analyticsService.getFilterOptions();
     res.json(options);
@@ -45,7 +46,7 @@ router.get('/filters', async (req, res) => {
 });
 
 // Get QA evaluation detail with comprehensive scoring
-router.get('/evaluation/:id', async (req, res) => {
+router.get('/evaluation/:id', authenticateToken, async (req, res) => {
   try {
     const qaDetail = await qaDetailService.getQAEvaluationDetail(req.params.id);
     if (!qaDetail) {
@@ -76,7 +77,7 @@ router.get('/evaluation/:id', async (req, res) => {
   }
 });
 
-router.get('/evaluation/by-interaction/:interactionId', async (req, res) => {
+router.get('/evaluation/by-interaction/:interactionId', authenticateToken, async (req, res) => {
   try {
     const { interactionId } = req.params;
     
@@ -95,7 +96,7 @@ router.get('/evaluation/by-interaction/:interactionId', async (req, res) => {
   }
 });
 
-router.get('/evaluation/:id/transcription', async (req, res) => {
+router.get('/evaluation/:id/transcription', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { page = 1, limit = 10 } = req.query;
@@ -121,10 +122,13 @@ router.get('/evaluation/:id/transcription', async (req, res) => {
 
 // Enhanced moderation route that correctly calculates scores
 // Enhanced moderation route with proper classification impact handling
-router.post('/evaluation/:id/moderate', async (req, res) => {
+router.post('/evaluation/:id/moderate', authenticateTokenWithSystemAccess, async (req, res) => {
   try {
     const { id } = req.params;
     const moderationData = req.body;
+    
+    // Log the source of the moderation request
+    console.log(`Moderation request from: ${req.user.id === 'system' ? 'System API' : 'User'}`);
     
     console.log('Received moderation data with classifications:', 
       JSON.stringify(Object.entries(moderationData.parameters || {})
@@ -211,8 +215,8 @@ router.post('/evaluation/:id/moderate', async (req, res) => {
       agentComments: moderationData.agentComments || '',
       isModerated: true,
       isPublished: moderationData.isPublished || false,
-      moderatedBy: req.user ? req.user.username : 'Unknown',
-      moderatedByUserId: req.user ? req.user.id : null,
+      moderatedBy: req.user.id === 'system' ? 'System' : (req.user ? req.user.username : 'Unknown'),
+      moderatedByUserId: req.user.id === '1' ? 'system' : (req.user ? req.user.id : null),
       moderatedAt: new Date()
     };
     
@@ -250,7 +254,7 @@ router.post('/evaluation/:id/moderate', async (req, res) => {
 });
 
 // Agent comment route
-router.post('/evaluation/:id/agent-comment', async (req, res) => {
+router.post('/evaluation/:id/agent-comment', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { comment } = req.body;
@@ -476,7 +480,7 @@ const calculateSectionScores = (humanEvalData, qaForm) => {
 };
 
 // Get evaluation scores with classification impacts
-router.get('/evaluation/:id/scores', async (req, res) => {
+router.get('/evaluation/:id/scores', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     

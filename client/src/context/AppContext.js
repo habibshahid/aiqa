@@ -61,7 +61,7 @@ export const AppProvider = ({ children }) => {
       const data = await api.login({ username, password });
       
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user)); // Store user info
+      localStorage.setItem('user', JSON.stringify(data.user));
       setUser(data.user);
   
       // Resume any pending API requests after successful login
@@ -70,8 +70,10 @@ export const AppProvider = ({ children }) => {
       // If this was a re-login from session timeout
       if (showSessionModal) {
         setShowSessionModal(false);
+        // Don't navigate away - the user should stay on the current page
+        // Remove the navigate('/dashboard') line to stay where they are
       } else {
-        // Normal login flow
+        // Normal login flow - only navigate to dashboard if this is a fresh login
         navigate('/dashboard');
       }
   
