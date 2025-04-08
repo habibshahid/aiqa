@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, BarChart, CartesianGrid, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { format } from 'date-fns';
@@ -320,7 +320,9 @@ const Dashboard = () => {
     endDate: format(new Date(), 'yyyy-MM-dd'),
     selectedForm: null
   });
-
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
+  const fetchInProgressRef = useRef(false);
+  const prevFiltersRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -458,7 +460,17 @@ const Dashboard = () => {
       setError(null);
   
       // Prepare query parameters
-      const queryParams = new URLSearchParams();
+
+      const queryParams = new URLSearchParams();  
+      // Add filters to query params - ENSURE NO DUPLICATES
+      if (selectedFilters.agentId) queryParams.append('agentId', selectedFilters.agentId);
+      if (selectedFilters.queueId) queryParams.append('queueId', selectedFilters.queueId);
+      if (selectedFilters.startDate) queryParams.append('startDate', selectedFilters.startDate);
+      if (selectedFilters.endDate) queryParams.append('endDate', selectedFilters.endDate);
+      if (selectedFilters.formId) queryParams.append('formId', selectedFilters.formId);
+
+      // Log what we're fetching
+      console.log('Fetching metrics with params:', queryParams.toString());
       
       // Add filters to query params
       Object.entries(selectedFilters).forEach(([key, value]) => {
@@ -567,34 +579,57 @@ const Dashboard = () => {
   
       return updatedFilters;
     });
-  
-    // Move fetchData outside of setSelectedFilters
-    fetchData();
   };
   
   // Update useEffect to depend on specific values
   useEffect(() => {
-    fetchData();
+    // Skip the first render unless we have a pre-selected form (forms.length === 1)
+    if (isFirstLoad && forms.length !== 1) {
+      setIsFirstLoad(false);
+      return;
+    }
+    
+    // If a fetch is already in progress, don't start another one
+    if (fetchInProgressRef.current) {
+      return;
+    }
+    
+    // Compare current filters with previous to avoid unnecessary fetches
+    const currentFilters = JSON.stringify({
+      agentId: selectedFilters.agentId,
+      queueId: selectedFilters.queueId,
+      startDate: selectedFilters.startDate,
+      endDate: selectedFilters.endDate,
+      formId: selectedFilters.formId
+    });
+    
+    if (prevFiltersRef.current === currentFilters) {
+      return; // No change in filters, skip the fetch
+    }
+    
+    // Store current filters for future comparison
+    prevFiltersRef.current = currentFilters;
+    
+    // Debounce the fetch to prevent rapid consecutive calls
+    const timer = setTimeout(() => {
+      // Set flag to indicate fetch is in progress
+      fetchInProgressRef.current = true;
+      
+      fetchData().finally(() => {
+        // Clear the flag when fetch completes (either success or failure)
+        fetchInProgressRef.current = false;
+      });
+    }, 300); // 300ms debounce
+    
+    return () => clearTimeout(timer);
   }, [
     selectedFilters.agentId, 
     selectedFilters.queueId, 
     selectedFilters.startDate, 
     selectedFilters.endDate, 
-    selectedFilters.formId
+    selectedFilters.formId,
+    forms.length
   ]);
-
-  /*useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  const handleFilterChange = (e) => {
-    console.log(e)
-    const { name, value } = e.target;
-    setSelectedFilters(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };*/
 
   if (loading) {
     return (
