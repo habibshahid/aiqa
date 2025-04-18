@@ -7,7 +7,8 @@ import Select from 'react-select';
 import { Lock } from 'lucide-react';
 import { api } from '../services/api';
 
-const AgentComparison = () => {
+const AgentComparison = (props) => {
+  console.log("AgentComparison props:", props);
   const navigate = useNavigate();
   const [agents, setAgents] = useState([]);
   const [parameters, setParameters] = useState([]);
@@ -26,20 +27,42 @@ const AgentComparison = () => {
     selectedForm: null
   });
 
+  // Get the props if they exist
+  const { agentRestricted, agentId } = props;
+
   // Get user profile to determine if agent or admin
   useEffect(() => {
     const fetchUserInfo = async () => {
       try {
+        // Get user info directly from API
         const userInfo = await api.getUserProfile();
+        console.log('User info from API:', userInfo);
         setUserInfo(userInfo);
         
-        // Check if user has isAdmin property
-        const isAdmin = userInfo?.isAdmin === true;
-        setIsRestrictedView(!isAdmin && !!userInfo?.agentId);
-        
-        // If not admin and has agent ID, pre-select their agent
-        if (!isAdmin && userInfo?.agentId) {
-          // We'll handle this after agents are loaded
+        // IMPORTANT: Check if user is an agent directly from userInfo
+        // This is the key part that needs to work regardless of props
+        if (userInfo.isAgent && !userInfo.isAdmin && userInfo.agentId) {
+          console.log('User is an agent with ID:', userInfo.agentId);
+          setIsRestrictedView(true);
+          
+          // Also check if props containing agent info are present
+          if (agentRestricted && agentId) {
+            console.log('Using agent ID from props:', agentId);
+          } else {
+            console.log('Using agent ID from API:', userInfo.agentId);
+          }
+          
+          // Pre-select the agent using the agent ID (from props or API)
+          const agentIdToUse = agentId || userInfo.agentId;
+          
+          // For agent comparison, we want to preselect just the agent's ID
+          const agentOption = { value: agentIdToUse, label: userInfo.username || 'Your Performance' };
+          setFilters(prev => ({
+            ...prev,
+            selectedAgents: [agentOption]
+          }));
+        } else {
+          console.log('User is not restricted to agent view');
         }
       } catch (error) {
         console.error('Error fetching user profile:', error);
@@ -48,6 +71,18 @@ const AgentComparison = () => {
     
     fetchUserInfo();
   }, []);
+
+  const handleAgentChange = (selected) => {
+    // If in restricted view, prevent changes completely by returning early
+    if (isRestrictedView || (userInfo && userInfo.isAgent && !userInfo.isAdmin)) {
+      console.log('Agent change blocked - user is an agent');
+      return;
+    }
+    
+    // Only proceed if not in restricted view
+    console.log('Agent selection changed:', selected);
+    handleFilterChange('selectedAgents', selected);
+  };
 
   // Define fetchForms as a useCallback at the top level
   const fetchForms = useCallback(async () => {
@@ -81,6 +116,15 @@ const AgentComparison = () => {
   useEffect(() => {
     const fetchOptions = async () => {
       try {
+        // First make sure we have user info
+        if (!userInfo) {
+          console.log('Waiting for user info before fetching agents');
+          return; // Exit early and wait for user info
+        }
+        
+        console.log('Fetching agents with userInfo:', 
+          userInfo.isAgent ? 'Agent' : 'Admin');
+        
         const [agentsResponse, formsResponse] = await Promise.all([
           fetch('/api/agents', {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
@@ -99,23 +143,74 @@ const AgentComparison = () => {
           formsResponse.json()
         ]);
         
-        setAgents(agentsData);
+        console.log('Fetched', agentsData.length, 'agents');
         
-        // If in restricted view and user is not admin, filter agents
-        if (isRestrictedView && userInfo?.agentId) {
-          // Find the agent object for the current user
-          const userAgent = agentsData.find(a => a.id.toString() === userInfo.agentId.toString());
-          if (userAgent) {
-            // Pre-select the user's agent
-            setFilters(prev => ({ 
-              ...prev, 
-              selectedAgents: [{ 
-                value: userAgent.id,
-                label: userAgent.name
-              }]
-            }));
+        // IMPORTANT: Check directly if user is an agent
+        // This ensures we restrict the view regardless of component props
+        if (userInfo.isAgent && !userInfo.isAdmin) {
+          console.log('User is an agent - restricting view');
+          setIsRestrictedView(true);
+          
+          // Get the agent ID directly from userInfo
+          const agentIdToUse = userInfo.agentId;
+          console.log('Agent ID to filter by:', agentIdToUse);
+          
+          if (agentIdToUse) {
+            // Use strict filtering - only include current agent
+            const agentDataForUser = agentsData.filter(agent => 
+              String(agent.id) === String(agentIdToUse)
+            );
+            
+            console.log('Filtered agents for user:', agentDataForUser);
+            
+            // Check if we found the agent
+            if (agentDataForUser.length > 0) {
+              // Set the agents list to only include this one agent
+              setAgents(agentDataForUser);
+              
+              // Update filters with the current agent
+              const agentOption = {
+                value: agentDataForUser[0].id,
+                label: agentDataForUser[0].name
+              };
+              
+              console.log('Setting selected agent to:', agentOption);
+              setFilters(prev => ({
+                ...prev,
+                selectedAgents: [agentOption]
+              }));
+            } else {
+              console.log('Agent not found in list - this is a problem!');
+              
+              // As a fallback, manually add the agent to the list
+              const fallbackAgent = {
+                id: agentIdToUse,
+                name: userInfo.username || 'You'
+              };
+              
+              setAgents([fallbackAgent]);
+              
+              const agentOption = {
+                value: fallbackAgent.id,
+                label: fallbackAgent.name
+              };
+              
+              console.log('Using fallback agent:', agentOption);
+              setFilters(prev => ({
+                ...prev,
+                selectedAgents: [agentOption]
+              }));
+            }
+          } else {
+            console.log('No agent ID found - cannot filter agents');
+            setAgents([]);
           }
+        } else {
+          // Admin view - show all agents
+          console.log('Admin view - showing all agents');
+          setAgents(agentsData);
         }
+        
         
         // Extract parameters from QA forms
         const params = [];
@@ -138,7 +233,7 @@ const AgentComparison = () => {
     };
     
     fetchOptions();
-  }, [userInfo, isRestrictedView]);
+  }, [userInfo]);
 
   useEffect(() => {
     fetchForms();
@@ -203,8 +298,9 @@ const AgentComparison = () => {
   };
 
   const handleFilterChange = (name, value) => {
-    // If restricted view, don't allow changing agents
-    if (isRestrictedView && name === 'selectedAgents') {
+    // If restricted view or user is agent, don't allow changing agents
+    if ((isRestrictedView || (userInfo && userInfo.isAgent && !userInfo.isAdmin)) && name === 'selectedAgents') {
+      console.log('Blocked changing agents - user is an agent');
       return;
     }
     
@@ -234,10 +330,24 @@ const AgentComparison = () => {
     });
   };
 
+  // For debugging - log current state on each render
+  useEffect(() => {
+    console.log('Current component state:', { 
+      isRestrictedView, 
+      agentsCount: agents.length,
+      selectedAgents: filters.selectedAgents,
+      userInfo: userInfo ? {
+        isAgent: userInfo.isAgent,
+        isAdmin: userInfo.isAdmin,
+        agentId: userInfo.agentId
+      } : 'not loaded'
+    });
+  }, [isRestrictedView, agents.length, filters.selectedAgents, userInfo]);
+
   return (
     <div className="container-fluid py-4">      
       {/* Restricted View Notice */}
-      {isRestrictedView && (
+      {(isRestrictedView || (userInfo && userInfo.isAgent && !userInfo.isAdmin)) && (
         <div className="alert alert-info d-flex align-items-center mb-4">
           <Lock size={18} className="me-2" />
           <div>
@@ -292,7 +402,7 @@ const AgentComparison = () => {
             </div>
             
             <div className="col-md-6">
-              <label className="form-label">Agents</label>
+              <label className="form-label">Select Agents to Compare</label>
               <Select
                 isMulti
                 options={agents.map(agent => ({
@@ -300,11 +410,14 @@ const AgentComparison = () => {
                   label: agent.name
                 }))}
                 value={filters.selectedAgents}
-                onChange={(selected) => handleFilterChange('selectedAgents', selected)}
-                placeholder="Select agents to compare"
-                isDisabled={isRestrictedView}
+                onChange={handleAgentChange}
+                placeholder={isRestrictedView || (userInfo && userInfo.isAgent && !userInfo.isAdmin) ? 
+                  "Your performance only" : "Select agents to compare"}
+                isDisabled={isRestrictedView || (userInfo && userInfo.isAgent && !userInfo.isAdmin)}
+                noOptionsMessage={() => isRestrictedView || (userInfo && userInfo.isAgent && !userInfo.isAdmin) ? 
+                  "Restricted to your performance only" : "No agents available"}
               />
-              {isRestrictedView && (
+              {(isRestrictedView || (userInfo && userInfo.isAgent && !userInfo.isAdmin)) && (
                 <small className="text-muted">You can only view your own performance data</small>
               )}
             </div>

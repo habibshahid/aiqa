@@ -148,30 +148,8 @@ export const api = {
   
   // Fixed getUserProfile to prevent recursion
   getUserProfile: async () => {
-    // Return cached user data if available to prevent repeated calls
-    const cachedUserData = localStorage.getItem('cachedUserProfile');
-    if (cachedUserData) {
-      try {
-        const userData = JSON.parse(cachedUserData);
-        
-        // If we have complete user data cached, return it
-        if (userData && userData.id && (userData.isAgent !== undefined || userData.isAdmin !== undefined)) {
-          return userData;
-        }
-      } catch (e) {
-        console.error('Error parsing cached user profile', e);
-        // Continue to fetch fresh data if cache parsing fails
-      }
-    }
-    
-    // Use a flag to prevent recursive calls during the same execution cycle
-    if (isGettingUserProfile) {
-      // If already fetching, return a promise that resolves with empty user data
-      return { id: null, isAgent: false, isAdmin: false };
-    }
-    
+    // Return cached user data if available to prevent repeated calls    
     try {
-      isGettingUserProfile = true;
       const userData = await request('/user/profile');
       
       // Store user role information in localStorage for easy access
@@ -181,15 +159,11 @@ export const api = {
         agentId: userData.agentId || userData.id
       };
       
-      // Update user roles in localStorage
-      localStorage.setItem('userRoles', JSON.stringify(userRoles));
-      
       // Cache the complete user profile to reduce API calls
       const completeUserData = {
         ...userData,
         ...userRoles
       };
-      localStorage.setItem('cachedUserProfile', JSON.stringify(completeUserData));
       
       return completeUserData;
     } catch (error) {

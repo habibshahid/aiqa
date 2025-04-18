@@ -10,7 +10,9 @@ router.use(authenticateToken);
 // Get agent comparison data
 router.get('/agent-comparison', async (req, res) => {
   try {
-    const { startDate, endDate, agents, parameters, formId } = req.query;
+    const { startDate, endDate, agentsData, parameters, formId } = req.query;
+
+    let agents = agentsData;
 
     if (!req.user.isAdmin && req.user.agentId) {
       agents = req.user.agentId.toString();
@@ -194,8 +196,10 @@ router.get('/agent-comparison', async (req, res) => {
 // Get trend analysis data
 router.get('/trends', async (req, res) => {
   try {
-    const { startDate, endDate, agentId, queueId, interval = 'day', formId } = req.query;
+    const { startDate, endDate, agentIdentification, queueId, interval = 'day', formId } = req.query;
     
+    let agentId = agentIdentification;
+
     if (!req.user.isAdmin && req.user.agentId) {
       agentId = req.user.agentId.toString();
       

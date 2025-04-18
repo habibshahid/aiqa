@@ -6,7 +6,7 @@ import Select from 'react-select';
 import { Lock } from 'lucide-react';
 import { api } from '../services/api';
 
-const TrendAnalysis = ({ agentRestricted, agentId }) => {
+const TrendAnalysis = () => {
   const [agents, setAgents] = useState([]);
   const [queues, setQueues] = useState([]);
   const [trends, setTrends] = useState([]);
@@ -14,8 +14,9 @@ const TrendAnalysis = ({ agentRestricted, agentId }) => {
   const [error, setError] = useState(null);
   const [forms, setForms] = useState([]);
   const [formsLoading, setFormsLoading] = useState(true);
-  const [isRestrictedView, setIsRestrictedView] = useState(false);
   const [userInfo, setUserInfo] = useState(null);
+  const [isRestrictedView, setIsRestrictedView] = useState(false);
+  
   const [filters, setFilters] = useState({
     startDate: format(subMonths(new Date(), 3), 'yyyy-MM-dd'),
     endDate: format(new Date(), 'yyyy-MM-dd'),
@@ -32,13 +33,15 @@ const TrendAnalysis = ({ agentRestricted, agentId }) => {
         const userInfo = await api.getUserProfile();
         setUserInfo(userInfo);
         
-        // Check if user has isAdmin property
-        const isAdmin = userInfo?.isAdmin === true;
-        setIsRestrictedView(!isAdmin && !!userInfo?.agentId);
-        
-        // If not admin and has agent ID, pre-select their agent
-        if (!isAdmin && userInfo?.agentId) {
-          // We'll handle this after agents are loaded
+        // If user is an agent, pre-select their ID in the filters and set restricted view
+        if (userInfo.isAgent && !userInfo.isAdmin && userInfo.agentId) {
+          setIsRestrictedView(true);
+          
+          // UPDATED: Use selectedAgent instead of agentId to match your filter structure
+          setFilters(prev => ({
+            ...prev,
+            selectedAgent: { value: userInfo.agentId, label: userInfo.username || 'You' }
+          }));
         }
       } catch (error) {
         console.error('Error fetching user profile:', error);
@@ -145,6 +148,10 @@ const TrendAnalysis = ({ agentRestricted, agentId }) => {
         return;
       }
   
+      if (filters.selectedAgent) {
+        params.append('agentId', filters.selectedAgent.value);
+      }
+      
       // Start loading
       setLoading(true);
       setError(null);
@@ -196,12 +203,14 @@ const TrendAnalysis = ({ agentRestricted, agentId }) => {
   };
 
   const handleFilterChange = (name, value) => {
-    // If in restricted view, don't allow changing the agent
-    if (isRestrictedView && name === 'selectedAgent') {
-      return;
-    }
+    // Direct filter change for simple inputs
+    setFilters(prev => ({
+      ...prev,
+      [name]: value
+    }));
     
-    setFilters(prev => ({ ...prev, [name]: value }));
+    // For debugging purposes
+    console.log(`Filter changed: ${name} =`, value);
   };
 
   // Format date for display based on interval
@@ -242,7 +251,7 @@ const TrendAnalysis = ({ agentRestricted, agentId }) => {
         <div className="alert alert-info d-flex align-items-center mb-4">
           <Lock size={18} className="me-2" />
           <div>
-            <strong>Agent View:</strong> You can only see your own performance data.
+            <strong>Agent View:</strong> You can only see trends for your own evaluations.
           </div>
         </div>
       )}
@@ -302,9 +311,9 @@ const TrendAnalysis = ({ agentRestricted, agentId }) => {
                 }))}
                 value={filters.selectedAgent}
                 onChange={(selected) => handleFilterChange('selectedAgent', selected)}
-                isClearable={!isRestrictedView}
-                placeholder={isRestrictedView ? "Your data only" : "All Agents"}
                 isDisabled={isRestrictedView}
+                placeholder="All Agents"
+                isClearable={!isRestrictedView}
               />
               {isRestrictedView && (
                 <small className="text-muted">You can only view your own data</small>

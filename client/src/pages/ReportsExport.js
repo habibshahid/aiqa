@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import Select from 'react-select';
 import { FileDown, FileText, FileSpreadsheet, UserCheck } from 'lucide-react';
 import { api } from '../services/api';
+import { Lock } from 'lucide-react';
 
 const ReportsExport = () => {
   const navigate = useNavigate();
@@ -15,7 +16,9 @@ const ReportsExport = () => {
   const [formsLoading, setFormsLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  
+  const [userInfo, setUserInfo] = useState(null);
+  const [isRestrictedView, setIsRestrictedView] = useState(false);
+
   const [filters, setFilters] = useState({
     startDate: format(new Date(new Date().setDate(new Date().getDate() - 30)), 'yyyy-MM-dd'),
     endDate: format(new Date(), 'yyyy-MM-dd'),
@@ -25,6 +28,28 @@ const ReportsExport = () => {
     reportType: { value: 'evaluations', label: 'Evaluations' }
   });
 
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        const userInfo = await api.getUserProfile();
+        setUserInfo(userInfo);
+        
+        // If user is an agent, pre-select their ID in the filters and set restricted view
+        if (userInfo.isAgent && !userInfo.isAdmin && userInfo.agentId) {
+          setIsRestrictedView(true);
+          setFilters(prev => ({
+            ...prev,
+            agentId: userInfo.agentId
+          }));
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      }
+    };
+    
+    fetchUserInfo();
+  }, []);
+  
   // Fetch filter options
   useEffect(() => {
     const fetchOptions = async () => {
@@ -55,6 +80,15 @@ const ReportsExport = () => {
         setQueues(queuesData);
         setForms(formsData);
         
+        {isRestrictedView && (
+          <div className="alert alert-info d-flex align-items-center mb-4">
+            <Lock size={18} className="me-2" />
+            <div>
+              <strong>Agent View:</strong> You can only export reports for your own evaluations.
+            </div>
+          </div>
+        )}
+
         // If there's only one form, select it automatically
         if (formsData.length === 1) {
           const form = {
@@ -134,13 +168,18 @@ const ReportsExport = () => {
     }
   };
 
-  const handleFilterChange = (name, value) => {
-    setFilters(prev => ({ ...prev, [name]: value }));
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
     
-    // If form selection changes, fetch the form parameters
-    if (name === 'selectedForm' && value) {
-      fetchFormParameters(value.value);
+    // If in restricted view, don't allow changing the agent
+    if (isRestrictedView && name === 'agentId') {
+      return;
     }
+    
+    setFilters(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
   const exportReport = async () => {
@@ -275,17 +314,27 @@ const ReportsExport = () => {
                 {filters.reportType.value === 'evaluations' && (
                   <>
                     <div className="col-md-6">
-                      <label className="form-label">Agent (Optional)</label>
-                      <Select
-                        options={agents.map(agent => ({
-                          value: agent.id,
-                          label: agent.name
-                        }))}
-                        value={filters.selectedAgent}
-                        onChange={(selected) => handleFilterChange('selectedAgent', selected)}
-                        isClearable
-                        placeholder="All Agents"
-                      />
+                      <label className="form-label">Agent</label>
+                      <select 
+                        className="form-select"
+                        name="agentId"
+                        value={filters.agentId}
+                        onChange={handleFilterChange}
+                        disabled={isRestrictedView}
+                      >
+                        <option value="">All Agents</option>
+                        {/* Only show current agent if restricted */}
+                        {agents
+                          .filter(agent => !isRestrictedView || agent.id === filters.agentId)
+                          .map(agent => (
+                            <option key={agent.id} value={agent.id}>
+                              {agent.name}
+                            </option>
+                          ))}
+                      </select>
+                      {isRestrictedView && (
+                        <small className="text-muted">You can only export your own data</small>
+                      )}
                     </div>
                     
                     <div className="col-md-6">
