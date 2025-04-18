@@ -6,7 +6,7 @@ import Select from 'react-select';
 import { Lock } from 'lucide-react';
 import { api } from '../services/api';
 
-const TrendAnalysis = () => {
+const TrendAnalysis = ({ agentRestricted, agentId }) => {
   const [agents, setAgents] = useState([]);
   const [queues, setQueues] = useState([]);
   const [trends, setTrends] = useState([]);

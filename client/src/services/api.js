@@ -215,39 +215,73 @@ export const api = {
   // Permissions related methods
   getPermissions: async () => {
     try {
+      console.log('Fetching permissions from API...');
       const response = await request('/user/permissions');
-      return response;
+      
+      // Validate that we got an object with expected structure
+      if (response && typeof response === 'object') {
+        console.log('Successfully fetched permissions:', response);
+        
+        // Cache valid permissions
+        localStorage.setItem('cachedPermissions', JSON.stringify(response));
+        return response;
+      } else {
+        throw new Error('Invalid permissions data format');
+      }
     } catch (error) {
       console.error('Error fetching permissions:', error);
       
-      // Default fallback permissions if API fails
-      const fallbackPermissions = {
-        'dashboard': { 'read': true },
-        'qa-forms': { 'read': true }
-      };
+      // Try to use cached permissions first
+      const cachedPermissions = localStorage.getItem('cachedPermissions');
+      if (cachedPermissions) {
+        try {
+          const parsedPermissions = JSON.parse(cachedPermissions);
+          console.log('Using cached permissions:', parsedPermissions);
+          return parsedPermissions;
+        } catch (e) {
+          console.error('Error parsing cached permissions:', e);
+        }
+      }
       
-      // Get user roles from localStorage
+      // Get user roles from localStorage as a fallback
       const userRolesStr = localStorage.getItem('userRoles');
+      let userRoles = null;
+      
       if (userRolesStr) {
         try {
-          const userRoles = JSON.parse(userRolesStr);
-          
-          // Add role-specific permissions
-          if (userRoles.isAgent) {
-            fallbackPermissions['evaluations'] = { 'read': true };
-          }
-          
-          if (userRoles.isAdmin) {
-            fallbackPermissions['qa-forms']['write'] = true;
-            fallbackPermissions['evaluations'] = { 'read': true, 'write': true };
-            fallbackPermissions['groups'] = { 'read': true };
-          }
+          userRoles = JSON.parse(userRolesStr);
         } catch (e) {
           console.error('Error parsing user roles:', e);
         }
       }
       
-      return fallbackPermissions;
+      // Create sensible default permissions based on roles
+      const defaultPermissions = {
+        'dashboard': { 'read': true },
+        'evaluations': { 'read': true }
+      };
+      
+      // If user is an agent, give them the specific agent permissions
+      if (userRoles && userRoles.isAgent) {
+        // Add appropriate evaluations permissions
+        defaultPermissions['evaluations'] = { 'read': true, 'write': true };
+        
+        // Add agent-specific permissions from the example you provided
+        defaultPermissions['exports'] = { 'read': true };
+        defaultPermissions['trend-analysis'] = { 'read': true };
+        defaultPermissions['agent-comparison'] = { 'read': true };
+      }
+      
+      // If user is admin, give them more permissions
+      if (userRoles && userRoles.isAdmin) {
+        defaultPermissions['qa-forms'] = { 'read': true, 'write': true };
+        defaultPermissions['criteria'] = { 'read': true, 'write': true };
+        defaultPermissions['groups'] = { 'read': true, 'write': true };
+        defaultPermissions['settings'] = { 'read': true, 'write': true };
+      }
+      
+      console.log('Using fallback default permissions:', defaultPermissions);
+      return defaultPermissions;
     }
   },
 

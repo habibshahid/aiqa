@@ -1,171 +1,292 @@
-// routes/user.js
+// routes/users.js
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
-const bcrypt = require('bcryptjs');
 const { authenticateToken } = require('../middleware/auth');
-const tablePrefix = process.env.TABLE_PREFIX;
+const bcrypt = require('bcryptjs');
+const { verifyPassword, hashPassword } = require('../services/passwordService');
+const { determineUserRole } = require('../middleware/userRole');
+const tablePrefix = process.env.TABLE_PREFIX || 'yovo_tbl_';
 
-// Protect all routes
-router.use(authenticateToken);
+// Apply authentication middleware to protected routes
+router.use('/profile', authenticateToken);
+router.use('/permissions', authenticateToken);
+router.use('/change-password', authenticateToken);
+router.use('/settings', authenticateToken);
 
-router.post('/change-password', async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const userId = req.user.id;
-
-    // Validate input
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ 
-        message: 'Current password and new password are required' 
-      });
-    }
-
-    // Get user's current password
-    const [users] = await db.query(
-      `SELECT password FROM ${tablePrefix}users WHERE id = ?`,
-      [userId]
-    );
-
-    if (!users.length) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Verify current password
-    const isValidPassword = await bcrypt.compare(currentPassword, users[0].password);
-    if (!isValidPassword) {
-      return res.status(401).json({ message: 'Current password is incorrect' });
-    }
-
-    // Hash new password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(newPassword, salt);
-
-    // Update password
-    await db.query(
-      `UPDATE ${tablePrefix}users SET password = ? WHERE id = ?`,
-      [hashedPassword, userId]
-    );
-
-    // Log the password change
-    await db.query(
-      `INSERT INTO ${tablePrefix}password_history (user_id, password_hash) VALUES (?, ?)`,
-      [userId, hashedPassword]
-    );
-
-    res.json({ message: 'Password changed successfully' });
-
-  } catch (error) {
-    console.error('Password change error:', error);
-    res.status(500).json({ message: 'Error changing password' });
-  }
-});
-
-// Get user permissions
-router.get('/permissions', async (req, res) => {
-  try {
-    const [rows] = await db.query(`
-      SELECT 
-        g.permissions,
-        g.name as group_name
-      FROM ${tablePrefix}users u
-      LEFT JOIN ${tablePrefix}aiqa_users_groups ug ON u.id = ug.user_id
-      LEFT JOIN ${tablePrefix}aiqa_groups g ON ug.group_id = g.id
-      WHERE u.id = ?
-    `, [req.user.id]);
-
-    console.log(rows)
-
-    // Default permissions for all users - at minimum they can view dashboards and QA forms
-    let defaultPermissions = {
-      'dashboard': { 'read': true },
-      'qa-forms': { 'read': true }
-    };
-
-    try {
-      // Log the raw permissions for debugging
-      //console.log('Raw permissions:', rows[0].permissions);
-      
-      // Parse permissions
-      let userPermissions = rows[0].permissions;
-      
-      // If permissions is already an object, stringify it first
-      if (!userPermissions || Object.keys(userPermissions).length === 0) {
-        console.log('No permissions found for user, providing defaults');
-        
-        // If user is an agent but not admin, provide agent-specific permissions
-        if (req.user.isAgent && !req.user.isAdmin) {
-          defaultPermissions['evaluations'] = { 'read': true };
-        }
-        
-        // If user is an admin, provide admin-specific permissions
-        if (req.user.isAdmin) {
-          defaultPermissions['qa-forms']['write'] = true;
-          defaultPermissions['evaluations'] = { 'read': true, 'write': true };
-          defaultPermissions['groups'] = { 'read': true };
-        }
-        
-        return res.json(defaultPermissions);
-      }
-      
-      const parsedPermissions = (userPermissions);
-      //console.log('Parsed permissions:', parsedPermissions);
-      
-      res.json(parsedPermissions);
-    } catch (parseError) {
-      console.error('Error parsing permissions:', parseError);
-      console.log('Problematic permissions string:', rows[0].permissions);
-      res.json(defaultPermissions);
-    }
-  } catch (error) {
-    console.error('Database error:', error);
-    res.status(500).json({ message: 'Error fetching permissions' });
-  }
-});
-
-// Get user profile
+/**
+ * Get user profile
+ */
 router.get('/profile', async (req, res) => {
   try {
+    // Check if user ID exists
     if (!req.user || !req.user.id) {
       return res.status(401).json({ message: 'User not authenticated' });
     }
 
+    // Get user information from database
     const [users] = await db.query(
-      `SELECT id, username, email, first_name, last_name, last_login FROM ${tablePrefix}users WHERE id = ?`,
+      `SELECT 
+        id, username, first_name, last_name, email, is_agent, last_login
+      FROM ${tablePrefix}users
+      WHERE id = ?`,
       [req.user.id]
     );
-
-    if (!users.length) {
+    
+    if (users.length === 0) {
       return res.status(404).json({ message: 'User not found' });
     }
-
-    res.json(users[0]);
+    
+    const user = users[0];
+    
+    // Add isAdmin and isAgent properties
+    user.isAdmin = user.is_agent === 0;
+    user.isAgent = user.is_agent === 1;
+    
+    // For agents, include agentId
+    if (user.isAgent) {
+      user.agentId = user.id;
+    }
+    
+    res.json(user);
   } catch (error) {
-    console.error('Error fetching profile:', error);
-    res.status(500).json({ message: 'Error fetching profile' });
+    console.error('Error getting user profile:', error);
+    res.status(500).json({ message: 'Error fetching user profile' });
   }
 });
 
-// Update user profile
+/**
+ * Get user permissions from database
+ */
+router.get('/permissions', async (req, res) => {
+  try {
+    // Check if user ID exists
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+    
+    // Get user's group memberships from the junction table
+    const [userGroups] = await db.query(
+      `SELECT g.id, g.name, g.permissions
+       FROM ${tablePrefix}aiqa_users_groups ug
+       JOIN ${tablePrefix}aiqa_groups g ON ug.group_id = g.id
+       WHERE ug.user_id = ?`,
+      [req.user.id]
+    );
+    
+    if (userGroups.length === 0) {
+      console.log(`No groups found for user ${req.user.id}, using role-based defaults`);
+      
+      // Use default permissions based on is_agent flag
+      const [users] = await db.query(
+        `SELECT is_agent FROM ${tablePrefix}users WHERE id = ?`,
+        [req.user.id]
+      );
+      
+      if (users.length === 0) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      
+      // Determine if admin or agent and use appropriate defaults
+      const isAdmin = users[0].is_agent === 0;
+      
+      // Get default permissions from groups table
+      const defaultGroupId = isAdmin ? 1 : 2; // 1=Admin, 2=Agent
+      
+      const [defaultGroup] = await db.query(
+        `SELECT permissions FROM ${tablePrefix}aiqa_groups WHERE id = ?`,
+        [defaultGroupId]
+      );
+      
+      if (defaultGroup.length === 0) {
+        return res.status(404).json({ message: 'Default group not found' });
+      }
+      
+      // Parse JSON permissions from the group
+      let permissions = {};
+      try {
+        permissions = JSON.parse(defaultGroup[0].permissions);
+      } catch (e) {
+        console.error('Error parsing default group permissions:', e);
+      }
+      
+      console.log(`Using default permissions for ${isAdmin ? 'admin' : 'agent'} user:`, permissions);
+      return res.json(permissions);
+    }
+    
+    // Merge permissions from all groups the user belongs to
+    const mergedPermissions = {};
+    
+    for (const group of userGroups) {
+      try {
+        // Parse permissions JSON from the database
+        const groupPermissions = typeof group.permissions === 'string' 
+          ? JSON.parse(group.permissions) 
+          : group.permissions;
+        
+        // Merge into the accumulated permissions, giving precedence to 'true' values
+        for (const [resource, actions] of Object.entries(groupPermissions)) {
+          if (!mergedPermissions[resource]) {
+            mergedPermissions[resource] = {};
+          }
+          
+          for (const [action, allowed] of Object.entries(actions)) {
+            // If permission is already set to true, keep it true
+            mergedPermissions[resource][action] = mergedPermissions[resource][action] || allowed;
+          }
+        }
+      } catch (e) {
+        console.error(`Error parsing permissions for group ${group.id}:`, e);
+      }
+    }
+    
+    console.log(`Final merged permissions for user ${req.user.id}:`, mergedPermissions);
+    res.json(mergedPermissions);
+  } catch (error) {
+    console.error('Error getting user permissions:', error);
+    res.status(500).json({ message: 'Error fetching user permissions' });
+  }
+});
+
+/**
+ * Update user profile
+ */
 router.put('/profile', async (req, res) => {
   try {
     const { first_name, last_name, email } = req.body;
     
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ message: 'User not authenticated' });
+    // Validate input
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
     }
-
+    
+    // Update user information
     await db.query(
-      'UPDATE users SET first_name = ?, last_name = ?, email = ? WHERE id = ?',
-      [first_name, last_name, email, req.user.id]
+      `UPDATE ${tablePrefix}users
+       SET first_name = ?, last_name = ?, email = ?
+       WHERE id = ?`,
+      [first_name || null, last_name || null, email, req.user.id]
     );
-
+    
     res.json({ message: 'Profile updated successfully' });
   } catch (error) {
-    console.error('Error updating profile:', error);
-    res.status(500).json({ message: 'Error updating profile' });
+    console.error('Error updating user profile:', error);
+    res.status(500).json({ message: 'Error updating user profile' });
   }
 });
 
+/**
+ * Change password
+ */
+router.post('/change-password', async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    
+    // Validate input
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Both current and new password are required' });
+    }
+    
+    // Get user's current password hash
+    const [users] = await db.query(
+      `SELECT password FROM ${tablePrefix}users WHERE id = ?`,
+      [req.user.id]
+    );
+    
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Verify current password
+    const passwordValid = await verifyPassword(currentPassword, users[0].password);
+    if (!passwordValid) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+    
+    // Hash new password
+    const hashedPassword = await hashPassword(newPassword);
+    
+    // Update password
+    await db.query(
+      `UPDATE ${tablePrefix}users SET password = ? WHERE id = ?`,
+      [hashedPassword, req.user.id]
+    );
+    
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Error changing password:', error);
+    res.status(500).json({ message: 'Error changing password' });
+  }
+});
 
+/**
+ * Get user settings
+ */
+router.get('/settings', async (req, res) => {
+  try {
+    // Get user settings from database
+    const [settings] = await db.query(
+      `SELECT settings FROM ${tablePrefix}user_settings WHERE user_id = ?`,
+      [req.user.id]
+    );
+    
+    if (settings.length === 0) {
+      // Return default settings if none found
+      return res.json({
+        theme: 'light',
+        notifications: true,
+        language: 'en'
+      });
+    }
+    
+    // Parse settings JSON
+    let userSettings = {};
+    try {
+      userSettings = JSON.parse(settings[0].settings);
+    } catch (e) {
+      console.error('Error parsing user settings:', e);
+    }
+    
+    res.json(userSettings);
+  } catch (error) {
+    console.error('Error getting user settings:', error);
+    res.status(500).json({ message: 'Error fetching user settings' });
+  }
+});
+
+/**
+ * Update user settings
+ */
+router.put('/settings', async (req, res) => {
+  try {
+    const settings = req.body;
+    
+    // Serialize settings to JSON
+    const settingsJson = JSON.stringify(settings);
+    
+    // Try to update existing settings first
+    const [result] = await db.query(
+      `UPDATE ${tablePrefix}user_settings 
+       SET settings = ? 
+       WHERE user_id = ?`,
+      [settingsJson, req.user.id]
+    );
+    
+    // If no rows affected, insert new settings
+    if (result.affectedRows === 0) {
+      await db.query(
+        `INSERT INTO ${tablePrefix}user_settings (user_id, settings)
+         VALUES (?, ?)`,
+        [req.user.id, settingsJson]
+      );
+    }
+    
+    res.json({ message: 'Settings updated successfully' });
+  } catch (error) {
+    console.error('Error updating user settings:', error);
+    res.status(500).json({ message: 'Error updating user settings' });
+  }
+});
+
+// Export the router
 module.exports = router;

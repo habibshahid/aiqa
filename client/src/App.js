@@ -30,6 +30,7 @@ import 'shepherd.js/dist/css/shepherd.css';
 
 const AgentRestricted = ({ children }) => {
   const [userRoles, setUserRoles] = useState(null);
+  const [permissions, setPermissions] = useState(null);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
   const navigate = useNavigate();
@@ -37,9 +38,24 @@ const AgentRestricted = ({ children }) => {
   useEffect(() => {
     // Get user role information
     const savedRoles = localStorage.getItem('userRoles');
+    const savedPermissions = localStorage.getItem('cachedPermissions');
+    
     if (savedRoles) {
-      setUserRoles(JSON.parse(savedRoles));
+      try {
+        setUserRoles(JSON.parse(savedRoles));
+      } catch (e) {
+        console.error('Error parsing saved roles:', e);
+      }
     }
+    
+    if (savedPermissions) {
+      try {
+        setPermissions(JSON.parse(savedPermissions));
+      } catch (e) {
+        console.error('Error parsing saved permissions:', e);
+      }
+    }
+    
     setLoading(false);
   }, []);
 
@@ -55,25 +71,42 @@ const AgentRestricted = ({ children }) => {
 
   // If user is an agent but not admin, check if they should access this route
   if (userRoles && userRoles.isAgent && !userRoles.isAdmin) {
-    // List of routes agents should not access
-    const adminOnlyRoutes = [
-      '/new-evaluations',
-      '/qa-forms',
-      '/criteria',
-      '/scheduler',
-      '/agent-comparison',
-      '/trend-analysis',
-      '/exports',
-      '/groups'
-    ];
+    // Map routes to their required permissions
+    const routePermissions = {
+      '/new-evaluations': 'evaluations.write',
+      '/qa-forms': 'qa-forms.read',
+      '/criteria': 'criteria.read',
+      '/scheduler': 'qa-forms.write',
+      '/agent-comparison': 'agent-comparison.read',
+      '/trend-analysis': 'trend-analysis.read',
+      '/exports': 'exports.read',
+      '/groups': 'groups.read'
+    };
     
-    // Check if current path starts with any admin-only route
-    const isAdminRoute = adminOnlyRoutes.some(route => 
-      location.pathname === route || location.pathname.startsWith(`${route}/`)
-    );
+    const hasPermission = (route) => {
+      if (!permissions) return false;
+      
+      // If route needs permission, check if user has it
+      if (routePermissions[route]) {
+        const [resource, action] = routePermissions[route].split('.');
+        return permissions[resource]?.[action] === true;
+      }
+      
+      // Default routes everyone can access
+      const defaultRoutes = ['/dashboard', '/evaluations', '/documentation', '/change-password'];
+      return defaultRoutes.includes(route);
+    };
     
-    if (isAdminRoute) {
-      // Redirect agents away from admin routes
+    // Check if current path is allowed based on permissions
+    const isAllowed = hasPermission(location.pathname) || 
+                     Object.keys(routePermissions).some(route => 
+                       location.pathname.startsWith(route) && hasPermission(route)
+                     );
+    
+    if (!isAllowed) {
+      console.warn(`Agent access denied to ${location.pathname} - redirecting to dashboard`);
+      console.log('Current permissions:', permissions);
+      console.log('Required permission:', routePermissions[location.pathname] || 'Unknown');
       navigate('/dashboard');
       return null;
     }
@@ -129,7 +162,9 @@ function App() {
           path="/evaluations"
           element={
             <PrivateLayout>
-              <RecentEvaluations />
+              <WithPermission permission="evaluations.read">
+                <RecentEvaluations />
+              </WithPermission>
             </PrivateLayout>
           }
         />
@@ -137,7 +172,7 @@ function App() {
           path="/new-evaluations"
           element={
             <PrivateLayout>
-              <WithPermission permission="qa-forms.write">
+              <WithPermission permission="evaluations.write">
                 <NewEvaluations />
               </WithPermission>
             </PrivateLayout>
@@ -147,7 +182,9 @@ function App() {
           path="/evaluation/:id"
           element={
             <PrivateLayout>
-              <QADetail />
+              <WithPermission permission="evaluations.read">
+                <QADetail />
+              </WithPermission>
             </PrivateLayout>
           }
         />
@@ -159,7 +196,7 @@ function App() {
             </PrivateLayout>
           }
         />
-        {/* Add QA Forms routes */}
+        {/* QA Forms routes */}
         <Route
           path="/qa-forms"
           element={
@@ -194,7 +231,7 @@ function App() {
           path="/criteria"
           element={
             <PrivateLayout>
-              <WithPermission permission="qa-forms.read">
+              <WithPermission permission="criteria.read">
                 <CriteriaList />
               </WithPermission>
             </PrivateLayout>
@@ -204,7 +241,7 @@ function App() {
           path="/criteria/new"
           element={
             <PrivateLayout>
-              <WithPermission permission="qa-forms.write">
+              <WithPermission permission="criteria.write">
                 <CriteriaEditor />
               </WithPermission>
             </PrivateLayout>
@@ -214,7 +251,7 @@ function App() {
           path="/criteria/edit/:id"
           element={
             <PrivateLayout>
-              <WithPermission permission="qa-forms.write">
+              <WithPermission permission="criteria.write">
                 <CriteriaEditor />
               </WithPermission>
             </PrivateLayout>
@@ -224,7 +261,7 @@ function App() {
           path="/queue-monitor"
           element={
             <PrivateLayout>
-              <WithPermission permission="qa-forms.read">
+              <WithPermission permission="evaluations.read">
                 <QueueMonitor />
               </WithPermission>
             </PrivateLayout>
@@ -234,7 +271,7 @@ function App() {
           path="/agent-coaching/:agentId"
           element={
             <PrivateLayout>
-              <WithPermission permission="qa-forms.read">
+              <WithPermission permission="evaluations.read">
                 <AgentCoaching />
               </WithPermission>
             </PrivateLayout>
@@ -244,7 +281,7 @@ function App() {
           path="/agent-comparison"
           element={
             <PrivateLayout>
-              <WithPermission permission="qa-forms.read">
+              <WithPermission permission="agent-comparison.read">
                 <AgentComparison />
               </WithPermission>
             </PrivateLayout>
@@ -254,7 +291,7 @@ function App() {
           path="/trend-analysis"
           element={
             <PrivateLayout>
-              <WithPermission permission="qa-forms.read">
+              <WithPermission permission="trend-analysis.read">
                 <TrendAnalysis />
               </WithPermission>
             </PrivateLayout>
@@ -264,7 +301,7 @@ function App() {
           path="/exports"
           element={
             <PrivateLayout>
-              <WithPermission permission="qa-forms.read">
+              <WithPermission permission="exports.read">
                 <ReportsExport />
               </WithPermission>
             </PrivateLayout>
@@ -328,7 +365,6 @@ function App() {
             </PrivateLayout>
           }
         />
-        <Route path="/documentation" element={<Documentation />} />
       </Routes>
     </TourProvider>
   );

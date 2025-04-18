@@ -29,4 +29,25 @@ router.get('/all', authenticateToken, async (req, res) => {
   }
 });
 
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const tablePrefix = process.env.TABLE_PREFIX || 'yovo_tbl_';
+    
+    const [queues] = await db.query(
+      `SELECT id, name as name FROM ${tablePrefix}queues ORDER BY name`
+    );
+    
+    // Convert the IDs to strings for consistent handling in the frontend
+    const formattedQueues = queues.map(queue => ({
+      id: queue.id.toString(),
+      name: queue.name
+    }));
+    
+    res.json(formattedQueues);
+  } catch (error) {
+    console.error('Error fetching all queues:', error);
+    res.status(500).json({ message: 'Error fetching queues' });
+  }
+});
+
 module.exports = router;

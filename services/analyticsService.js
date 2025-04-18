@@ -195,7 +195,7 @@ const getEvaluationMetrics = async (filters = {}, user) => {
     });
 
     // Count occurrences of each strength
-    const strengthCount = {};
+    let strengthCount = {};
     allStrengths.forEach(strength => {
       strengthCount[strength] = (strengthCount[strength] || 0) + 1;
     });
