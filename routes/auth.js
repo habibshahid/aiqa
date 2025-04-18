@@ -42,6 +42,9 @@ router.post('/login', loginValidation, validateRequest, async (req, res) => {
     // Remove sensitive data
     delete user.password;
 
+    const isAdmin = (user.is_agent && user.is_agent == 1) ? 0 : 1;
+    const isAgent = (user.is_agent && user.is_agent == 1) ? 1 : 0;
+
     res.json({
       token,
       user: {
@@ -49,7 +52,9 @@ router.post('/login', loginValidation, validateRequest, async (req, res) => {
         username: user.username,
         email: user.email,
         first_name: user.first_name,
-        last_name: user.last_name
+        last_name: user.last_name,
+        isAdmin: isAdmin,
+        isAgent: isAgent
       }
     });
 

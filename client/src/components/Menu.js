@@ -15,7 +15,8 @@ import {
   FileDown,
   UsersRound,
   AlarmClock,
-  FileText
+  FileText,
+  AlertTriangle
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -66,6 +67,12 @@ export default function Menu() {
         icon: AlarmClock,
         path: '/scheduler',
         label: 'Scheduler',
+        permission: 'qa-forms.write'
+      },
+      {
+        icon: AlertTriangle,
+        path: '/qa-disputes',
+        label: 'Disputed Evaluations',
         permission: 'qa-forms.write'
       },
       { 

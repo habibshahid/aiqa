@@ -299,13 +299,13 @@ router.post('/evaluation/:id/moderate', authenticateTokenWithSystemAccess, async
 });
 
 // Agent comment route
-router.post('/evaluation/:id/agent-comment', authenticateToken, async (req, res) => {
+router.post('/evaluation/:id/comment', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { comment } = req.body;
+    const { agentComments, disputed } = req.body;
     
     // Validate
-    if (!comment) {
+    if (!agentComments) {
       return res.status(400).json({ message: 'Comment is required' });
     }
     
@@ -334,17 +334,30 @@ router.post('/evaluation/:id/agent-comment', authenticateToken, async (req, res)
       evaluation.humanEvaluation = {
         isModerated: true,
         isPublished: true,
-        agentComments: comment
+        agentComments: agentComments
       };
     } else {
-      evaluation.humanEvaluation.agentComments = comment;
+      evaluation.humanEvaluation.agentComments = agentComments;
+    }
+    
+    // If this is a dispute, mark it as such
+    if (disputed) {
+      // Add a disputed flag to the evaluation (simpler than changing status)
+      evaluation.disputed = true;
+      
+      // Add dispute timestamp
+      evaluation.disputedAt = new Date();
+      
+      // Add dispute info to the comments
+      evaluation.humanEvaluation.agentComments = `[DISPUTED] ${agentComments}`;
     }
     
     // Save changes
     await evaluation.save();
     
     // Return updated evaluation
-    res.json(evaluation);
+    const updatedEval = await InteractionAIQA.findById(id);
+    res.json(updatedEval);
   } catch (error) {
     console.error('Agent comment error:', error);
     res.status(500).json({ message: 'Error adding comment', error: error.message });
@@ -557,6 +570,204 @@ router.get('/evaluation/:id/scores', authenticateToken, async (req, res) => {
       message: 'Error calculating evaluation scores',
       error: error.message
     });
+  }
+});
+
+router.post('/evaluation/:id/dispute', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { agentComments } = req.body;
+    
+    // Find the evaluation
+    const evaluation = await InteractionAIQA.findById(id);
+    if (!evaluation) {
+      return res.status(404).json({ message: 'Evaluation not found' });
+    }
+    
+    // Verify this is a published evaluation
+    if (evaluation.status !== 'published') {
+      return res.status(400).json({ 
+        message: 'Only published evaluations can be disputed'
+      });
+    }
+    
+    // Verify that the agent is the one who was evaluated
+    if (req.user.isAgent && !req.user.isAdmin) {
+      if (evaluation.interactionData?.agent?.id != req.user.id) {
+        return res.status(403).json({ 
+          message: 'You can only dispute your own evaluations'
+        });
+      }
+    }
+    
+    // Update evaluation status and comments
+    if (!evaluation.humanEvaluation) {
+      evaluation.humanEvaluation = {
+        isModerated: true,
+        isPublished: true,
+        agentComments: agentComments || ''
+      };
+    } else {
+      evaluation.humanEvaluation.agentComments = agentComments || '';
+    }
+    
+    // Change status to disputed
+    evaluation.status = 'disputed';
+    
+    // Save the changes
+    await evaluation.save();
+    
+    // Return updated evaluation
+    const updatedEvaluation = await qaDetailService.getQAEvaluationDetail(id);
+    
+    res.json(updatedEvaluation);
+  } catch (error) {
+    console.error('Error disputing evaluation:', error);
+    res.status(500).json({ 
+      message: 'Error disputing evaluation', 
+      error: error.message 
+    });
+  }
+});
+
+router.get('/disputes', authenticateToken, async (req, res) => {
+  try {
+    // Only admins should access this endpoint
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ message: 'Access denied: Admin rights required' });
+    }
+    
+    // Find all disputed evaluations
+    const disputes = await InteractionAIQA.find({ status: 'disputed' })
+      .sort({ updatedAt: -1 })
+      .lean();
+    
+    // Format the response
+    const formattedDisputes = await Promise.all(disputes.map(async (dispute) => {
+      // Calculate score percentage
+      const score = dispute.evaluationData?.evaluation?.totalScore || 0;
+      const maxScore = dispute.evaluationData?.evaluation?.maxScore || 100;
+      const scorePerc = Math.round((score / maxScore) * 100);
+      
+      return {
+        id: dispute._id,
+        createdAt: dispute.createdAt,
+        updatedAt: dispute.updatedAt,
+        agent: dispute.interactionData?.agent,
+        score,
+        maxScore,
+        scorePerc,
+        humanEvaluation: dispute.humanEvaluation,
+        interactionId: dispute.interactionId
+      };
+    }));
+    
+    res.json(formattedDisputes);
+  } catch (error) {
+    console.error('Error fetching disputed evaluations:', error);
+    res.status(500).json({ message: 'Error fetching disputed evaluations', error: error.message });
+  }
+});
+
+// Resolve a disputed evaluation
+router.post('/evaluation/:id/resolve-dispute', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { resolution, comments } = req.body;
+    
+    // Only admins should be able to resolve disputes
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ message: 'Access denied: Admin rights required' });
+    }
+    
+    // Find the evaluation
+    const evaluation = await InteractionAIQA.findById(id);
+    if (!evaluation) {
+      return res.status(404).json({ message: 'Evaluation not found' });
+    }
+    
+    // Verify this is a disputed evaluation
+    if (evaluation.status !== 'disputed') {
+      return res.status(400).json({ message: 'Only disputed evaluations can be resolved' });
+    }
+    
+    // Update the evaluation based on resolution
+    if (resolution === 'accept') {
+      // If accepting the dispute, mark the evaluation as requiring re-evaluation
+      evaluation.status = 'pending';
+      
+      // Add admin comments to the evaluation
+      if (!evaluation.humanEvaluation) {
+        evaluation.humanEvaluation = {
+          additionalComments: comments || 'Dispute accepted. Evaluation requires review.',
+          isModerated: false,
+          isPublished: false
+        };
+      } else {
+        evaluation.humanEvaluation.additionalComments = 
+          (evaluation.humanEvaluation.additionalComments || '') + 
+          '\n\nDispute Resolution: ' + (comments || 'Dispute accepted. Evaluation requires review.');
+        evaluation.humanEvaluation.isModerated = false;
+        evaluation.humanEvaluation.isPublished = false;
+      }
+    } else if (resolution === 'reject') {
+      // If rejecting the dispute, revert to published status
+      evaluation.status = 'published';
+      
+      // Add admin comments to the evaluation
+      if (!evaluation.humanEvaluation) {
+        evaluation.humanEvaluation = {
+          additionalComments: comments || 'Dispute rejected. Original evaluation stands.',
+          isModerated: true,
+          isPublished: true
+        };
+      } else {
+        evaluation.humanEvaluation.additionalComments = 
+          (evaluation.humanEvaluation.additionalComments || '') + 
+          '\n\nDispute Resolution: ' + (comments || 'Dispute rejected. Original evaluation stands.');
+        evaluation.humanEvaluation.isModerated = true;
+        evaluation.humanEvaluation.isPublished = true;
+      }
+    } else {
+      return res.status(400).json({ message: 'Invalid resolution. Must be "accept" or "reject"' });
+    }
+    
+    // Add resolution metadata
+    evaluation.disputeResolution = {
+      resolvedBy: req.user.id,
+      resolvedByName: req.user.username || 'Admin',
+      resolution,
+      comments: comments || '',
+      resolvedAt: new Date()
+    };
+    
+    // Save the changes
+    await evaluation.save();
+    
+    // Return updated evaluation
+    const updatedEvaluation = await qaDetailService.getQAEvaluationDetail(id);
+    
+    res.json(updatedEvaluation);
+  } catch (error) {
+    console.error('Error resolving dispute:', error);
+    res.status(500).json({ message: 'Error resolving dispute', error: error.message });
+  }
+});
+
+router.get('/disputes/count', authenticateToken, async (req, res) => {
+  try {
+    // Only admins should access this endpoint
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ message: 'Access denied: Admin rights required' });
+    }
+    
+    // Count disputed evaluations
+    const count = await InteractionAIQA.countDocuments({ status: 'disputed' });
+    
+    res.json({ count });
+  } catch (error) {
+    console.error('Error counting disputed evaluations:', error);
+    res.status(500).json({ message: 'Error counting disputed evaluations', error: error.message });
   }
 });
 

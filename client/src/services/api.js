@@ -60,9 +60,6 @@ const request = async (url, options = {}) => {
   }
 };
 
-// Flag to prevent getUserProfile recursion
-let isGettingUserProfile = false;
-
 export const api = {
   // Method to resume pending requests after re-authentication
   resumeRequest: async () => {
@@ -185,32 +182,52 @@ export const api = {
   
   // Fixed getUserProfile to prevent recursion
   getUserProfile: async () => {
-    // Return cached user data if available to prevent repeated calls    
     try {
       const userData = await request('/user/profile');
       
-      // Store user role information in localStorage for easy access
-      const userRoles = {
-        isAgent: userData.isAgent === true,
-        isAdmin: userData.isAdmin === true,
-        agentId: userData.agentId || userData.id
-      };
+      // Get correct role information from userRoles in localStorage
+      const userRolesStr = localStorage.getItem('userRoles');
+      let userRoles = null;
+      console.log('$########################', userRolesStr)
+      if (userRolesStr) {
+        try {
+          userRoles = JSON.parse(userRolesStr);
+        } catch (e) {
+          console.error('Error parsing user roles:', e);
+        }
+      }
       
-      // Update localStorage with this critical information
-      localStorage.setItem('userRoles', JSON.stringify(userRoles));
+      // Always add the role properties to the response
+      if (userRoles) {
+        userData.isAgent = userRoles.isAgent === true;
+        userData.isAdmin = userRoles.isAdmin === true;
+        userData.agentId = userRoles.agentId;
+      } else {
+        // Fallback to determining from is_agent
+        userData.isAgent = userData.is_agent === 1;
+        userData.isAdmin = userData.is_agent === 0;
+        userData.agentId = userData.isAgent ? userData.id : null;
+      }
       
-      // Cache the complete user profile to reduce API calls
-      const completeUserData = {
+      // Update userRoles in localStorage
+      localStorage.setItem('userRoles', JSON.stringify({
+        isAgent: userData.isAgent,
+        isAdmin: userData.isAdmin,
+        agentId: userData.agentId
+      }));
+      
+      // Update cachedUserProfile
+      localStorage.setItem('cachedUserProfile', JSON.stringify({
         ...userData,
-        ...userRoles
-      };
+        isAgent: userData.isAgent,
+        isAdmin: userData.isAdmin,
+        agentId: userData.agentId
+      }));
       
-      return completeUserData;
+      return userData;
     } catch (error) {
       console.error('Error fetching user profile:', error);
       throw error;
-    } finally {
-      isGettingUserProfile = false;
     }
   },
 
@@ -423,7 +440,15 @@ export const api = {
 
   // Get all active scheduled profiles
   getActiveSchedules: () =>
-    request('/scheduler/active')
+    request('/scheduler/active'),
+
+  disputeEvaluation: (id, comments) =>
+    request(`/qa/evaluation/${id}/dispute`, {
+      method: 'POST',
+      body: JSON.stringify({ 
+        agentComments: comments
+      })
+    }),
 };
   
 export default api;

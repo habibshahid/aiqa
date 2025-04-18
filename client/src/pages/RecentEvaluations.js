@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { PhoneIncoming, PhoneOutgoing, Lock } from 'lucide-react';
+import { PhoneIncoming, PhoneOutgoing, Lock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { api } from '../services/api';
 
 const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
@@ -509,13 +509,33 @@ const RecentEvaluations = () => {
                         </small>
                       </td>
                       <td>
-                        <button
-                          onClick={() => navigate(`/evaluation/${evaluation.id}`)}
-                          className="btn btn-sm btn-outline-primary"
-                        >
-                          <i className="bi bi-eye me-1"></i>
-                          View Details
-                        </button>
+                        {evaluation.status === 'disputed' ? (
+                          <div className="d-flex align-items-center">
+                            <button
+                              onClick={() => navigate(`/evaluation/${evaluation.id}`)}
+                              className="btn btn-sm btn-outline-danger"
+                            >
+                              <AlertTriangle size={14} className="me-1" />
+                              Disputed
+                            </button>
+                          </div>
+                        ) : evaluation.status === 'published' ? (
+                          <button
+                            onClick={() => navigate(`/evaluation/${evaluation.id}`)}
+                            className="btn btn-sm btn-outline-success"
+                          >
+                            <CheckCircle size={14} className="me-1" />
+                            View Published
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => navigate(`/evaluation/${evaluation.id}`)}
+                            className="btn btn-sm btn-outline-primary"
+                          >
+                            <i className="bi bi-eye me-1"></i>
+                            View Details
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))

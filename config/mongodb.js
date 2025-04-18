@@ -226,6 +226,30 @@ const sectionScoresSchema = new mongoose.Schema({
   }
 }, { _id: false, strict: false });
 
+const disputeResolutionSchema = new mongoose.Schema({
+  resolvedBy: {
+    type: String,
+    required: true
+  },
+  resolvedByName: {
+    type: String,
+    required: true
+  },
+  resolution: {
+    type: String,
+    enum: ['accept', 'reject'],
+    required: true
+  },
+  comments: {
+    type: String,
+    default: ''
+  },
+  resolvedAt: {
+    type: Date,
+    default: Date.now
+  }
+}, { _id: false, strict: false });
+
 const interactionAIQASchema = new mongoose.Schema({
   interactionId: { type: String, required: true },
   qaFormName: { type: String, required: true },
@@ -259,13 +283,17 @@ const interactionAIQASchema = new mongoose.Schema({
   }
   ,status: {
     type: String,
-    enum: ['pending', 'completed', 'moderated', 'published'],
+    enum: ['pending', 'completed', 'moderated', 'published', 'disputed'],
     default: 'pending'
   },
   
   // Human evaluation data
   humanEvaluation: {
     type: humanEvaluationSchema,
+    default: null
+  },
+  disputeResolution: {
+    type: disputeResolutionSchema,
     default: null
   }
 }, { 

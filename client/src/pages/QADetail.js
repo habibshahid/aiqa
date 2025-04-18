@@ -419,6 +419,23 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
   const [saveError, setSaveError] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(null);
 
+  useEffect(() => {
+    try {
+      // Directly get user roles from localStorage
+      const userRolesStr = localStorage.getItem('userRoles');
+      if (userRolesStr) {
+        const userRoles = JSON.parse(userRolesStr);
+        console.log("User Roles from localStorage:", userRoles);
+        
+        // Explicitly set the agent and admin flags
+        setIsAgent(userRoles.isAgent === true);
+        setIsAdmin(userRoles.isAdmin === true);
+      }
+    } catch (e) {
+      console.error("Error retrieving user roles:", e);
+    }
+  }, []);
+  
   // Fetch evaluation data
   const fetchEvaluation = useCallback(async () => {
     try {
@@ -576,6 +593,12 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
     }
   };
 
+  useEffect(() => {
+    console.log("Evaluation status:", evaluation?.status);
+    console.log("Is published:", humanEvaluation?.isPublished);
+    console.log("Is agent:", isAgent);
+  }, [evaluation, humanEvaluation, isAgent]);
+
   // Recalculate scores whenever human evaluation changes in edit mode
   useEffect(() => {
     if (isEditMode && qaForm && humanEvaluation.parameters) {
@@ -619,6 +642,54 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
         }
       };
     });
+  };
+
+  const handleDisputeEvaluation = async () => {
+    try {
+      setIsSaving(true);
+      setSaveError(null);
+      setSaveSuccess(null);
+      
+      // Make sure the agent has provided comments
+      if (!humanEvaluation.agentComments || humanEvaluation.agentComments.trim() === '') {
+        setSaveError('Please provide comments explaining why you are disputing this evaluation.');
+        setIsSaving(false);
+        return;
+      }
+      
+      // Make API call to update the evaluation with a disputed status
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/qa/evaluation/${id}/comment`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          agentComments: humanEvaluation.agentComments,
+          disputed: true
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to dispute evaluation');
+      }
+      
+      // Update local state
+      const updatedData = await response.json();
+      setEvaluation(updatedData);
+      
+      // Show success message
+      setSaveSuccess('Your dispute has been submitted. The QA team will review your comments and respond accordingly.');
+      
+      // Refresh data to ensure we have the latest
+      await fetchEvaluation();
+    } catch (err) {
+      console.error('Error disputing evaluation:', err);
+      setSaveError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Handler for human explanation changes
@@ -783,7 +854,9 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
   };
 
   const getStatusBadge = () => {
-    if (!humanEvaluation.isModerated) {
+    if (evaluation.disputed) {
+      return <span className="badge bg-danger">Disputed</span>;
+    } else if (!humanEvaluation.isModerated) {
       return <span className="badge bg-warning">Awaiting Human Moderation</span>;
     } else if (humanEvaluation.isPublished) {
       return <span className="badge bg-success">Published</span>;
@@ -1625,7 +1698,7 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
   const renderAgentCommentsSection = () => {
     // Only show if user is an agent or comments exist
     if (!(isAgent || humanEvaluation.agentComments)) return null;
-
+  
     return (
       <div className="card mb-4">
         <div className="card-header">
@@ -1649,28 +1722,54 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
                 </div>
               )}
               {humanEvaluation.isPublished && (
-                <button 
-                  className="btn btn-primary mt-2"
-                  onClick={() => saveHumanEvaluation(true)}
-                  disabled={isSaving}
-                >
-                  {isSaving ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <MessageSquare size={16} className="me-2" />
-                      Save Response
-                    </>
-                  )}
-                </button>
+                <div className="d-flex gap-2 mt-2">
+                  <button 
+                    className="btn btn-primary"
+                    onClick={() => saveHumanEvaluation(true)}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <MessageSquare size={16} className="me-2" />
+                        Save Response
+                      </>
+                    )}
+                  </button>
+                  <button 
+                    className="btn btn-danger"
+                    onClick={handleDisputeEvaluation}
+                    disabled={isSaving || !humanEvaluation.agentComments}
+                    title={!humanEvaluation.agentComments ? "Please add comments explaining why you're disputing this evaluation" : ""}
+                  >
+                    {isSaving ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" />
+                        Disputing...
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle size={16} className="me-2" />
+                        Dispute Evaluation
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
             </div>
           ) : humanEvaluation.agentComments ? (
             <div className="p-3 border rounded bg-light">
               <p className="mb-0">{humanEvaluation.agentComments}</p>
+              {evaluation.disputed && (
+                <div className="alert alert-danger mt-2">
+                  <AlertTriangle size={16} className="me-2" />
+                  This evaluation has been disputed by the agent.
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-muted mb-0">No response from agent yet.</p>

@@ -4,7 +4,7 @@ import {
   Bell, User, ChevronDown, Settings, Info, LogOut, Key,
   Home, ClipboardCheck, PlusCircle, ClipboardList, Filter,
   UserCheck, TrendingUp, FileDown, AlarmClock, FileText, Pencil,
-  HelpCircle, UsersRound 
+  HelpCircle, UsersRound, AlertTriangle
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../services/api';
@@ -45,6 +45,8 @@ export default function TopBar() {
   const [queueCount, setQueueCount] = useState(0);
   const [pageTitle, setPageTitle] = useState({ title: 'AIQA', icon: Home });
   const isLoadingUserData = useRef(false);
+  const [disputesCount, setDisputesCount] = useState(0);
+  const isDisputesFetchActive = useRef(false);
   
   // Flag to track if queue fetching is active
   const isQueueFetchActive = useRef(false);
@@ -68,6 +70,34 @@ export default function TopBar() {
     // Only run fetch if we have userRoles
     if (!userRoles) return;
     
+    const fetchDisputesCount = async () => {
+      // Guard against multiple simultaneous requests
+      if (isDisputesFetchActive.current) return;
+      
+      // Only admins should fetch disputes count
+      if (userRoles.isAdmin) {
+        try {
+          isDisputesFetchActive.current = true;
+          const response = await fetch('/api/qa/disputes/count', {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            setDisputesCount(data.count);
+          }
+        } catch (error) {
+          console.error('Error fetching disputes count:', error);
+        } finally {
+          isDisputesFetchActive.current = false;
+        }
+      }
+    };
+    
+    fetchDisputesCount();
+
     const fetchQueueCount = async () => {
       // Guard against multiple simultaneous requests
       if (isQueueFetchActive.current) return;
@@ -243,18 +273,34 @@ export default function TopBar() {
 
           {/* Queue Monitor - Only shown for admins */}
           {userRoles && userRoles.isAdmin && (
-            <div className="position-relative">
-              <button 
-                className="btn btn-light position-relative"
-                onClick={() => navigate('/queue-monitor')}
-              >
-                <ListChecks size={18} />
-                {queueCount > 0 && (
-                  <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">
-                    {queueCount}
-                  </span>
-                )}
-              </button>
+            <div className="d-flex">
+                <div className="position-relative">
+                  <button 
+                    className="btn btn-light position-relative"
+                    onClick={() => navigate('/queue-monitor')}
+                  >
+                    <ListChecks size={18} />
+                    {queueCount > 0 && (
+                      <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">
+                        {queueCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
+                
+                <div className="position-relative">
+                  <button 
+                    className="btn btn-light position-relative"
+                    onClick={() => navigate('/qa-disputes')}
+                  >
+                    <AlertTriangle size={18} />
+                    {disputesCount > 0 && (
+                      <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                        {disputesCount}
+                      </span>
+                    )}
+                  </button>
+              </div>
             </div>
           )}
           

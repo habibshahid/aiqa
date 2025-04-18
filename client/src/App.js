@@ -25,6 +25,7 @@ import GroupUsers from './pages/GroupManagement/GroupUsers';
 import SchedulerDashboard from './pages/SchedulerDashboard';
 import TourProvider from './components/tour/TourProvider';
 import Documentation from './pages/Documentation';
+import QADisputes from './pages/QADisputes';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'shepherd.js/dist/css/shepherd.css';
@@ -414,7 +415,17 @@ function App() {
             </PrivateLayout>
           }
         />
-      </Routes>
+        <Route
+          path="/qa-disputes"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.write">
+                <QADisputes />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+      </Routes>  
     </TourProvider>
   );
 }
