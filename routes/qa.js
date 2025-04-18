@@ -84,10 +84,22 @@ router.get('/evaluation/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'QA evaluation not found' });
     }
 
+    // Agent access validation - allow agents to see their own evaluations
     if (req.user.isAgent && !req.user.isAdmin) {
+      console.log(`Agent ${req.user.id} accessing evaluation for agent ${qaDetail.agent?.id}`);
+      
+      // Check if agent ID matches (using loose equality to handle string/number differences)
       if (qaDetail.agent?.id != req.user.id) {
-        return res.status(403).json({ message: 'Access denied: This evaluation belongs to another agent' });
+        console.log('Access denied: This evaluation belongs to another agent');
+        return res.status(403).json({ 
+          message: 'Access denied: This evaluation belongs to another agent',
+          agentAccess: false 
+        });
       }
+      
+      // Add header to indicate this is an agent viewing their own evaluation
+      res.set('X-Agent-Access', 'self-evaluation');
+      console.log('Agent access granted: Agent viewing their own evaluation');
     }
     
     // Get transcription analysis if available
@@ -154,11 +166,7 @@ router.get('/evaluation/:id/transcription', authenticateToken, async (req, res) 
   }
 });
 
-// Enhanced moderation route with improved scoring
-// routes/qa.js - Enhanced route for editing evaluations
-
 // Enhanced moderation route that correctly calculates scores
-// Enhanced moderation route with proper classification impact handling
 router.post('/evaluation/:id/moderate', authenticateTokenWithSystemAccess, async (req, res) => {
   try {
     const { id } = req.params;
@@ -305,6 +313,15 @@ router.post('/evaluation/:id/agent-comment', authenticateToken, async (req, res)
     const evaluation = await InteractionAIQA.findById(id);
     if (!evaluation) {
       return res.status(404).json({ message: 'Evaluation not found' });
+    }
+    
+    // If user is an agent, verify they are the agent for this evaluation 
+    if (req.user.isAgent && !req.user.isAdmin) {
+      if (evaluation.interactionData?.agent?.id != req.user.id) {
+        return res.status(403).json({ 
+          message: 'You can only comment on your own evaluations'
+        });
+      }
     }
     
     // Ensure it's published

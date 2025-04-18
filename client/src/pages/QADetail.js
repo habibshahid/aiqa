@@ -1,6 +1,5 @@
-// Enhanced QA Detail Component with improved scoring, classification, and editing
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Edit, Eye, EyeOff, MessageSquare, CheckCircle, XCircle, AlertTriangle, Save, Lock, AlertCircle } from 'lucide-react';
 import Select from 'react-select';
 
@@ -383,7 +382,7 @@ const ClassificationSelect = ({ value, onChange, isDisabled }) => {
 };
 
 // Main QA Detail Component
-const QADetail = () => {
+const QADetail = ({ agentRestricted = false, agentId = null }) => {
   // Extract ID from URL
   const urlParams = new URLSearchParams(window.location.search);
   const id = urlParams.get('id') || window.location.pathname.split('/').pop();
@@ -397,6 +396,8 @@ const QADetail = () => {
   const [isAgent, setIsAgent] = useState(false);
   const [formParams, setFormParams] = useState(null);
   const [qaForm, setQaForm] = useState(null);
+
+  const [agentAccessChecked, setAgentAccessChecked] = useState(false);
   
   // Human Evaluation State
   const [humanEvaluation, setHumanEvaluation] = useState({
@@ -429,25 +430,9 @@ const QADetail = () => {
         throw new Error('No authentication token found');
       }
 
-      if (userRoles.isAgent && !userRoles.isAdmin) {
-        const response = await fetch(`/api/qa/evaluation/${id}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          
-          // Check if this evaluation belongs to the current agent
-          if (data.agent?.id != userRoles.agentId) {
-            setError('You do not have permission to view this evaluation');
-            setLoading(false);
-            return;
-          }
-        }
-      }
+      console.log(`Fetching evaluation ${id}, agent restricted: ${agentRestricted}, agent ID: ${agentId}`);
       
+      // Fetch the evaluation data
       const response = await fetch(`/api/qa/evaluation/${id}`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -461,8 +446,25 @@ const QADetail = () => {
       const data = await response.json();
       console.log('Evaluation Data:', data);
       
+      // If the user is an agent (not admin), check if this evaluation belongs to them
+      if (agentRestricted && agentId) {
+        console.log(`Agent check: evaluation agent ID: ${data.agent?.id}, current agent ID: ${agentId}`);
+        
+        if (data.agent?.id != agentId) {
+          console.error('Agent access denied - evaluation belongs to another agent');
+          setError('You do not have permission to view this evaluation');
+          setAgentAccessChecked(true);
+          setLoading(false);
+          return;
+        }
+        
+        // Agent is allowed to view their own evaluation
+        console.log('Agent access granted - evaluation belongs to this agent');
+      }
+      
       // Set evaluation data
       setEvaluation(data);
+      setAgentAccessChecked(true);
       
       // Initialize human evaluation state
       const initialParameters = {};
@@ -509,10 +511,11 @@ const QADetail = () => {
     } catch (err) {
       console.error('Error fetching evaluation:', err);
       setError(err.message);
+      setAgentAccessChecked(true);
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, agentRestricted, agentId]);
 
   // Fetch QA Form details
   const fetchQAForm = async (formId) => {
@@ -801,12 +804,12 @@ const QADetail = () => {
   }
 
   // Render error state
-  if (error || !evaluation) {
+  if (error || (!evaluation && agentAccessChecked)) {
     return (
       <div className="text-center my-5">
         <div className="alert alert-danger">
           <h4>Failed to load evaluation</h4>
-          <p>{error || 'Evaluation not found'}</p>
+          <p>{error || 'Evaluation not found or you do not have permission to view it'}</p>
           <button 
             className="btn btn-primary mt-3"
             onClick={() => navigate('/dashboard')}

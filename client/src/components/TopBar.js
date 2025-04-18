@@ -1,4 +1,4 @@
-// src/components/TopBar.js - Fixed to prevent getUserProfile loop
+// src/components/TopBar.js - Fixed to prevent infinite loop of API calls
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Bell, User, ChevronDown, Settings, Info, LogOut, Key,
@@ -46,6 +46,9 @@ export default function TopBar() {
   const [pageTitle, setPageTitle] = useState({ title: 'AIQA', icon: Home });
   const isLoadingUserData = useRef(false);
   
+  // Flag to track if queue fetching is active
+  const isQueueFetchActive = useRef(false);
+  
   useEffect(() => {
     loadUserData();
 
@@ -58,10 +61,21 @@ export default function TopBar() {
         console.error('Error parsing user roles', e);
       }
     }
+  }, []);
+
+  // Separate useEffect for queue count to prevent re-renders causing infinite loops
+  useEffect(() => {
+    // Only run fetch if we have userRoles
+    if (!userRoles) return;
     
     const fetchQueueCount = async () => {
-      if (!userRoles || userRoles.isAdmin) {
+      // Guard against multiple simultaneous requests
+      if (isQueueFetchActive.current) return;
+      
+      // Only admins should fetch queue count
+      if (userRoles.isAdmin) {
         try {
+          isQueueFetchActive.current = true;
           const response = await fetch('/api/qa-process/queue-count', {
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -74,15 +88,20 @@ export default function TopBar() {
           }
         } catch (error) {
           console.error('Error fetching queue count:', error);
+        } finally {
+          isQueueFetchActive.current = false;
         }
       }
     };
     
+    // Initial fetch
     fetchQueueCount();
+    
+    // Set up interval for periodic updates
     const intervalId = setInterval(fetchQueueCount, 30000); // Check every 30 seconds
     
     return () => clearInterval(intervalId);
-  }, [userRoles]);
+  }, [userRoles]); // Only depend on userRoles, not queueCount
 
   // Update page title based on current route
   useEffect(() => {
@@ -222,8 +241,8 @@ export default function TopBar() {
             )}
           </div>
 
-          {/* Queue Monitor */}
-          {(!userRoles || userRoles.isAdmin) && (
+          {/* Queue Monitor - Only shown for admins */}
+          {userRoles && userRoles.isAdmin && (
             <div className="position-relative">
               <button 
                 className="btn btn-light position-relative"

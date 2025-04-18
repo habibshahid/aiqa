@@ -1,6 +1,6 @@
-// src/components/WithPermission.js - Fixed version
+// src/components/WithPermission.js - Fixed version for agent evaluation access
 import React, { useState, useEffect, useCallback } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useParams, useLocation } from 'react-router-dom';
 import { api } from '../services/api';
 
 /**
@@ -26,6 +26,8 @@ export const WithPermission = ({ permission, children }) => {
   const [permissions, setPermissions] = useState(null);
   const [userRoles, setUserRoles] = useState(null);
   const [loading, setLoading] = useState(true);
+  const location = useLocation();
+  const params = useParams();
 
   // Use callback to prevent excessive re-renders
   const fetchPermissions = useCallback(async () => {
@@ -73,19 +75,8 @@ export const WithPermission = ({ permission, children }) => {
     fetchPermissions();
   }, [fetchPermissions]);
 
-  // Handling for specific permission types
-  useEffect(() => {
-    if (permissions && permission) {
-      // Special handling for agent-specific routes
-      if (permission === 'agent-comparison.read' || 
-          permission === 'trend-analysis.read' || 
-          permission === 'exports.read') {
-        
-        // Log these specific permission checks for debugging
-        console.log(`Agent route permission check: ${permission} = ${hasPermission(permissions, permission)}`);
-      }
-    }
-  }, [permissions, permission]);
+  // Special handling for evaluation routes
+  const isEvaluationRoute = location.pathname.includes('/evaluation/');
 
   if (loading) {
     return (
@@ -97,6 +88,18 @@ export const WithPermission = ({ permission, children }) => {
     );
   }
 
+  // Special case for evaluation pages - agents always need access to view evaluations
+  if (isEvaluationRoute && userRoles?.isAgent && permission === "evaluations.read") {
+    console.log("Agent accessing evaluation details - always permit this access");
+    // Continue to render children - actual check for if this is the agent's evaluation
+    // will happen in the QADetail component
+    return React.cloneElement(children, {
+      agentRestricted: true,
+      agentId: userRoles.agentId
+    });
+  }
+
+  // Normal permission check for other routes
   if (!hasPermission(permissions, permission)) {
     console.warn(`Access denied - missing permission: ${permission}`);
     return <Navigate to="/dashboard" replace />;

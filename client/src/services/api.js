@@ -1,4 +1,4 @@
-// src/services/api.js - Fixed to prevent infinite getUserProfile loops
+// src/services/api.js - Fixed to include evaluation detail access for agents
 import config from '../config';
 const API_URL = config.apiUrl;
 let sessionTimeoutHandler = null;
@@ -87,6 +87,43 @@ export const api = {
     }
   },
 
+  // Evaluation related methods - MODIFIED to better handle agent access
+  getEvaluation: async (id) => {
+    try {
+      console.log(`Fetching evaluation ${id}`);
+      
+      // First check if user is an agent from localStorage
+      const userRolesStr = localStorage.getItem('userRoles');
+      let userRoles = null;
+      
+      if (userRolesStr) {
+        try {
+          userRoles = JSON.parse(userRolesStr);
+        } catch (e) {
+          console.error('Error parsing user roles:', e);
+        }
+      }
+      
+      // Make the request
+      const result = await request(`/qa/evaluation/${id}`);
+      
+      // If user is an agent, check if this evaluation belongs to them
+      if (userRoles && userRoles.isAgent && !userRoles.isAdmin) {
+        console.log(`Agent ${userRoles.agentId} checking access to evaluation for agent ${result.agent?.id}`);
+        
+        if (result.agent?.id != userRoles.agentId) {
+          console.error('Access denied: This evaluation belongs to another agent');
+          throw new Error('You do not have permission to view this evaluation');
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error fetching evaluation:', error);
+      throw error;
+    }
+  },
+
   // Group Management
   getGroups: () =>
     request('/groups'),
@@ -142,7 +179,7 @@ export const api = {
     }),
     
   logout: () => 
-    request('auth/logout', {  // Remove the leading slash
+    request('auth/logout', {  
       method: 'POST'
     }),
   
@@ -158,6 +195,9 @@ export const api = {
         isAdmin: userData.isAdmin === true,
         agentId: userData.agentId || userData.id
       };
+      
+      // Update localStorage with this critical information
+      localStorage.setItem('userRoles', JSON.stringify(userRoles));
       
       // Cache the complete user profile to reduce API calls
       const completeUserData = {
@@ -198,6 +238,28 @@ export const api = {
         
         // Cache valid permissions
         localStorage.setItem('cachedPermissions', JSON.stringify(response));
+        
+        // Ensure evaluations.read permission exists for agents
+        // This is critical for agent access to their evaluations
+        const userRolesStr = localStorage.getItem('userRoles');
+        if (userRolesStr) {
+          try {
+            const userRoles = JSON.parse(userRolesStr);
+            if (userRoles.isAgent && !userRoles.isAdmin) {
+              // Ensure agent has evaluation read permission
+              if (!response.evaluations) {
+                response.evaluations = {};
+              }
+              response.evaluations.read = true;
+              
+              // Update cache with this critical permission
+              localStorage.setItem('cachedPermissions', JSON.stringify(response));
+            }
+          } catch (e) {
+            console.error('Error checking user roles for permission adjustment:', e);
+          }
+        }
+        
         return response;
       } else {
         throw new Error('Invalid permissions data format');
@@ -258,25 +320,6 @@ export const api = {
       return defaultPermissions;
     }
   },
-
-  // Notifications related methods
-  getNotifications: () =>
-    request('/notifications'),
-
-  markNotificationRead: (notificationId) =>
-    request(`/notifications/${notificationId}/read`, {
-      method: 'POST'
-    }),
-
-  // Settings related methods
-  getUserSettings: () =>
-    request('/user/settings'),
-
-  updateUserSettings: (settings) =>
-    request('/user/settings', {
-      method: 'PUT',
-      body: JSON.stringify(settings)
-    }),
 
   // Dashboard related methods
   getDashboardStats: () =>
@@ -348,10 +391,6 @@ export const api = {
 
   getQueues: () =>
     request('/queues'),
-
-  // Evaluation related methods
-  getEvaluation: (id) =>
-    request(`/qa/evaluation/${id}`),
 
   getDashboardMetrics: (params) => {
     const queryString = new URLSearchParams(params).toString();

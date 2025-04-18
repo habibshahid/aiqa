@@ -1,3 +1,4 @@
+// Fixed App.js with improved route handling for agent evaluation access
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Menu from './components/Menu';
@@ -27,6 +28,47 @@ import Documentation from './pages/Documentation';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'shepherd.js/dist/css/shepherd.css';
+
+// Special wrapper for evaluation routes to ensure agents can view their own evaluations
+const EvaluationRouteWrapper = ({ children }) => {
+  const [userRoles, setUserRoles] = useState(null);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    // Get user role information from localStorage
+    const savedRoles = localStorage.getItem('userRoles');
+    
+    if (savedRoles) {
+      try {
+        setUserRoles(JSON.parse(savedRoles));
+      } catch (e) {
+        console.error('Error parsing saved roles:', e);
+      }
+    }
+    
+    setLoading(false);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ height: '80vh' }}>
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // If user is an agent but not admin, add the agentId prop
+  if (userRoles && userRoles.isAgent && !userRoles.isAdmin) {
+    return React.cloneElement(children, {
+      agentRestricted: true,
+      agentId: userRoles.agentId
+    });
+  }
+
+  return children;
+};
 
 const AgentRestricted = ({ children }) => {
   const [userRoles, setUserRoles] = useState(null);
@@ -96,6 +138,12 @@ const AgentRestricted = ({ children }) => {
       const defaultRoutes = ['/dashboard', '/evaluations', '/documentation', '/change-password'];
       return defaultRoutes.includes(route);
     };
+    
+    // IMPORTANT: Special case for evaluation detail route
+    if (location.pathname.startsWith('/evaluation/')) {
+      console.log('Agent accessing an evaluation details page - allowing access');
+      return children;
+    }
     
     // Check if current path is allowed based on permissions
     const isAllowed = hasPermission(location.pathname) || 
@@ -178,13 +226,14 @@ function App() {
             </PrivateLayout>
           }
         />
+        {/* MODIFIED: Special handling for evaluation detail route */}
         <Route
           path="/evaluation/:id"
           element={
             <PrivateLayout>
-              <WithPermission permission="evaluations.read">
+              <EvaluationRouteWrapper>
                 <QADetail />
-              </WithPermission>
+              </EvaluationRouteWrapper>
             </PrivateLayout>
           }
         />
