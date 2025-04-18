@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const { authenticateTokenWithSystemAccess } = require('../middleware/systemAuth');
+const { enforceAgentRestriction } = require('../middleware/agentRestriction');
 const analyticsService = require('../services/analyticsService');
 const qaDetailService = require('../services/qaDetailService');
 const transcriptionService = require('../services/transcriptionService');
@@ -13,7 +14,7 @@ const mongoose = require('mongoose');
 router.use(authenticateToken);
 
 // Get QA dashboard data
-router.get('/dashboard', authenticateToken, async (req, res) => {
+router.get('/dashboard', authenticateToken, enforceAgentRestriction, async (req, res) => {
   try {
     const { agentId, queueId, startDate, endDate, formId } = req.query;
     
@@ -25,6 +26,12 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
         dateRange: { start: startDate, end: endDate }
       })
     };
+
+    if (req.user.isAgent && !req.user.isAdmin) {
+      filters.agentId = req.user.id;
+      // Set header to inform client this is a restricted view
+      res.set('X-Restricted-View', 'agent-only');
+    }
 
     const qaMetrics = await analyticsService.getEvaluationMetrics(filters);
     res.json(qaMetrics);
@@ -53,6 +60,12 @@ router.get('/evaluation/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'QA evaluation not found' });
     }
 
+    if (req.user.isAgent && !req.user.isAdmin) {
+      if (qaDetail.agent?.id != req.user.id) {
+        return res.status(403).json({ message: 'Access denied: This evaluation belongs to another agent' });
+      }
+    }
+    
     // Get transcription analysis if available
     const transcriptionAnalysis = await transcriptionService
       .getTranscriptionAnalysis(qaDetail.interactionId);

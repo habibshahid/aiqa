@@ -40,26 +40,35 @@ export default function TopBar() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [notifications] = useState([]);
   const [user, setUser] = useState(null);
+  const [userRoles, setUserRoles] = useState(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
   const [pageTitle, setPageTitle] = useState({ title: 'AIQA', icon: Home });
   
   useEffect(() => {
     loadUserData();
+
+    const savedRoles = localStorage.getItem('userRoles');
+    if (savedRoles) {
+      setUserRoles(JSON.parse(savedRoles));
+    }
+    
     const fetchQueueCount = async () => {
-      try {
-        const response = await fetch('/api/qa-process/queue-count', {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+      if (!userRoles || userRoles.isAdmin) {
+        try {
+          const response = await fetch('/api/qa-process/queue-count', {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            setQueueCount(data.count);
           }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          setQueueCount(data.count);
+        } catch (error) {
+          console.error('Error fetching queue count:', error);
         }
-      } catch (error) {
-        console.error('Error fetching queue count:', error);
       }
     };
     
@@ -67,7 +76,7 @@ export default function TopBar() {
     const intervalId = setInterval(fetchQueueCount, 30000); // Check every 30 seconds
     
     return () => clearInterval(intervalId);
-  }, []);
+  }, [userRoles]);
 
   // Update page title based on current route
   useEffect(() => {
@@ -182,19 +191,21 @@ export default function TopBar() {
           </div>
 
           {/* Queue Monitor */}
-          <div className="position-relative">
-            <button 
-              className="btn btn-light position-relative"
-              onClick={() => navigate('/queue-monitor')}
-            >
-              <ListChecks size={18} />
-              {queueCount > 0 && (
-                <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">
-                  {queueCount}
-                </span>
-              )}
-            </button>
-          </div>
+          {(!userRoles || userRoles.isAdmin) && (
+            <div className="position-relative">
+              <button 
+                className="btn btn-light position-relative"
+                onClick={() => navigate('/queue-monitor')}
+              >
+                <ListChecks size={18} />
+                {queueCount > 0 && (
+                  <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">
+                    {queueCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
           
           {/* User Profile Dropdown */}
           <div className="position-relative">

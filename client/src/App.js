@@ -1,5 +1,5 @@
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Menu from './components/Menu';
 import TopBar from './components/TopBar';
 import Login from './pages/Login';
@@ -26,7 +26,61 @@ import TourProvider from './components/tour/TourProvider';
 import Documentation from './pages/Documentation';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
-import 'shepherd.js/dist/css/shepherd.css'; // Import Shepherd.js styles
+import 'shepherd.js/dist/css/shepherd.css';
+
+const AgentRestricted = ({ children }) => {
+  const [userRoles, setUserRoles] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Get user role information
+    const savedRoles = localStorage.getItem('userRoles');
+    if (savedRoles) {
+      setUserRoles(JSON.parse(savedRoles));
+    }
+    setLoading(false);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ height: '80vh' }}>
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // If user is an agent but not admin, check if they should access this route
+  if (userRoles && userRoles.isAgent && !userRoles.isAdmin) {
+    // List of routes agents should not access
+    const adminOnlyRoutes = [
+      '/new-evaluations',
+      '/qa-forms',
+      '/criteria',
+      '/scheduler',
+      '/agent-comparison',
+      '/trend-analysis',
+      '/exports',
+      '/groups'
+    ];
+    
+    // Check if current path starts with any admin-only route
+    const isAdminRoute = adminOnlyRoutes.some(route => 
+      location.pathname === route || location.pathname.startsWith(`${route}/`)
+    );
+    
+    if (isAdminRoute) {
+      // Redirect agents away from admin routes
+      navigate('/dashboard');
+      return null;
+    }
+  }
+
+  return children;
+};
 
 const PrivateLayout = ({ children }) => {
   const token = localStorage.getItem('token');
@@ -47,7 +101,9 @@ const PrivateLayout = ({ children }) => {
         </div>
         
         <div className="flex-grow-1 overflow-auto" style={{ marginLeft: '60px', marginTop: '1rem' }}>
-          {children}
+          <AgentRestricted>
+            {children}
+          </AgentRestricted>
         </div>
       </div>
     </div>

@@ -64,7 +64,73 @@ export default function SessionTimeoutModal({ isOpen, onClose, onLogin }) {
       >
         <div className="modal-dialog modal-dialog-centered">
           <div className="modal-content">
-            {/* Rest of modal content remains the same */}
+            <div className="modal-header">
+              <h5 className="modal-title">Session Expired</h5>
+              <button 
+                type="button" 
+                className="btn-close" 
+                onClick={onClose}
+                aria-label="Close"
+              ></button>
+            </div>
+            <div className="modal-body">
+              <p>Your session has expired. Please log in again to continue.</p>
+              
+              {error && (
+                <div className="alert alert-danger" role="alert">
+                  {error}
+                </div>
+              )}
+              
+              <form onSubmit={handleSubmit}>
+                <div className="mb-3">
+                  <label htmlFor="username" className="form-label">Username</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    id="username"
+                    value={credentials.username}
+                    onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div className="mb-3">
+                  <label htmlFor="password" className="form-label">Password</label>
+                  <input
+                    type="password"
+                    className="form-control"
+                    id="password"
+                    value={credentials.password}
+                    onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="d-grid">
+                  <button 
+                    type="submit" 
+                    className="btn btn-primary"
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        Logging in...
+                      </>
+                    ) : 'Log In'}
+                  </button>
+                </div>
+              </form>
+            </div>
+            <div className="modal-footer">
+              <button 
+                type="button" 
+                className="btn btn-secondary"
+                onClick={onClose}
+              >
+                Return to Login Page
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -423,11 +423,31 @@ const QADetail = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
+      const userRoles = JSON.parse(localStorage.getItem('userRoles') || '{}');
       
       if (!token) {
         throw new Error('No authentication token found');
       }
 
+      if (userRoles.isAgent && !userRoles.isAdmin) {
+        const response = await fetch(`/api/qa/evaluation/${id}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Check if this evaluation belongs to the current agent
+          if (data.agent?.id != userRoles.agentId) {
+            setError('You do not have permission to view this evaluation');
+            setLoading(false);
+            return;
+          }
+        }
+      }
+      
       const response = await fetch(`/api/qa/evaluation/${id}`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -1237,6 +1257,28 @@ const QADetail = () => {
             </p>
           </div>
         </div>
+      
+        {evaluation.interaction?.recording?.webPath && (
+          <div className="card mb-4">
+            <div className="card-header">
+              <h5 className="card-title mb-0">Call Recording</h5>
+            </div>
+            <div className="card-body">
+              <audio 
+                controls 
+                className="w-100" 
+                controlsList="nodownload"
+                preload="metadata"
+              >
+                <source 
+                  src={`/api/audio-proxy?url=${encodeURIComponent(evaluation.interaction.recording.webPath)}`}
+                  type="audio/mpeg"
+                />
+                <p>Your browser does not support the audio element.</p>
+              </audio>
+            </div>
+          </div>
+        )}
       </div>
     );
   };

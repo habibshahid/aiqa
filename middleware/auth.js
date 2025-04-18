@@ -105,7 +105,8 @@ const authenticateToken = async (req, res, next) => {
         u.*,
         ul.fingerprint,
         ul.ip_address,
-        ul.is_revoked
+        ul.is_revoked,
+        u.is_agent
       FROM ${tablePrefix}users u
       LEFT JOIN ${tablePrefix}user_logins ul ON u.id = ul.user_id
       WHERE u.id = ? 
@@ -120,6 +121,12 @@ const authenticateToken = async (req, res, next) => {
     }
 
     const user = users[0];
+    user.isAdmin = user.is_agent === 0;
+    user.isAgent = user.is_agent === 1;
+
+    if (user.isAgent && !user.isAdmin) {
+      user.agentId = user.id;
+    }
 
     // Verify fingerprint
     const currentFingerprint = generateFingerprint(req);
@@ -137,7 +144,8 @@ const authenticateToken = async (req, res, next) => {
     req.tokenId = decoded.jti;
     
     // Determine if user is admin or agent and add role information
-    await determineUserRole(req, res, next);
+    //await determineUserRole(req, res, next);
+    next();
   } catch (error) {
     console.error('Auth error:', error);
     if (error.name === 'TokenExpiredError') {

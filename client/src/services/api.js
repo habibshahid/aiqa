@@ -130,7 +130,8 @@ export const api = {
     request(`/groups/${groupId}/users/${userId}`, {
       method: 'DELETE'
     }), 
-  // Auth related methods
+  
+    // Auth related methods
   login: (credentials) => 
     request('auth/login', {
       method: 'POST',
@@ -141,9 +142,25 @@ export const api = {
     request('auth/logout', {  // Remove the leading slash
       method: 'POST'
     }),
-  // User related methods
-  getUserProfile: () => 
-    request('/user/profile'),
+  
+    // User related methods
+  getUserProfile: async () => {
+    const userData = await request('/user/profile');
+    
+    // Store user role information in localStorage for easy access
+    const userRoles = {
+      isAgent: userData.isAgent === true,
+      isAdmin: userData.isAdmin === true,
+      agentId: userData.agentId || userData.id
+    };
+    
+    localStorage.setItem('userRoles', JSON.stringify(userRoles));
+    
+    return {
+      ...userData,
+      ...userRoles
+    };
+  },
 
   updateProfile: (profileData) =>
     request('/user/profile', {
@@ -288,5 +305,5 @@ export const api = {
   getActiveSchedules: () =>
     request('/scheduler/active')
 };
-
+  
 export default api;

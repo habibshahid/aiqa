@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
  * @param {Object} filters - Query filters
  * @returns {Promise<Object>} Metrics for dashboard
  */
-const getEvaluationMetrics = async (filters = {}) => {
+const getEvaluationMetrics = async (filters = {}, user) => {
   try {
     console.log('Getting evaluation metrics with filters:', filters);
     
@@ -17,6 +17,11 @@ const getEvaluationMetrics = async (filters = {}) => {
     // Apply filters
     if (filters.agentId) {
       query['interactionData.agent.id'] = filters.agentId;
+    }
+
+    // If user is an agent (not admin), restrict to their own evaluations
+    if (user && user.isAgent && !user.isAdmin) {
+      query['interactionData.agent.id'] = user.id;
     }
     
     if (filters.queueId) {

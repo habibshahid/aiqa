@@ -62,6 +62,16 @@ export const AppProvider = ({ children }) => {
       
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
+
+      const userProfile = await api.getUserProfile();
+      // Store user roles
+      const userRoles = {
+        isAgent: userProfile.isAgent === true,
+        isAdmin: userProfile.isAdmin === true,
+        agentId: userProfile.isAgent ? userProfile.id : null
+      };
+      
+      localStorage.setItem('userRoles', JSON.stringify(userRoles));
       setUser(data.user);
   
       // Resume any pending API requests after successful login

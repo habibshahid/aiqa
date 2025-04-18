@@ -206,14 +206,33 @@ const TrendAnalysis = () => {
 
   // Format date for display based on interval
   const formatDate = (date) => {
-    if (filters.interval.value === 'day') {
-      return format(new Date(date), 'MMM d');
-    } else if (filters.interval.value === 'week') {
-      return `Week of ${format(new Date(date), 'MMM d')}`;
-    } else if (filters.interval.value === 'month') {
-      return format(new Date(`${date}-01`), 'MMM yyyy');
+    try {
+      if (!date) return 'Unknown Date';
+      
+      if (filters.interval.value === 'day') {
+        return format(new Date(date), 'MMM d');
+      } else if (filters.interval.value === 'week') {
+        return `Week of ${format(new Date(date), 'MMM d')}`;
+      } else if (filters.interval.value === 'month') {
+        // The issue is here - for monthly data, the date might be in YYYY-MM format
+        // without a day component, which creates an invalid date
+        
+        // Check if date is in YYYY-MM format (no day)
+        if (/^\d{4}-\d{2}$/.test(date)) {
+          // Add day component to make it a valid date
+          return format(new Date(`${date}-01`), 'MMM yyyy');
+        } else {
+          // If it already has a day component or is in another format,
+          // try to parse it normally
+          return format(new Date(date), 'MMM yyyy');
+        }
+      }
+      return date;
+    } catch (error) {
+      console.error(`Error formatting date: ${date}`, error);
+      // Return a fallback string to prevent component from crashing
+      return 'Invalid Date';
     }
-    return date;
   };
 
   return (

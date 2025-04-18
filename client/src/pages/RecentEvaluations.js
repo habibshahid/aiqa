@@ -1,5 +1,5 @@
-// src/pages/RecentEvaluations.js
-import React, { useState, useEffect, useCallback } from 'react';
+// src/pages/RecentEvaluations.js - Fixed to prevent infinite fetch loops
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { PhoneIncoming, PhoneOutgoing, Lock } from 'lucide-react';
@@ -67,6 +67,11 @@ const RecentEvaluations = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [userInfo, setUserInfo] = useState(null);
+  
+  // Track if an API fetch is in progress to prevent duplicate calls
+  const isFetchingRef = useRef(false);
+  // Add a ref to track previous filter selections to avoid unnecessary requests
+  const prevFiltersRef = useRef(null);
 
   const fetchForms = useCallback(async () => {
     try {
@@ -134,6 +139,15 @@ const RecentEvaluations = () => {
   };
 
   const fetchData = useCallback(async () => {
+    // Check if we're already fetching - prevents duplicate calls
+    if (isFetchingRef.current) return;
+    
+    // Compare with previous filters to avoid unnecessary fetches
+    if (prevFiltersRef.current && 
+        JSON.stringify(prevFiltersRef.current) === JSON.stringify(selectedFilters)) {
+      return;
+    }
+    
     try {
       // Only fetch data if a form is selected or we're showing all forms
       if (!selectedFilters.formId && forms.length > 1) {
@@ -142,8 +156,13 @@ const RecentEvaluations = () => {
         return;
       }
       
+      // Set fetching flag to true to prevent duplicate requests
+      isFetchingRef.current = true;
       setLoading(true);
       setError(null);
+
+      // Store current filters to compare against future changes
+      prevFiltersRef.current = {...selectedFilters};
 
       const [filtersResponse, metricsResponse] = await Promise.all([
         fetch('/api/dashboard/filters', {
@@ -188,6 +207,8 @@ const RecentEvaluations = () => {
       setError(err.message);
     } finally {
       setLoading(false);
+      // Reset fetching flag when done
+      isFetchingRef.current = false;
     }
   }, [selectedFilters, forms.length, userInfo]);
 
@@ -198,7 +219,12 @@ const RecentEvaluations = () => {
 
   // Fetch data when filters change
   useEffect(() => {
-    fetchData();
+    // Debounce the fetch to prevent hammering the API with rapid changes
+    const timer = setTimeout(() => {
+      fetchData();
+    }, 300);
+    
+    return () => clearTimeout(timer);
   }, [fetchData]);
   
   const handleFilterChange = (e) => {

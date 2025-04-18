@@ -13,6 +13,7 @@ const NewEvaluations = () => {
   const [success, setSuccess] = useState(null);
   const [showQueueConfirmation, setShowQueueConfirmation] = useState(false);
   const [queuedJobsCount, setQueuedJobsCount] = useState(0);
+  const [userInfo, setUserInfo] = useState(null); // Add this line
   
   // Filters state
   const [filters, setFilters] = useState({
@@ -41,6 +42,27 @@ const NewEvaluations = () => {
   const [interactions, setInteractions] = useState([]);
   const [selectedInteractions, setSelectedInteractions] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
+
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        const userInfo = await api.getUserProfile();
+        setUserInfo(userInfo);
+        
+        // If user is an agent, pre-select their ID in the filters
+        if (userInfo.isAgent && !userInfo.isAdmin && userInfo.agentId) {
+          setFilters(prev => ({
+            ...prev,
+            agentIds: [userInfo.agentId]
+          }));
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      }
+    };
+    
+    fetchUserInfo();
+  }, []);
 
   // Fetch options for dropdowns
   useEffect(() => {
@@ -462,21 +484,27 @@ const NewEvaluations = () => {
 
             {/* Agents */}
             <div className="col-md-6">
-              <label className="form-label">Agents</label>
-              <Select
-                isMulti
-                options={options.agents.map(agent => ({
-                  value: agent.id,
-                  label: agent.name
-                }))}
-                value={filters.agentIds.map(id => {
-                  const agent = options.agents.find(a => a.id.toString() === id.toString());
-                  return agent ? { value: agent.id, label: agent.name } : null;
-                }).filter(Boolean)}
-                onChange={(selected) => handleSelectChange('agentIds', selected)}
-                placeholder="Select agents"
-              />
-            </div>
+            <label className="form-label">Agents</label>
+            <Select
+              isMulti
+              options={options.agents.map(agent => ({
+                value: agent.id,
+                label: agent.name
+              }))}
+              value={filters.agentIds.map(id => {
+                const agent = options.agents.find(a => a.id.toString() === id.toString());
+                return agent ? { value: agent.id, label: agent.name } : null;
+              }).filter(Boolean)}
+              onChange={(selected) => handleSelectChange('agentIds', selected)}
+              placeholder="Select agents"
+              isDisabled={userInfo && userInfo.isAgent && !userInfo.isAdmin} // Disable for agents
+            />
+            {userInfo && userInfo.isAgent && !userInfo.isAdmin && (
+              <small className="form-text text-muted">
+                As an agent, you can only create evaluations for yourself
+              </small>
+            )}
+          </div>
 
             {/* Duration */}
             <div className="col-md-3">

@@ -303,6 +303,15 @@ const ParameterBarChart = ({ parameters, dateRange }) => {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [userRoles, setUserRoles] = useState(null);
+  useEffect(() => {
+    // Get user role information
+    const savedRoles = localStorage.getItem('userRoles');
+    if (savedRoles) {
+      setUserRoles(JSON.parse(savedRoles));
+    }
+  }, []);
+
   const [metrics, setMetrics] = useState(null);
   const [filters, setFilters] = useState({
     selectedForm: null,
@@ -446,6 +455,8 @@ const Dashboard = () => {
     return result.trim();
   };
   
+  // Fixed fetchData function to properly handle form selections and avoid infinite loading
+
   const fetchData = useCallback(async () => {
     try {
       // Only proceed if a form is selected when multiple forms exist
@@ -454,41 +465,34 @@ const Dashboard = () => {
         setLoading(false);
         return;
       }
-  
+
       // Start loading
       setLoading(true);
       setError(null);
-  
-      // Prepare query parameters
 
-      const queryParams = new URLSearchParams();  
+      // Prepare query parameters - ONLY build params once
+      const queryParams = new URLSearchParams();
+      
+      if (userRoles && userRoles.isAgent && !userRoles.isAdmin) {
+        queryParams.append('agentId', userRoles.agentId);
+      }
+      
       // Add filters to query params - ENSURE NO DUPLICATES
       if (selectedFilters.agentId) queryParams.append('agentId', selectedFilters.agentId);
       if (selectedFilters.queueId) queryParams.append('queueId', selectedFilters.queueId);
       if (selectedFilters.startDate) queryParams.append('startDate', selectedFilters.startDate);
       if (selectedFilters.endDate) queryParams.append('endDate', selectedFilters.endDate);
       if (selectedFilters.formId) queryParams.append('formId', selectedFilters.formId);
+      
+      // Handle selectedForm object specially
+      if (selectedFilters.selectedForm && selectedFilters.selectedForm.value && 
+          !queryParams.has('formId')) {
+        queryParams.append('formId', selectedFilters.selectedForm.value);
+      }
 
       // Log what we're fetching
       console.log('Fetching metrics with params:', queryParams.toString());
-      
-      // Add filters to query params
-      Object.entries(selectedFilters).forEach(([key, value]) => {
-        // Handle different types of filter values
-        if (value) {
-          if (key === 'selectedForm' && value.value) {
-            // Special handling for form selection
-            queryParams.append('formId', value.value);
-          } else if (typeof value === 'object' && value.value) {
-            // Handle Select component values
-            queryParams.append(key, value.value);
-          } else if (typeof value === 'string' || typeof value === 'number') {
-            // Handle standard input values
-            queryParams.append(key, value);
-          }
-        }
-      });
-  
+
       // Fetch data in parallel
       const [filtersResponse, metricsResponse, formsResponse] = await Promise.all([
         fetch('/api/dashboard/filters', {
@@ -507,22 +511,22 @@ const Dashboard = () => {
           }
         })
       ]);
-  
+
       // Check for successful responses
       if (!filtersResponse.ok || !metricsResponse.ok || !formsResponse.ok) {
         throw new Error('Failed to fetch dashboard data');
       }
-  
+
       // Parse responses
       const [filtersData, metricsData, formsData] = await Promise.all([
         filtersResponse.json(),
         metricsResponse.json(),
         formsResponse.json()
       ]);
-  
+
       // Log raw metrics for debugging
       console.log('Raw Metrics Data:', metricsData);  
-  
+
       // Determine the form to select
       const formToSelect = 
         selectedFilters.selectedForm || 
@@ -532,23 +536,26 @@ const Dashboard = () => {
               label: formsData[0].name 
             } 
           : null);
-  
+
       // Update state
       setFilters(prev => ({ 
         ...(prev || {}), 
         ...filtersData, 
         selectedForm: formToSelect
       }));
-  
-      setSelectedFilters(prev => ({
-        ...prev,
-        formId: formToSelect ? formToSelect.value : null,
-        selectedForm: formToSelect
-      }));
-  
+
+      // Update form ID consistently
+      if (formToSelect && formToSelect.value) {
+        setSelectedFilters(prev => ({
+          ...prev,
+          formId: formToSelect.value,
+          selectedForm: formToSelect
+        }));
+      }
+
       setMetrics(metricsData);
       setForms(formsData);
-  
+
     } catch (err) {
       // Handle and log any errors
       console.error('Dashboard error:', err);
@@ -559,6 +566,48 @@ const Dashboard = () => {
       setFormsLoading(false);
     }
   }, [selectedFilters, forms.length]);
+
+  // For initial data loading, add this useEffect
+  useEffect(() => {
+    // Initial data load to get forms
+    const loadInitialData = async () => {
+      try {
+        const response = await fetch('/api/qa-forms', {
+          headers: { 
+            'Authorization': `Bearer ${localStorage.getItem('token')}` 
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch forms');
+        }
+        
+        const formsData = await response.json();
+        setForms(formsData);
+        
+        // If there's only one form, auto-select it
+        if (formsData.length === 1) {
+          const formToSelect = { 
+            value: formsData[0]._id, 
+            label: formsData[0].name 
+          };
+          
+          setSelectedFilters(prev => ({
+            ...prev,
+            formId: formToSelect.value,
+            selectedForm: formToSelect
+          }));
+        }
+        
+        setFormsLoading(false);
+      } catch (err) {
+        console.error('Error loading initial data:', err);
+        setFormsLoading(false);
+      }
+    };
+    
+    loadInitialData();
+  }, []);
   
   const handleFilterChange = (name, value) => {
     setSelectedFilters(prevFilters => {

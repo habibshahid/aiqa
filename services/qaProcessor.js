@@ -1380,11 +1380,12 @@ function formatInstructions(form) {
   instructions += 'Please provide your evaluation with a score for each question, along with an explanation of your reasoning. Also include an overall assessment of the interaction.';
   
   // Additional instructions for handling question classifications
-  instructions += '\nassign a tag to the question response.';
+  instructions += '\nassign a classification tag to the question response. The classification tags are none, minor, moderate, major. If the instructions have none then do not apply any classification';
   instructions += '\nwhen returning the response do not include the text Question in parameter name, just the label name';
   
   instructions += process.env.AIQA_SAMPLE_RESPONSE;
   
+  console.log('Formatted Instructions:', instructions);
   return instructions;
 }
 
