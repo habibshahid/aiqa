@@ -1257,32 +1257,32 @@ const QADetail = () => {
             </p>
           </div>
         </div>
-      
-        {evaluation.interaction?.recording?.webPath && (
-          <div className="card mb-4">
-            <div className="card-header">
-              <h5 className="card-title mb-0">Call Recording</h5>
-            </div>
-            <div className="card-body">
-              <audio 
-                controls 
-                className="w-100" 
-                controlsList="nodownload"
-                preload="metadata"
-              >
-                <source 
-                  src={`/api/audio-proxy?url=${encodeURIComponent(evaluation.interaction.recording.webPath)}`}
-                  type="audio/mpeg"
-                />
-                <p>Your browser does not support the audio element.</p>
-              </audio>
-            </div>
-          </div>
-        )}
       </div>
     );
   };
 
+  {evaluation.interaction?.recording?.webPath && (
+    <div className="card mb-4">
+      <div className="card-header">
+        <h5 className="card-title mb-0">Call Recording</h5>
+      </div>
+      <div className="card-body">
+        <audio 
+          controls 
+          className="w-100" 
+          controlsList="nodownload"
+          preload="metadata"
+        >
+          <source 
+            src={`/api/audio-proxy?url=${encodeURIComponent(evaluation.interaction.recording.webPath)}`}
+            type="audio/mpeg"
+          />
+          <p>Your browser does not support the audio element.</p>
+        </audio>
+      </div>
+    </div>
+  )}
+  
   // Render Areas of Improvement Section
   const renderAreasOfImprovement = () => {
     if (!evaluation.evaluation?.areasOfImprovement?.length) return null;

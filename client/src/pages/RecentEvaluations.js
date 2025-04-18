@@ -72,6 +72,8 @@ const RecentEvaluations = () => {
   const isFetchingRef = useRef(false);
   // Add a ref to track previous filter selections to avoid unnecessary requests
   const prevFiltersRef = useRef(null);
+  // Add a ref to track if we've already applied the agent ID filter for restricted view
+  const hasAppliedRestrictedFilterRef = useRef(false);
 
   const fetchForms = useCallback(async () => {
     try {
@@ -100,12 +102,22 @@ const RecentEvaluations = () => {
     }
   }, []);
 
-  // Get user profile to determine if agent or admin
+  // Get user profile to determine if agent or admin - ONLY ONCE
   useEffect(() => {
     const fetchUserInfo = async () => {
       try {
         const userInfo = await api.getUserProfile();
         setUserInfo(userInfo);
+        
+        // If user is an agent, pre-select their ID in the filters
+        // This is now moved here so it only happens once on component mount
+        if (userInfo.isAgent && !userInfo.isAdmin && userInfo.agentId) {
+          setSelectedFilters(prev => ({
+            ...prev,
+            agentId: userInfo.agentId
+          }));
+          hasAppliedRestrictedFilterRef.current = true;
+        }
       } catch (error) {
         console.error('Error fetching user profile:', error);
       }
@@ -138,6 +150,64 @@ const RecentEvaluations = () => {
     return result.trim();
   };
 
+  const fetchQueues = useCallback(async () => {
+    try {
+      // Try the dashboard filters endpoint first
+      let response = await fetch('/api/dashboard/filters', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // If we got queues from this endpoint, use them
+        if (data.queues && data.queues.length > 0) {
+          console.log(`Got ${data.queues.length} queues from dashboard filters`);
+          return data.queues;
+        }
+      }
+      
+      // If no queues from dashboard filters, try the dedicated queues endpoint
+      console.log('Trying dedicated queues endpoint...');
+      response = await fetch('/api/queues/all', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (response.ok) {
+        const queues = await response.json();
+        console.log(`Got ${queues.length} queues from dedicated endpoint`);
+        return queues;
+      }
+      
+      // If both fail, return empty array
+      return [];
+    } catch (error) {
+      console.error('Error fetching queues:', error);
+      return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    // Add this inside your existing useEffect that loads data
+    const loadQueues = async () => {
+      if (!filters?.queues || filters.queues.length === 0) {
+        const queuesData = await fetchQueues();
+        if (queuesData.length > 0) {
+          setFilters(prev => ({
+            ...prev,
+            queues: queuesData
+          }));
+        }
+      }
+    };
+    
+    loadQueues();
+  }, [filters, fetchQueues]);
+  
   const fetchData = useCallback(async () => {
     // Check if we're already fetching - prevents duplicate calls
     if (isFetchingRef.current) return;
@@ -190,18 +260,10 @@ const RecentEvaluations = () => {
         metricsResponse.json()
       ]);
 
-      console.log('Metrics Data:', metricsData);
       setFilters(filtersData);
       setMetrics(metricsData);
       
-      // If we're in a restricted view and this is the first load
-      if (isRestricted && !selectedFilters.agentId && userInfo && userInfo.agentId) {
-        // Auto-select the current user's agent ID
-        setSelectedFilters(prev => ({
-          ...prev,
-          agentId: userInfo.agentId
-        }));
-      }
+      // REMOVED: The code that was setting the agent filter here and causing the loop
     } catch (err) {
       console.error('Evaluations error:', err);
       setError(err.message);
@@ -210,7 +272,7 @@ const RecentEvaluations = () => {
       // Reset fetching flag when done
       isFetchingRef.current = false;
     }
-  }, [selectedFilters, forms.length, userInfo]);
+  }, [selectedFilters, forms.length]);
 
   // Fetch forms on mount
   useEffect(() => {

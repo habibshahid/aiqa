@@ -1,5 +1,5 @@
-// src/context/AppContext.js
-import React, { createContext, useState, useContext, useEffect } from 'react';
+// src/context/AppContext.js - Fixed to prevent getUserProfile loop
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SessionTimeoutModal from '../components/SessionTimeoutModal';
 import { api } from '../services/api';
@@ -14,6 +14,7 @@ export const AppProvider = ({ children }) => {
   const [showSessionModal, setShowSessionModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [failedRequest, setFailedRequest] = useState(null);
+  const isCheckingAuth = useRef(false);
   const navigate = useNavigate();
   
   // Event handler for session timeout from API service
@@ -28,12 +29,15 @@ export const AppProvider = ({ children }) => {
     };
   }, []);
   
-  // Check auth status on mount
+  // Check auth status on mount - with protection against multiple calls
   useEffect(() => {
     checkAuth();
   }, []);
 
   const checkAuth = async () => {
+    // Prevent multiple simultaneous auth checks
+    if (isCheckingAuth.current) return;
+    
     const token = localStorage.getItem('token');
     if (!token) {
       setLoading(false);
@@ -41,7 +45,21 @@ export const AppProvider = ({ children }) => {
     }
 
     try {
+      // Set flag to true to prevent duplicate calls
+      isCheckingAuth.current = true;
+      
+      // Try to get user profile from localStorage first
+      const cachedUser = localStorage.getItem('user');
+      if (cachedUser) {
+        const userData = JSON.parse(cachedUser);
+        setUser(userData);
+      }
+      
+      // Only call API if needed
       const userData = await api.getUserProfile();
+      
+      // Update localStorage with fresh data
+      localStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
     } catch (error) {
       console.error('Auth check error:', error);
@@ -53,6 +71,7 @@ export const AppProvider = ({ children }) => {
       }
     } finally {
       setLoading(false);
+      isCheckingAuth.current = false;
     }
   };
 
@@ -63,15 +82,20 @@ export const AppProvider = ({ children }) => {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
 
-      const userProfile = await api.getUserProfile();
-      // Store user roles
+      // Use a more efficient way to store user roles
+      // WITHOUT immediately calling getUserProfile() which can cause loops
       const userRoles = {
-        isAgent: userProfile.isAgent === true,
-        isAdmin: userProfile.isAdmin === true,
-        agentId: userProfile.isAgent ? userProfile.id : null
+        isAgent: data.user.is_agent === 1,
+        isAdmin: data.user.is_agent === 0,
+        agentId: data.user.is_agent === 1 ? data.user.id : null
       };
       
       localStorage.setItem('userRoles', JSON.stringify(userRoles));
+      localStorage.setItem('cachedUserProfile', JSON.stringify({
+        ...data.user,
+        ...userRoles
+      }));
+      
       setUser(data.user);
   
       // Resume any pending API requests after successful login
@@ -100,6 +124,9 @@ export const AppProvider = ({ children }) => {
       console.error('Logout error:', error);
     } finally {
       localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('userRoles');
+      localStorage.removeItem('cachedUserProfile');
       setUser(null);
       setShowSessionModal(false);
       navigate('/');

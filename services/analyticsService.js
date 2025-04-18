@@ -1,6 +1,7 @@
 // services/analyticsService.js
 const { InteractionAIQA, Interactions } = require('../config/mongodb');
 const mongoose = require('mongoose');
+const db = require('../config/database');
 
 /**
  * Get QA evaluation metrics for dashboard
@@ -424,24 +425,55 @@ const getEvaluationMetrics = async (filters = {}, user) => {
  */
 const getFilterOptions = async () => {
   try {
+    console.log('Getting filter options from databases...');
+    const tablePrefix = process.env.TABLE_PREFIX || 'yovo_tbl_';
+    
     // Get unique agents from interactions
-    const interactions = await Interactions.aggregate([
-      { $match: { "agent.id": { $exists: true } } },
+    const agents = await Interactions.aggregate([
+      { $match: { "agent.id": { $exists: true, $ne: null } } },
       { $group: { _id: "$agent.id", name: { $first: "$agent.name" } } },
       { $sort: { name: 1 } },
       { $project: { _id: 0, id: "$_id", name: 1 } }
     ]);
     
-    // Get unique queues from interactions
-    const queues = await Interactions.aggregate([
-      { $match: { "queue.id": { $exists: true } } },
-      { $group: { _id: "$queue.id", name: { $first: "$queue.name" } } },
-      { $sort: { name: 1 } },
-      { $project: { _id: 0, id: "$_id", name: 1 } }
-    ]);
+    console.log(`Found ${agents.length} agents from MongoDB`);
+    
+    // Get queues directly from the SQL database (yovo_tbl_queues table)
+    let queues = [];
+    
+    try {
+      // Query the queues table directly
+      const [queuesResult] = await db.query(
+        `SELECT id, name FROM ${tablePrefix}queues ORDER BY name`
+      );
+      
+      // Format the results to match the expected structure
+      queues = queuesResult.map(row => ({
+        id: row.id.toString(), // Convert to string for consistency
+        name: row.name
+      }));
+      
+      console.log(`Found ${queues.length} queues from SQL database`);
+    } catch (sqlError) {
+      console.error('Error fetching queues from SQL database:', sqlError);
+      // If SQL query fails, try the MongoDB approach as fallback
+      try {
+        const mongoQueues = await Interactions.aggregate([
+          { $match: { "queue.name": { $exists: true, $ne: null } } },
+          { $group: { _id: "$queue.name", name: { $first: "$queue.name" } } },
+          { $sort: { name: 1 } },
+          { $project: { _id: 0, id: "$_id", name: 1 } }
+        ]);
+        
+        queues = mongoQueues;
+        console.log(`Fallback to MongoDB - found ${queues.length} queues`);
+      } catch (mongoError) {
+        console.error('Fallback MongoDB queue query also failed:', mongoError);
+      }
+    }
     
     return {
-      agents: interactions,
+      agents,
       queues
     };
   } catch (error) {

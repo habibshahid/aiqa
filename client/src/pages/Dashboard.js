@@ -524,6 +524,14 @@ const Dashboard = () => {
         formsResponse.json()
       ]);
 
+      console.log('Filters data received:', filtersData);
+      
+      // Check if queues data is missing
+      if (!filtersData.queues || filtersData.queues.length === 0) {
+        console.log('No queues in filters data, fetching queues separately');
+        await fetchQueues();
+      }
+
       // Log raw metrics for debugging
       console.log('Raw Metrics Data:', metricsData);  
 
@@ -567,7 +575,46 @@ const Dashboard = () => {
     }
   }, [selectedFilters, forms.length]);
 
+  const fetchQueues = useCallback(async () => {
+    try {
+      console.log('Fetching queues directly...');
+      
+      // Use the queues endpoint from routes/queues.js
+      const response = await fetch('/api/queues', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch queues');
+      }
+      
+      const queuesData = await response.json();
+      console.log(`Fetched ${queuesData.length} queues directly`);
+      
+      // Update filters with the queues data
+      setFilters(prev => ({
+        ...prev,
+        queues: queuesData
+      }));
+      
+      return true;
+    } catch (error) {
+      console.error('Error fetching queues:', error);
+      return false;
+    }
+  }, []);
+
   // For initial data loading, add this useEffect
+  useEffect(() => {
+    // Check if queues are missing from filters
+    if (filters && (!filters.queues || filters.queues.length === 0)) {
+      console.log('No queues in filters, fetching queues separately');
+      fetchQueues();
+    }
+  }, [filters, fetchQueues]);
+  
   useEffect(() => {
     // Initial data load to get forms
     const loadInitialData = async () => {

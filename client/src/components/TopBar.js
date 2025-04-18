@@ -1,5 +1,5 @@
-// src/components/TopBar.js
-import React, { useState, useEffect } from 'react';
+// src/components/TopBar.js - Fixed to prevent getUserProfile loop
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Bell, User, ChevronDown, Settings, Info, LogOut, Key,
   Home, ClipboardCheck, PlusCircle, ClipboardList, Filter,
@@ -44,13 +44,19 @@ export default function TopBar() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
   const [pageTitle, setPageTitle] = useState({ title: 'AIQA', icon: Home });
+  const isLoadingUserData = useRef(false);
   
   useEffect(() => {
     loadUserData();
 
+    // Try to get user roles from localStorage
     const savedRoles = localStorage.getItem('userRoles');
     if (savedRoles) {
-      setUserRoles(JSON.parse(savedRoles));
+      try {
+        setUserRoles(JSON.parse(savedRoles));
+      } catch (e) {
+        console.error('Error parsing user roles', e);
+      }
     }
     
     const fetchQueueCount = async () => {
@@ -111,11 +117,34 @@ export default function TopBar() {
   }, [location.pathname]);
 
   const loadUserData = async () => {
+    // Prevent multiple simultaneous calls
+    if (isLoadingUserData.current) {
+      return;
+    }
+    
     try {
-      const userData = await api.getUserProfile();
-      setUser(userData);
+      isLoadingUserData.current = true;
+      
+      // Try to get user data from localStorage first
+      const userString = localStorage.getItem('user');
+      if (userString) {
+        try {
+          const cachedUser = JSON.parse(userString);
+          setUser(cachedUser);
+        } catch (e) {
+          console.error('Error parsing cached user data', e);
+        }
+      }
+      
+      // Only make API call if we don't have user data yet
+      if (!user) {
+        const userData = await api.getUserProfile();
+        setUser(userData);
+      }
     } catch (error) {
       console.error('Error loading user data:', error);
+    } finally {
+      isLoadingUserData.current = false;
     }
   };
 
@@ -131,6 +160,9 @@ export default function TopBar() {
       // Force logout on error
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      localStorage.removeItem('userRoles');
+      localStorage.removeItem('cachedUserProfile');
+      localStorage.removeItem('cachedPermissions');
       navigate('/');
     } finally {
       setIsLoggingOut(false);

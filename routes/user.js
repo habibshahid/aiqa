@@ -74,16 +74,13 @@ router.get('/permissions', async (req, res) => {
       WHERE u.id = ?
     `, [req.user.id]);
 
-    // Default permissions if no group assigned
-    const defaultPermissions = {
-      dashboard: { read: true },
-      contacts: { read: true }
-    };
+    console.log(rows)
 
-    if (!rows.length || !rows[0].permissions) {
-      console.log('No permissions found, using defaults');
-      return res.json(defaultPermissions);
-    }
+    // Default permissions for all users - at minimum they can view dashboards and QA forms
+    let defaultPermissions = {
+      'dashboard': { 'read': true },
+      'qa-forms': { 'read': true }
+    };
 
     try {
       // Log the raw permissions for debugging
@@ -93,11 +90,25 @@ router.get('/permissions', async (req, res) => {
       let userPermissions = rows[0].permissions;
       
       // If permissions is already an object, stringify it first
-      if (typeof userPermissions === 'object' && userPermissions !== null) {
-        userPermissions = JSON.stringify(userPermissions);
+      if (!userPermissions || Object.keys(userPermissions).length === 0) {
+        console.log('No permissions found for user, providing defaults');
+        
+        // If user is an agent but not admin, provide agent-specific permissions
+        if (req.user.isAgent && !req.user.isAdmin) {
+          defaultPermissions['evaluations'] = { 'read': true };
+        }
+        
+        // If user is an admin, provide admin-specific permissions
+        if (req.user.isAdmin) {
+          defaultPermissions['qa-forms']['write'] = true;
+          defaultPermissions['evaluations'] = { 'read': true, 'write': true };
+          defaultPermissions['groups'] = { 'read': true };
+        }
+        
+        return res.json(defaultPermissions);
       }
       
-      const parsedPermissions = JSON.parse(userPermissions);
+      const parsedPermissions = (userPermissions);
       //console.log('Parsed permissions:', parsedPermissions);
       
       res.json(parsedPermissions);

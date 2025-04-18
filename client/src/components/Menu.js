@@ -1,5 +1,5 @@
-// src/components/Menu.js
-import React, { useState, useEffect } from 'react';
+// src/components/Menu.js - Fixed to display correct items for agents
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Home, 
@@ -26,9 +26,10 @@ export default function Menu() {
   const [permissions, setPermissions] = useState(null);
   const [userRoles, setUserRoles] = useState(null);
   const [loading, setLoading] = useState(true);
+  const isFetchingPermissions = useRef(false);
+  const [menuConfig, setMenuConfig] = useState([]);
 
-  // Move getMenuConfig inside the component so it has access to userRoles
-  const getMenuConfig = () => {
+  const getMenuConfig = (userRoles, permissions) => {
     const baseMenu = [
       { 
         icon: Home, 
@@ -102,53 +103,122 @@ export default function Menu() {
       }
     ];
 
-    // Now userRoles is in scope
+    // Determine which menu items to show
+    let filteredMenu = [...baseMenu];
+
     if (userRoles && userRoles.isAgent && !userRoles.isAdmin) {
-      return baseMenu.filter(item => item.visibleToAgent);
+      console.log('User is an agent, filtering menu items');
+      filteredMenu = baseMenu.filter(item => item.visibleToAgent);
     }
     
-    return baseMenu;
+    // Apply permissions filtering if permissions are available
+    if (permissions) {
+      console.log('Applying permissions filter to menu');
+      filteredMenu = filteredMenu.filter(item => hasPermission(permissions, item.permission));
+    }
+    
+    return filteredMenu;
   };
 
   const hasPermission = (permissions, requiredPermission) => {
     if (!requiredPermission) return true;
+    if (!permissions) return true; // Show all items if permissions not loaded yet
+    
     const [resource, action] = requiredPermission.split('.');
     return permissions?.[resource]?.[action] === true;
   };
 
   useEffect(() => {
     const fetchPermissions = async () => {
+      // Prevent duplicate fetches
+      if (isFetchingPermissions.current) {
+        return;
+      }
+      
       try {
-        // Fetch permissions from API
-        const perms = await api.getPermissions();
-        setPermissions(perms);
+        isFetchingPermissions.current = true;
         
-        // Only fetch user profile if we don't have it yet or if explicitly needed
-        if (!userRoles) {
-          // Get user role information from localStorage first if available
-          const savedRoles = localStorage.getItem('userRoles');
-          if (savedRoles) {
-            setUserRoles(JSON.parse(savedRoles));
-          } else {
-            // Only call API if necessary
-            const userInfo = await api.getUserProfile();
+        console.log('Fetching permissions and roles for menu...');
+        
+        // First, try to get cached permissions
+        const cachedPermissions = localStorage.getItem('cachedPermissions');
+        let parsedPermissions = null;
+        
+        if (cachedPermissions) {
+          try {
+            parsedPermissions = JSON.parse(cachedPermissions);
+            setPermissions(parsedPermissions);
+            console.log('Using cached permissions');
+          } catch (e) {
+            console.error('Error parsing cached permissions', e);
+          }
+        }
+        
+        // Try to get user roles from localStorage first
+        const savedRoles = localStorage.getItem('userRoles');
+        let parsedRoles = null;
+        
+        if (savedRoles) {
+          try {
+            parsedRoles = JSON.parse(savedRoles);
+            setUserRoles(parsedRoles);
+            console.log('Using saved roles:', parsedRoles);
+          } catch (e) {
+            console.error('Error parsing saved roles', e);
+          }
+        }
+        
+        // Set initial menu config with whatever data we have
+        setMenuConfig(getMenuConfig(parsedRoles, parsedPermissions));
+        
+        // If we don't have permissions, fetch them
+        if (!parsedPermissions) {
+          console.log('Fetching permissions from API');
+          const perms = await api.getPermissions();
+          setPermissions(perms);
+          localStorage.setItem('cachedPermissions', JSON.stringify(perms));
+          
+          // Update menu config with new permissions
+          setMenuConfig(getMenuConfig(parsedRoles, perms));
+        }
+        
+        // If we don't have roles, fetch user profile
+        if (!parsedRoles) {
+          console.log('Fetching user profile for roles');
+          const userInfo = await api.getUserProfile();
+          
+          if (userInfo) {
             const roles = {
               isAgent: userInfo.isAgent === true,
               isAdmin: userInfo.isAdmin === true,
               agentId: userInfo.agentId || userInfo.id
             };
+            
             setUserRoles(roles);
+            console.log('Setting roles from API:', roles);
+            
+            // Update menu config with new roles
+            setMenuConfig(getMenuConfig(roles, parsedPermissions || permissions));
           }
         }
       } catch (error) {
         console.error('Error fetching permissions:', error);
       } finally {
+        isFetchingPermissions.current = false;
         setLoading(false);
       }
     };
   
     fetchPermissions();
   }, []);
+
+  // Update menu config when roles or permissions change
+  useEffect(() => {
+    if (userRoles || permissions) {
+      console.log('Updating menu config due to role/permission change');
+      setMenuConfig(getMenuConfig(userRoles, permissions));
+    }
+  }, [userRoles, permissions]);
 
   if (loading) {
     return (
@@ -160,31 +230,24 @@ export default function Menu() {
     );
   }
 
-  const menuConfig = getMenuConfig();
+  console.log('Rendering menu with', menuConfig.length, 'items');
   
   return (
     <div className="bg-light border-end h-100">
       <ul className="nav nav-pills flex-column mb-auto text-center p-0">
-        {menuConfig.map((item) => {
-          // Check if user has permission to see this menu item
-          if (!hasPermission(permissions, item.permission)) {
-            return null;
-          }
-
-          return (
-            <li key={item.path} className="nav-item">
-              <button 
-                onClick={() => navigate(item.path)}
-                className={`nav-link border-0 rounded-0 py-3 d-flex align-items-center justify-content-center ${
-                  location.pathname === item.path ? 'active' : ''
-                }`}
-                title={item.label}
-              >
-                <item.icon size={20} />
-              </button>
-            </li>
-          );
-        })}
+        {menuConfig.map((item) => (
+          <li key={item.path} className="nav-item">
+            <button 
+              onClick={() => navigate(item.path)}
+              className={`nav-link border-0 rounded-0 py-3 d-flex align-items-center justify-content-center ${
+                location.pathname === item.path ? 'active' : ''
+              }`}
+              title={item.label}
+            >
+              <item.icon size={20} />
+            </button>
+          </li>
+        ))}
       </ul>
     </div>
   );

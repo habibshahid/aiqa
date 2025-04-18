@@ -45,6 +45,30 @@ router.get('/dashboard', authenticateToken, enforceAgentRestriction, async (req,
 router.get('/filters', authenticateToken, async (req, res) => {
   try {
     const options = await analyticsService.getFilterOptions();
+    // If queues array is empty, try direct SQL approach
+    if (!options.queues || options.queues.length === 0) {
+      console.log('No queues found from analytics service, trying direct SQL query');
+      
+      // Get database instance
+      const db = require('../config/database');
+      
+      try {
+        // Direct query to the queues table
+        const [queuesResult] = await db.query(
+          `SELECT id, queue as name FROM ${tablePrefix}queues ORDER BY queue`
+        );
+        
+        // Format queues properly
+        options.queues = queuesResult.map(row => ({
+          id: row.id.toString(),
+          name: row.name
+        }));
+        
+        console.log(`Retrieved ${options.queues.length} queues directly from SQL`);
+      } catch (sqlError) {
+        console.error('Error in direct SQL query for queues:', sqlError);
+      }
+    }
     res.json(options);
   } catch (error) {
     console.error('Filter options error:', error);

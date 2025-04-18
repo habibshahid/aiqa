@@ -1,4 +1,4 @@
-// src/services/api.js
+// src/services/api.js - Fixed to prevent infinite getUserProfile loops
 import config from '../config';
 const API_URL = config.apiUrl;
 let sessionTimeoutHandler = null;
@@ -59,6 +59,9 @@ const request = async (url, options = {}) => {
     throw error;
   }
 };
+
+// Flag to prevent getUserProfile recursion
+let isGettingUserProfile = false;
 
 export const api = {
   // Method to resume pending requests after re-authentication
@@ -143,23 +146,58 @@ export const api = {
       method: 'POST'
     }),
   
-    // User related methods
+  // Fixed getUserProfile to prevent recursion
   getUserProfile: async () => {
-    const userData = await request('/user/profile');
+    // Return cached user data if available to prevent repeated calls
+    const cachedUserData = localStorage.getItem('cachedUserProfile');
+    if (cachedUserData) {
+      try {
+        const userData = JSON.parse(cachedUserData);
+        
+        // If we have complete user data cached, return it
+        if (userData && userData.id && (userData.isAgent !== undefined || userData.isAdmin !== undefined)) {
+          return userData;
+        }
+      } catch (e) {
+        console.error('Error parsing cached user profile', e);
+        // Continue to fetch fresh data if cache parsing fails
+      }
+    }
     
-    // Store user role information in localStorage for easy access
-    const userRoles = {
-      isAgent: userData.isAgent === true,
-      isAdmin: userData.isAdmin === true,
-      agentId: userData.agentId || userData.id
-    };
+    // Use a flag to prevent recursive calls during the same execution cycle
+    if (isGettingUserProfile) {
+      // If already fetching, return a promise that resolves with empty user data
+      return { id: null, isAgent: false, isAdmin: false };
+    }
     
-    localStorage.setItem('userRoles', JSON.stringify(userRoles));
-    
-    return {
-      ...userData,
-      ...userRoles
-    };
+    try {
+      isGettingUserProfile = true;
+      const userData = await request('/user/profile');
+      
+      // Store user role information in localStorage for easy access
+      const userRoles = {
+        isAgent: userData.isAgent === true,
+        isAdmin: userData.isAdmin === true,
+        agentId: userData.agentId || userData.id
+      };
+      
+      // Update user roles in localStorage
+      localStorage.setItem('userRoles', JSON.stringify(userRoles));
+      
+      // Cache the complete user profile to reduce API calls
+      const completeUserData = {
+        ...userData,
+        ...userRoles
+      };
+      localStorage.setItem('cachedUserProfile', JSON.stringify(completeUserData));
+      
+      return completeUserData;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      throw error;
+    } finally {
+      isGettingUserProfile = false;
+    }
   },
 
   updateProfile: (profileData) =>
@@ -175,8 +213,43 @@ export const api = {
     }),
 
   // Permissions related methods
-  getPermissions: () =>
-    request('/user/permissions'),
+  getPermissions: async () => {
+    try {
+      const response = await request('/user/permissions');
+      return response;
+    } catch (error) {
+      console.error('Error fetching permissions:', error);
+      
+      // Default fallback permissions if API fails
+      const fallbackPermissions = {
+        'dashboard': { 'read': true },
+        'qa-forms': { 'read': true }
+      };
+      
+      // Get user roles from localStorage
+      const userRolesStr = localStorage.getItem('userRoles');
+      if (userRolesStr) {
+        try {
+          const userRoles = JSON.parse(userRolesStr);
+          
+          // Add role-specific permissions
+          if (userRoles.isAgent) {
+            fallbackPermissions['evaluations'] = { 'read': true };
+          }
+          
+          if (userRoles.isAdmin) {
+            fallbackPermissions['qa-forms']['write'] = true;
+            fallbackPermissions['evaluations'] = { 'read': true, 'write': true };
+            fallbackPermissions['groups'] = { 'read': true };
+          }
+        } catch (e) {
+          console.error('Error parsing user roles:', e);
+        }
+      }
+      
+      return fallbackPermissions;
+    }
+  },
 
   // Notifications related methods
   getNotifications: () =>
