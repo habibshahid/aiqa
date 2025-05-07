@@ -103,3 +103,32 @@ code {
 .markdown-body table tr:nth-child(2n) {
   background-color: #f6f8fa;
 }
+
+/* Ensure text visibility in form inputs */
+.qa-form-editor input[type="text"],
+.qa-form-editor textarea,
+.qa-form-editor select {
+  color: #212529 !important; /* Force dark text color */
+  background-color: #fff !important; /* Ensure white background */
+}
+
+/* Add hover and focus states for better UX */
+.qa-form-editor input[type="text"]:hover,
+.qa-form-editor textarea:hover,
+.qa-form-editor select:hover {
+  border-color: #80bdff;
+}
+
+.qa-form-editor input[type="text"]:focus,
+.qa-form-editor textarea:focus,
+.qa-form-editor select:focus {
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Add contrast for placeholder text */
+.qa-form-editor input::placeholder,
+.qa-form-editor textarea::placeholder {
+  color: #6c757d !important;
+  opacity: 0.7;
+}

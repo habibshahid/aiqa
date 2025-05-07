@@ -4,7 +4,7 @@ import {
   Bell, User, ChevronDown, Settings, Info, LogOut, Key,
   Home, ClipboardCheck, PlusCircle, ClipboardList, Filter,
   UserCheck, TrendingUp, FileDown, AlarmClock, FileText, Pencil,
-  HelpCircle, UsersRound, AlertTriangle
+  HelpCircle, UsersRound, AlertTriangle, DollarSign
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../services/api';
@@ -51,6 +51,37 @@ export default function TopBar() {
   // Flag to track if queue fetching is active
   const isQueueFetchActive = useRef(false);
   
+  useEffect(() => {
+    // First try to get user directly from localStorage
+    try {
+      const userString = localStorage.getItem('user');
+      if (userString) {
+        const userData = JSON.parse(userString);
+        
+        // Check if the user data and userRoles are inconsistent
+        const userIsAdmin = userData.isAdmin === true || userData.is_agent === 0;
+        
+        // If there's a mismatch, fix the userRoles
+        if (userIsAdmin && (!userRoles || userRoles.isAdmin !== true)) {
+          console.log("Fixing inconsistent admin status in userRoles");
+          
+          // Update userRoles with correct admin status
+          const updatedRoles = {
+            isAgent: userData.is_agent === 1,
+            isAdmin: userData.isAdmin === true || userData.is_agent === 0,
+            agentId: userData.is_agent === 1 ? userData.id : null
+          };
+          
+          // Update localStorage and state
+          localStorage.setItem('userRoles', JSON.stringify(updatedRoles));
+          setUserRoles(updatedRoles);
+        }
+      }
+    } catch (e) {
+      console.error("Error checking user admin status:", e);
+    }
+  }, [userRoles]);
+
   useEffect(() => {
     loadUserData();
 
@@ -272,34 +303,34 @@ export default function TopBar() {
           </div>
 
           {/* Queue Monitor - Only shown for admins */}
-          {userRoles && userRoles.isAdmin && (
+          {(userRoles?.isAdmin === true || user?.isAdmin === true || user?.is_agent === 0) && (
             <div className="d-flex">
-                <div className="position-relative">
-                  <button 
-                    className="btn btn-light position-relative"
-                    onClick={() => navigate('/queue-monitor')}
-                  >
-                    <ListChecks size={18} />
-                    {queueCount > 0 && (
-                      <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">
-                        {queueCount}
-                      </span>
-                    )}
-                  </button>
-                </div>
-                
-                <div className="position-relative">
-                  <button 
-                    className="btn btn-light position-relative"
-                    onClick={() => navigate('/qa-disputes')}
-                  >
-                    <AlertTriangle size={18} />
-                    {disputesCount > 0 && (
-                      <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                        {disputesCount}
-                      </span>
-                    )}
-                  </button>
+              <div className="position-relative">
+                <button 
+                  className="btn btn-light position-relative"
+                  onClick={() => navigate('/queue-monitor')}
+                >
+                  <ListChecks size={18} />
+                  {queueCount > 0 && (
+                    <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">
+                      {queueCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+              
+              <div className="position-relative">
+                <button 
+                  className="btn btn-light position-relative"
+                  onClick={() => navigate('/qa-disputes')}
+                >
+                  <AlertTriangle size={18} />
+                  {disputesCount > 0 && (
+                    <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                      {disputesCount}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
           )}
@@ -326,15 +357,14 @@ export default function TopBar() {
                     <Key size={16} />
                     Change Password
                   </button>
-                  
+                 
                   <button 
-                    onClick={() => navigate('/settings')}
+                    onClick={() => navigate('/billing-usage')}
                     className="dropdown-item d-flex align-items-center gap-2"
                   >
-                    <Settings size={16} />
-                    Settings
+                    <DollarSign size={16} />
+                    Billing & Usage
                   </button>
-                  
                   <button 
                     onClick={() => navigate('/documentation')}
                     className="dropdown-item d-flex align-items-center gap-2"

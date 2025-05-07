@@ -40,14 +40,14 @@ router.get('/profile', async (req, res) => {
     const user = users[0];
     
     // Add isAdmin and isAgent properties
-    user.isAdmin = user.is_agent === 0;
-    user.isAgent = user.is_agent === 1;
-    
+    user.isAdmin = (user.is_agent === 0) ? true : false;
+    user.isAgent = (user.is_agent === 1) ? true : false;
+
     // For agents, include agentId
     if (user.isAgent) {
       user.agentId = user.id;
     }
-    
+
     res.json(user);
   } catch (error) {
     console.error('Error getting user profile:', error);

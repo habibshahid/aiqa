@@ -26,6 +26,7 @@ import SchedulerDashboard from './pages/SchedulerDashboard';
 import TourProvider from './components/tour/TourProvider';
 import Documentation from './pages/Documentation';
 import QADisputes from './pages/QADisputes';
+import BillingUsage from './pages/BillingUsage';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'shepherd.js/dist/css/shepherd.css';
@@ -421,6 +422,16 @@ function App() {
             <PrivateLayout>
               <WithPermission permission="qa-forms.write">
                 <QADisputes />
+              </WithPermission>
+            </PrivateLayout>
+          }
+        />
+        <Route
+          path="/billing-usage"
+          element={
+            <PrivateLayout>
+              <WithPermission permission="qa-forms.write">
+                <BillingUsage />
               </WithPermission>
             </PrivateLayout>
           }

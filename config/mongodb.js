@@ -250,6 +250,72 @@ const disputeResolutionSchema = new mongoose.Schema({
   }
 }, { _id: false, strict: false });
 
+// Cost model schema to track expenses for each evaluation
+const costModelSchema = new mongoose.Schema({
+  // Speech to text costs
+  sttDuration: {
+    type: Number, // In seconds
+    default: 0
+  },
+  sttCost: {
+    type: Number,
+    default: 0
+  },
+  sttPrice: {
+    type: Number,
+    default: 0
+  },
+  
+  // OpenAI costs
+  promptTokens: {
+    type: Number,
+    default: 0
+  },
+  promptCost: {
+    type: Number,
+    default: 0
+  },
+  promptPrice: {
+    type: Number,
+    default: 0
+  },
+  
+  completionTokens: {
+    type: Number,
+    default: 0
+  },
+  completionCost: {
+    type: Number,
+    default: 0
+  },
+  completionPrice: {
+    type: Number,
+    default: 0
+  },
+  
+  // Total costs
+  totalCost: {
+    type: Number,
+    default: 0
+  },
+  totalPrice: {
+    type: Number,
+    default: 0
+  },
+  
+  // Metadata
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date
+  },
+  updatedBy: {
+    type: String
+  }
+}, { _id: false, strict: false });
+
 const interactionAIQASchema = new mongoose.Schema({
   interactionId: { type: String, required: true },
   qaFormName: { type: String, required: true },
@@ -294,6 +360,10 @@ const interactionAIQASchema = new mongoose.Schema({
   },
   disputeResolution: {
     type: disputeResolutionSchema,
+    default: null
+  },
+  costModel: {
+    type: costModelSchema,
     default: null
   }
 }, { 

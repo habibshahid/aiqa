@@ -15,10 +15,10 @@ const routes = require('./routes');
 const schedulerService = require('./services/schedulerService');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-const options = {
+/*const options = {
   key: fs.readFileSync(process.env.SSL_KEY),
   cert: fs.readFileSync(process.env.SSL_CERTIFICATE)
-};
+};*/
 
 const app = express();
 
@@ -36,8 +36,10 @@ app.use(helmet({
     },
   },
 }));
+
 app.use(xss());
 app.use(sanitize());
+app.set('trust proxy', true);
 
 // Rate limiting
 const limiter = rateLimit({
@@ -58,8 +60,8 @@ app.use(cors({
 }));
 
 // Body parsing
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static('public'));
 
 // Development logging
@@ -176,7 +178,7 @@ async function startServer() {
       `);
     });
 
-    https.createServer(options, app).listen(SSL_PORT, () => {
+    /*https.createServer(options, app).listen(SSL_PORT, () => {
       console.log(`
 =======================================================
   Server running on port ${SSL_PORT}
@@ -186,7 +188,7 @@ async function startServer() {
   Time: ${new Date().toISOString()}
 =======================================================
       `);
-    });
+    });*/
   } catch (error) {
     console.error('Error starting server:', error);
     process.exit(1);

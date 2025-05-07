@@ -156,11 +156,29 @@ const authenticateToken = async (req, res, next) => {
 };
 
 const generateFingerprint = (req) => {
+  // Get the real client IP from forwarded headers first
+  const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 
+                   req.headers['x-real-ip'] || 
+                   req.ip || 
+                   '';
+                   
   const components = [
     req.headers['user-agent'] || '',
     req.headers['accept-language'] || '',
-    req.ip || ''
+    // Use the forwarded IP instead of req.ip
+    clientIp
   ];
+  
+  // Optional debugging - add this temporarily
+  /*console.log('Fingerprint components:', {
+    userAgent: req.headers['user-agent'] || '',
+    acceptLanguage: req.headers['accept-language'] || '',
+    originalIp: req.ip,
+    forwardedIp: req.headers['x-forwarded-for'],
+    realIp: req.headers['x-real-ip'],
+    clientIp: clientIp
+  });*/
+  
   return crypto
     .createHash('sha256')
     .update(components.join(''))

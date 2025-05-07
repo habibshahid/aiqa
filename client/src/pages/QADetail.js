@@ -399,6 +399,47 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
 
   const [agentAccessChecked, setAgentAccessChecked] = useState(false);
   
+  const [resolutionComment, setResolutionComment] = useState('');
+  const [resolvingDispute, setResolvingDispute] = useState(false);
+
+  const handleResolveDispute = async (resolution) => {
+    try {
+      setResolvingDispute(true);
+      
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/qa/evaluation/${id}/resolve-dispute`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          resolution: resolution, // 'accept' or 'reject'
+          comments: resolutionComment
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to ${resolution} dispute`);
+      }
+      
+      // Update local state
+      const updatedData = await response.json();
+      setEvaluation(updatedData);
+      
+      // Show success message
+      setSaveSuccess(`Dispute ${resolution === 'accept' ? 'accepted' : 'rejected'} successfully`);
+      
+      // Refresh data to ensure we have the latest
+      await fetchEvaluation();
+    } catch (err) {
+      console.error(`Error ${resolution} dispute:`, err);
+      setSaveError(err.message);
+    } finally {
+      setResolvingDispute(false);
+    }
+  };
+
   // Human Evaluation State
   const [humanEvaluation, setHumanEvaluation] = useState({
     parameters: {},
@@ -427,7 +468,7 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
         const userRoles = JSON.parse(userRolesStr);
         console.log("User Roles from localStorage:", userRoles);
         
-        // Explicitly set the agent and admin flags
+        // Only keep this part, which properly handles both true and false values
         setIsAgent(userRoles.isAgent === true);
         setIsAdmin(userRoles.isAdmin === true);
       }
@@ -435,7 +476,7 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
       console.error("Error retrieving user roles:", e);
     }
   }, []);
-  
+
   // Fetch evaluation data
   const fetchEvaluation = useCallback(async () => {
     try {
@@ -579,17 +620,21 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
       
       const permissions = await response.json();
       
-      // Determine user role
+      // Only update isAdmin from the API response if needed
+      // But DON'T update isAgent - keep the value from localStorage
       const isUserAdmin = permissions["qa-forms"]?.write === true;
-      const isUserAgent = permissions["qa-forms"]?.read === true && !isUserAdmin;
-
       setIsAdmin(isUserAdmin);
-      setIsAgent(isUserAgent);
+      
+      // Don't set isAgent here anymore
+      // const isUserAgent = permissions["qa-forms"]?.read === true && !isUserAdmin;
+      // setIsAdmin(isUserAdmin);
+      // setIsAgent(isUserAgent);
+      
+      console.log("Permissions check completed - keeping original isAgent value:", isAgent);
     } catch (err) {
       console.error('Error checking permissions:', err);
-      // Default to basic permissions if check fails
+      // Don't override isAgent if the API call fails
       setIsAdmin(false);
-      setIsAgent(true);
     }
   };
 
@@ -854,13 +899,18 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
   };
 
   const getStatusBadge = () => {
-    if (evaluation.disputed) {
+    // First check for disputed status - this should take priority
+    if (evaluation.status === 'disputed' || evaluation.disputed === true) {
       return <span className="badge bg-danger">Disputed</span>;
-    } else if (!humanEvaluation.isModerated) {
+    } 
+    // Then check other statuses
+    else if (!humanEvaluation.isModerated) {
       return <span className="badge bg-warning">Awaiting Human Moderation</span>;
-    } else if (humanEvaluation.isPublished) {
+    } 
+    else if (humanEvaluation.isPublished) {
       return <span className="badge bg-success">Published</span>;
-    } else {
+    } 
+    else {
       return <span className="badge bg-secondary">Not Published</span>;
     }
   };
@@ -1694,18 +1744,110 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
     );
   };
 
+  const renderDisputeResolutionSection = () => {
+    // Only show for admins and when the evaluation is disputed
+    if (!isAdmin || !(evaluation.status === 'disputed' || evaluation.disputed === true)) {
+      return null;
+    }
+  
+    return (
+      <div className="card mb-4 border-danger">
+        <div className="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+          <h5 className="card-title mb-0">
+            <AlertTriangle size={18} className="me-2" />
+            Dispute Resolution
+          </h5>
+        </div>
+        <div className="card-body">
+          <div className="alert alert-danger">
+            <AlertTriangle size={16} className="me-2" />
+            <strong>This evaluation has been disputed by the agent.</strong>
+            <p className="mt-2 mb-0">Review the agent's comments above and decide whether to accept or reject the dispute.</p>
+          </div>
+          
+          <div className="form-group mt-3">
+            <label className="form-label">Resolution Comments</label>
+            <textarea
+              className="form-control"
+              rows="4"
+              value={resolutionComment}
+              onChange={(e) => setResolutionComment(e.target.value)}
+              placeholder="Provide comments explaining your decision..."
+              disabled={resolvingDispute}
+            />
+          </div>
+          
+          <div className="d-flex gap-2 mt-3">
+            <button 
+              className="btn btn-success"
+              onClick={() => handleResolveDispute('accept')}
+              disabled={resolvingDispute || !resolutionComment.trim()}
+              title={!resolutionComment.trim() ? "Please provide comments explaining your decision" : ""}
+            >
+              {resolvingDispute ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-2" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <CheckCircle size={16} className="me-2" />
+                  Accept Dispute
+                </>
+              )}
+            </button>
+            <button 
+              className="btn btn-danger"
+              onClick={() => handleResolveDispute('reject')}
+              disabled={resolvingDispute || !resolutionComment.trim()}
+              title={!resolutionComment.trim() ? "Please provide comments explaining your decision" : ""}
+            >
+              {resolvingDispute ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-2" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <XCircle size={16} className="me-2" />
+                  Reject Dispute
+                </>
+              )}
+            </button>
+          </div>
+          
+          <div className="mt-3">
+            <h6>What happens next?</h6>
+            <ul className="mb-0">
+              <li><strong>Accept Dispute</strong>: The evaluation will be marked for review and require re-moderation</li>
+              <li><strong>Reject Dispute</strong>: The evaluation will remain as is, with your comments added as feedback</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Render Agent Comments Section
   const renderAgentCommentsSection = () => {
-    // Only show if user is an agent or comments exist
-    if (!(isAgent || humanEvaluation.agentComments)) return null;
-  
+    // Show if:
+    // 1. User is an agent AND evaluation is published, OR
+    // 2. User is an admin, OR
+    // 3. There are existing agent comments
+    if (!(
+      (isAgent && humanEvaluation.isPublished) || 
+      isAdmin || 
+      humanEvaluation.agentComments
+    )) return null;
+    
     return (
       <div className="card mb-4">
         <div className="card-header">
           <h5 className="card-title mb-0">Agent Response</h5>
         </div>
         <div className="card-body">
-          {isAgent ? (
+          {isAgent && humanEvaluation.isPublished ? (
+            // Show editable form for agent
             <div className="form-group">
               <textarea
                 className="form-control"
@@ -1713,66 +1855,63 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
                 value={humanEvaluation.agentComments}
                 onChange={(e) => handleAgentCommentsChange(e.target.value)}
                 placeholder="Enter your response to this evaluation..."
-                disabled={!humanEvaluation.isPublished || isSaving}
+                disabled={isSaving}
               />
-              {!humanEvaluation.isPublished && (
-                <div className="alert alert-warning mt-2">
-                  <Lock size={16} className="me-2" />
-                  You cannot respond until this evaluation is published.
-                </div>
-              )}
-              {humanEvaluation.isPublished && (
-                <div className="d-flex gap-2 mt-2">
-                  <button 
-                    className="btn btn-primary"
-                    onClick={() => saveHumanEvaluation(true)}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm me-2" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <MessageSquare size={16} className="me-2" />
-                        Save Response
-                      </>
-                    )}
-                  </button>
-                  <button 
-                    className="btn btn-danger"
-                    onClick={handleDisputeEvaluation}
-                    disabled={isSaving || !humanEvaluation.agentComments}
-                    title={!humanEvaluation.agentComments ? "Please add comments explaining why you're disputing this evaluation" : ""}
-                  >
-                    {isSaving ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm me-2" />
-                        Disputing...
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle size={16} className="me-2" />
-                        Dispute Evaluation
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : humanEvaluation.agentComments ? (
-            <div className="p-3 border rounded bg-light">
-              <p className="mb-0">{humanEvaluation.agentComments}</p>
-              {evaluation.disputed && (
-                <div className="alert alert-danger mt-2">
-                  <AlertTriangle size={16} className="me-2" />
-                  This evaluation has been disputed by the agent.
-                </div>
-              )}
+              <div className="d-flex gap-2 mt-2">
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => saveHumanEvaluation(true)}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare size={16} className="me-2" />
+                      Save Response
+                    </>
+                  )}
+                </button>
+                <button 
+                  className="btn btn-danger"
+                  onClick={handleDisputeEvaluation}
+                  disabled={isSaving || !humanEvaluation.agentComments}
+                  title={!humanEvaluation.agentComments ? "Please add comments explaining why you're disputing this evaluation" : ""}
+                >
+                  {isSaving ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" />
+                      Disputing...
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle size={16} className="me-2" />
+                      Dispute Evaluation
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           ) : (
-            <p className="text-muted mb-0">No response from agent yet.</p>
+            // Show read-only version for admins or when comments exist
+            <div>
+              {humanEvaluation.agentComments ? (
+                <div className="p-3 border rounded bg-light">
+                  <p className="mb-0">{humanEvaluation.agentComments}</p>
+                  {evaluation.status === 'disputed' || evaluation.disputed ? (
+                    <div className="alert alert-danger mt-2">
+                      <AlertTriangle size={16} className="me-2" />
+                      This evaluation has been disputed by the agent.
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-muted mb-0">No response from agent yet.</p>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1896,6 +2035,15 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
         />
       )}
 
+      {/* QA Evaluator Comments */}
+      {renderQAEvaluatorComments()}
+
+      {/* Agent Comments Section */}
+      {renderAgentCommentsSection()}
+
+      {/* Dispute Resolution Section - for admins only */}
+      {renderDisputeResolutionSection()}
+
       {/* Sentiment Analysis Section */}
       {renderSentimentAnalysis()}
 
@@ -1921,12 +2069,6 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
 
       {/* Transcription Analysis */}
       {renderTranscriptionAnalysis()}
-
-      {/* QA Evaluator Comments */}
-      {renderQAEvaluatorComments()}
-
-      {/* Agent Comments Section */}
-      {renderAgentCommentsSection()}
     </div>
   );
 };

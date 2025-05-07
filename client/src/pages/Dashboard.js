@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { PhoneIncoming, PhoneOutgoing } from 'lucide-react';
 import Select from 'react-select';
 import WelcomeTourDialog from '../components/tour/WelcomeTourDialog';
+import LowBalanceNotification from '../components/LowBalanceNotification';
 
 // Updated StatsCard Component with optional subtitle and icon color
 const StatsCard = ({ 
@@ -763,6 +764,8 @@ const Dashboard = () => {
 
   return (
     <div className="container-fluid py-4">
+      {/* Low Balance Notification */}
+      <LowBalanceNotification />
       <WelcomeTourDialog />
       {/* Filters */}
       <div className="card mb-4">

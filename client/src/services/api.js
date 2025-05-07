@@ -26,6 +26,7 @@ const handleResponse = async (response) => {
 
   // For non-401 responses, parse and handle normally
   const data = await response.json();
+  
   if (!response.ok) {
     throw new Error(data.message || 'Something went wrong');
   }
@@ -183,37 +184,17 @@ export const api = {
   // Fixed getUserProfile to prevent recursion
   getUserProfile: async () => {
     try {
-      const userData = await request('/user/profile');
+      const userData = await request('user/profile');
       
       // Get correct role information from userRoles in localStorage
       const userRolesStr = localStorage.getItem('userRoles');
-      let userRoles = null;
-      console.log('$########################', userRolesStr)
-      if (userRolesStr) {
-        try {
-          userRoles = JSON.parse(userRolesStr);
-        } catch (e) {
-          console.error('Error parsing user roles:', e);
-        }
-      }
       
-      // Always add the role properties to the response
-      if (userRoles) {
-        userData.isAgent = userRoles.isAgent === true;
-        userData.isAdmin = userRoles.isAdmin === true;
-        userData.agentId = userRoles.agentId;
-      } else {
-        // Fallback to determining from is_agent
-        userData.isAgent = userData.is_agent === 1;
-        userData.isAdmin = userData.is_agent === 0;
-        userData.agentId = userData.isAgent ? userData.id : null;
-      }
-      
+      console.log('User profile fetched:', userData);
       // Update userRoles in localStorage
       localStorage.setItem('userRoles', JSON.stringify({
-        isAgent: userData.isAgent,
-        isAdmin: userData.isAdmin,
-        agentId: userData.agentId
+        isAgent: (userData.isAgent === 1) ? true : false,
+        isAdmin: (userData.isAdmin === 1) ? true : false,
+        agentId: (userData.agentId) ? userData.agentId : null
       }));
       
       // Update cachedUserProfile
@@ -232,13 +213,13 @@ export const api = {
   },
 
   updateProfile: (profileData) =>
-    request('/user/profile', {
+    request('user/profile', {
       method: 'PUT',
       body: JSON.stringify(profileData)
     }),
 
   changePassword: (passwords) =>
-    request('/user/change-password', {
+    request('user/change-password', {
       method: 'POST',
       body: JSON.stringify(passwords)
     }),
@@ -247,7 +228,7 @@ export const api = {
   getPermissions: async () => {
     try {
       console.log('Fetching permissions from API...');
-      const response = await request('/user/permissions');
+      const response = await request('user/permissions');
       
       // Validate that we got an object with expected structure
       if (response && typeof response === 'object') {

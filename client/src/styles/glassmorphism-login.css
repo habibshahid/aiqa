@@ -1,0 +1,389 @@
+/* src/styles/glassmorphism-login.css */
+
+/* Base styles and background */
+.glassmorphism-bg {
+  margin: 0;
+  padding: 0;
+  background: linear-gradient(45deg, #3a1c71, #d76d77, #ffaf7b);
+  background-size: 400% 400%;
+  animation: gradientBG 15s ease infinite;
+  height: 100vh;
+  overflow: hidden;
+}
+
+@keyframes gradientBG {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.glassmorphism-login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+}
+
+/* Animated shapes in background */
+.shape {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(5px);
+  border-radius: 50%;
+  animation-duration: 20s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  z-index: -1;
+}
+
+.shape-1 {
+  width: 300px;
+  height: 300px;
+  top: -150px;
+  left: -150px;
+  background: linear-gradient(45deg, rgba(131, 58, 180, 0.5), rgba(253, 29, 29, 0.3));
+  animation-name: float1;
+}
+
+.shape-2 {
+  width: 400px;
+  height: 400px;
+  bottom: -200px;
+  right: -200px;
+  background: linear-gradient(45deg, rgba(252, 176, 69, 0.3), rgba(131, 58, 180, 0.5));
+  animation-name: float2;
+}
+
+.shape-3 {
+  width: 200px;
+  height: 200px;
+  top: 50%;
+  right: 10%;
+  background: linear-gradient(45deg, rgba(131, 58, 180, 0.3), rgba(253, 29, 29, 0.2));
+  animation-name: float3;
+}
+
+.shape-4 {
+  width: 150px;
+  height: 150px;
+  bottom: 20%;
+  left: 10%;
+  background: linear-gradient(45deg, rgba(252, 176, 69, 0.2), rgba(131, 58, 180, 0.3));
+  animation-name: float4;
+}
+
+@keyframes float1 {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(100px, 100px) rotate(180deg); }
+  100% { transform: translate(0, 0) rotate(360deg); }
+}
+
+@keyframes float2 {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(-100px, -100px) rotate(180deg); }
+  100% { transform: translate(0, 0) rotate(360deg); }
+}
+
+@keyframes float3 {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(-50px, 50px) rotate(180deg); }
+  100% { transform: translate(0, 0) rotate(360deg); }
+}
+
+@keyframes float4 {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(50px, -50px) rotate(180deg); }
+  100% { transform: translate(0, 0) rotate(360deg); }
+}
+
+/* Glassmorphism card */
+.glassmorphism-card {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.2);
+  overflow: hidden;
+  transition: all 0.3s ease;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.glassmorphism-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 40px rgba(31, 38, 135, 0.3);
+}
+
+/* Features side styling */
+.features-container {
+  height: 100%;
+  padding: 40px 30px;
+  background: rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.logo-container {
+  margin-bottom: 10px;
+}
+
+.logo-text {
+  font-size: 3rem;
+  font-weight: 700;
+  background: linear-gradient(45deg, #fff, #f0f0f0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: 2px;
+  margin-bottom: 0;
+}
+
+.tagline {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 15px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.5s ease;
+  opacity: 0;
+  transform: translateX(-30px);
+}
+
+.feature-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.feature-icon {
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 15px;
+  color: white;
+}
+
+.feature-text {
+  flex: 1;
+}
+
+.feature-text h4 {
+  color: white;
+  font-size: 1.1rem;
+  margin-bottom: 5px;
+}
+
+.feature-text p {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.9rem;
+  margin-bottom: 0;
+}
+
+/* Login form styling */
+.login-form-container {
+  padding: 40px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.welcome-text {
+  font-size: 2rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: white;
+}
+
+.login-subtitle {
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 30px;
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  padding: 12px 15px;
+  background: rgba(255, 50, 50, 0.2);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  color: #fff;
+}
+
+.error-message svg {
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.form-label {
+  color: white;
+  font-weight: 500;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.input-group {
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.input-icon {
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(255, 255, 255, 0.7);
+  z-index: 2;
+}
+
+.glassmorphism-input {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: white;
+  padding: 12px 15px 12px 45px;
+  width: 100%;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(5px);
+}
+
+.glassmorphism-input:focus {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+  outline: none;
+}
+
+.glassmorphism-input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.form-check-input {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.form-check-input:checked {
+  background-color: rgba(255, 255, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.form-check-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.glassmorphism-btn {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(5px);
+  position: relative;
+  overflow: hidden;
+}
+
+.glassmorphism-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: all 0.5s ease;
+}
+
+.glassmorphism-btn:hover::before {
+  left: 100%;
+}
+
+.glassmorphism-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.glassmorphism-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.login-footer {
+  margin-top: auto;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+  padding-top: 30px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+  .glassmorphism-card {
+    margin: 0 15px;
+  }
+  
+  .login-form-container {
+    padding: 30px;
+  }
+  
+  .welcome-text {
+    font-size: 1.8rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .glassmorphism-bg {
+    height: auto;
+    min-height: 100vh;
+  }
+  
+  .glassmorphism-card {
+    margin: 0 10px;
+  }
+  
+  .login-form-container {
+    padding: 25px;
+  }
+  
+  .welcome-text {
+    font-size: 1.5rem;
+  }
+}
+
+/* Add these to your index.css or main CSS file */
+body, html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}

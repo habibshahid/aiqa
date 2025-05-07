@@ -343,7 +343,7 @@ router.post('/evaluation/:id/comment', authenticateToken, async (req, res) => {
     // If this is a dispute, mark it as such
     if (disputed) {
       // Add a disputed flag to the evaluation (simpler than changing status)
-      evaluation.disputed = true;
+      evaluation.status = true;
       
       // Add dispute timestamp
       evaluation.disputedAt = new Date();

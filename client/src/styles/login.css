@@ -1,0 +1,158 @@
+/* src/styles/login.css */
+
+.login-container {
+    min-height: 100vh;
+    background-image: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    background-size: cover;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .login-card {
+    transition: all 0.3s ease;
+    overflow: hidden;
+  }
+  
+  .login-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.175) !important;
+  }
+  
+  .login-sidebar {
+    background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .login-sidebar::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%);
+    transform: rotate(-15deg);
+  }
+  
+  .login-input {
+    border-radius: 0.375rem;
+    transition: all 0.2s ease;
+  }
+  
+  .login-input:focus {
+    box-shadow: 0 0 0 0.25rem rgba(91, 134, 229, 0.25);
+    border-color: #5b86e5;
+  }
+  
+  .login-btn {
+    border-radius: 0.375rem;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1rem rgba(91, 134, 229, 0.2);
+  }
+  
+  .login-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(120deg, rgba(255,255,255,0) 30%, rgba(255,255,255,0.2), rgba(255,255,255,0) 70%);
+    transform: translateX(-100%);
+  }
+  
+  .login-btn:hover::after {
+    animation: btn-shine 1.5s ease-in-out;
+  }
+  
+  @keyframes btn-shine {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  
+  .logo-circle {
+    width: 80px;
+    height: 80px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  }
+  
+  .form-floating label {
+    color: #6c757d;
+  }
+  
+  .info-card {
+    transition: all 0.3s ease;
+    border-radius: 1rem;
+  }
+  
+  .info-card:hover {
+    background-color: rgba(13, 202, 240, 0.05);
+  }
+  
+  /* Custom animations */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  .animated-element {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+  
+  .delay-100 { animation-delay: 0.1s; }
+  .delay-200 { animation-delay: 0.2s; }
+  .delay-300 { animation-delay: 0.3s; }
+  
+  /* Add these styles to your glassmorphism-login.css file */
+
+.intellicon-link {
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+.intellicon-link:hover {
+  color: white;
+  text-decoration: none;
+}
+
+/* Add an animated underline effect on hover */
+.intellicon-link::after {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 1px;
+  bottom: -2px;
+  left: 0;
+  background-color: white;
+  transition: width 0.3s ease;
+}
+
+.intellicon-link:hover::after {
+  width: 100%;
+}
+
+/* Update the login footer for better spacing */
+.login-footer {
+  margin-top: auto;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+  padding-top: 30px;
+  line-height: 1.6;
+}

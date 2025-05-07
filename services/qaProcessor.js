@@ -9,6 +9,7 @@ const writeFileAsync = promisify(fs.writeFile);
 const unlinkAsync = promisify(fs.unlink);
 const mkdirAsync = promisify(fs.mkdir);
 const { InteractionTranscription, QAForm, Interactions, InteractionAIQA } = require('../config/mongodb');
+const { calculateEvaluationCost } = require('./costProcessor');
 const mongoose = require('mongoose');
 
 /**
@@ -846,6 +847,15 @@ const processEvaluation = async (evaluation) => {
     
     updateEvaluationForClassification(evaluationResult, aiqaDoc, qaFormId);
     
+    try {
+      // Calculate and save cost data
+      await calculateEvaluationCost(aiqaDoc._id);
+      console.log('Cost data calculated and saved for evaluation:', aiqaDoc._id);
+    } catch (costError) {
+      console.error('Error calculating cost data:', costError);
+      // Continue without cost data if calculation fails
+    }
+
     const interactionObjectId = mongoose.Types.ObjectId.isValid(interactionId) 
       ? new mongoose.Types.ObjectId(interactionId) 
       : interactionId;

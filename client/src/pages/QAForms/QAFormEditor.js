@@ -10,6 +10,7 @@ import {
   DeleteGroupConfirmationModal 
 } from '../../components/classification/ModalComponents';
 import ClassificationSettings from '../../components/classification/ClassificationSettings';
+import AIContextGenerator from '../../components/AIContextGenerator';
 
 const initialParameterState = {
   name: '',
@@ -410,7 +411,7 @@ const QAFormEditor = () => {
       )}
 
       {/* Main Form */}
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} >
         {/* Form Details Card */}
         <div className="card mb-4">
           <div className="card-header">
@@ -638,7 +639,17 @@ const QAFormEditor = () => {
                                       </div>
 
                                       <div className="col-12">
-                                        <label className="form-label">Context</label>
+                                        <div className="d-flex justify-content-between align-items-start mb-2">
+                                          <label className="form-label">Context</label>
+                                          <AIContextGenerator
+                                            paramName={param.name}
+                                            existingContext={param.context}
+                                            scoringType={param.scoringType}
+                                            maxScore={param.maxScore}
+                                            classification={param.classification || 'none'}
+                                            onApply={(generatedContext) => handleParameterChange(paramIndex, 'context', generatedContext)}
+                                          />
+                                        </div>
                                         <textarea
                                           className="form-control"
                                           rows="2"

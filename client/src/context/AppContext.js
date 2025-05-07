@@ -84,6 +84,11 @@ export const AppProvider = ({ children }) => {
 
       // Use a more efficient way to store user roles
       // WITHOUT immediately calling getUserProfile() which can cause loops
+
+      console.log('###############################')
+      console.log(data)
+      console.log('###############################')
+
       const userRoles = {
         isAgent: data.user.is_agent === 1,
         isAdmin: data.user.is_agent === 0,
