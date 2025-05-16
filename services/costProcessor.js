@@ -24,7 +24,9 @@ const calculateEvaluationCost = async (evaluationId) => {
     const priceSttPrerecorded = parseFloat(process.env.PRICE_STT_PRERECORDED || 0.0065);
     const priceOpenAiInput = parseFloat(process.env.PRICE_OPENAI_GPT4O_INPUT || 0.0000625);
     const priceOpenAiOutput = parseFloat(process.env.PRICE_OPENAI_GPT4O_OUTPUT || 0.0001875);
-    
+    const costAiContextGenerator = parseFloat(process.env.COST_AI_CONTEXT_GENERATOR || 0.00025);
+    const priceAiContextGenerator = parseFloat(process.env.PRICE_AI_CONTEXT_GENERATOR || 0.0003125);
+
     // Get usage data from evaluation
     const usage = evaluation.evaluationData?.usage || {};
     const promptTokens = usage.prompt_tokens || 0;

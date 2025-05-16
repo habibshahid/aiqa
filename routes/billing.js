@@ -30,15 +30,23 @@ router.get('/usage', async (req, res) => {
       createdAt: { $gte: start, $lte: end }
     }).lean();
 
+    const { ContextGeneratorUsage } = require('../config/mongodb');
+    const contextGeneratorUsage = await ContextGeneratorUsage.find({
+      timestamp: { $gte: start, $lte: end }
+    }).lean();
+
+
     console.log(`Found ${evaluations.length} evaluations between ${start.toISOString()} and ${end.toISOString()}`);
 
     // Get environment variables for costs
     const costSttPrerecorded = parseFloat(process.env.COST_STT_PRERECORDED || 0.0052);
     const costOpenAiInput = parseFloat(process.env.COST_OPENAI_GPT4O_INPUT || 0.00005);
     const costOpenAiOutput = parseFloat(process.env.COST_OPENAI_GPT4O_OUTPUT || 0.00015);
+    const costAiContextGenerator = parseFloat(process.env.COST_AI_CONTEXT_GENERATOR || 0.00025);
     const priceSttPrerecorded = parseFloat(process.env.PRICE_STT_PRERECORDED || 0.0065);
     const priceOpenAiInput = parseFloat(process.env.PRICE_OPENAI_GPT4O_INPUT || 0.0000625);
     const priceOpenAiOutput = parseFloat(process.env.PRICE_OPENAI_GPT4O_OUTPUT || 0.0001875);
+    const priceAiContextGenerator = parseFloat(process.env.PRICE_AI_CONTEXT_GENERATOR || 0.0003125);
 
     // Initialize counters
     let totalUsage = {
@@ -47,16 +55,19 @@ router.get('/usage', async (req, res) => {
       completionTokens: 0,
       totalTokens: 0,
       totalDuration: 0, // in seconds
+      aiContextGeneratorUses: contextGeneratorUsage.length,
       costBreakdown: {
         stt: 0,
         openAiInput: 0,
         openAiOutput: 0,
+        aiContextGenerator: 0,
         total: 0
       },
       priceBreakdown: {
         stt: 0,
         openAiInput: 0,
         openAiOutput: 0,
+        aiContextGenerator: 0,
         total: 0
       },
       byAgent: {},
@@ -93,17 +104,24 @@ router.get('/usage', async (req, res) => {
       const openAiOutputPrice = completionTokens * priceOpenAiOutput;
       const totalPrice = sttPrice + openAiInputPrice + openAiOutputPrice;
       
+      const aiContextTotalCost = contextGeneratorUsage.reduce((sum, usage) => sum + usage.cost, 0);
+      const aiContextTotalPrice = contextGeneratorUsage.reduce((sum, usage) => sum + usage.price, 0);
+
       // Add to cost breakdown
       totalUsage.costBreakdown.stt += sttCost;
       totalUsage.costBreakdown.openAiInput += openAiInputCost;
       totalUsage.costBreakdown.openAiOutput += openAiOutputCost;
       totalUsage.costBreakdown.total += totalCost;
+      totalUsage.costBreakdown.aiContextGenerator = aiContextTotalCost;
+      totalUsage.costBreakdown.total += aiContextTotalCost;
       
       // Add to price breakdown
       totalUsage.priceBreakdown.stt += sttPrice;
       totalUsage.priceBreakdown.openAiInput += openAiInputPrice;
       totalUsage.priceBreakdown.openAiOutput += openAiOutputPrice;
       totalUsage.priceBreakdown.total += totalPrice;
+      totalUsage.priceBreakdown.aiContextGenerator = aiContextTotalPrice;
+      totalUsage.priceBreakdown.total += aiContextTotalPrice;
       
       // Group by agent
       const agentId = evaluation.interactionData?.agent?.id || 'unknown';
@@ -177,14 +195,36 @@ router.get('/usage', async (req, res) => {
     // Convert daily usage to sorted array
     totalUsage.dailyUsage = Object.values(totalUsage.dailyUsage).sort((a, b) => a.date.localeCompare(b.date));
     
+    for (const usage of contextGeneratorUsage) {
+      const day = new Date(usage.timestamp).toISOString().split('T')[0];
+      
+      if (!totalUsage.dailyUsage[day]) {
+        totalUsage.dailyUsage[day] = {
+          date: day,
+          evaluationCount: 0,
+          totalTokens: 0,
+          totalDuration: 0,
+          aiContextUses: 0,
+          totalCost: 0,
+          totalPrice: 0
+        };
+      }
+      
+      totalUsage.dailyUsage[day].aiContextUses = (totalUsage.dailyUsage[day].aiContextUses || 0) + 1;
+      totalUsage.dailyUsage[day].totalCost += usage.cost;
+      totalUsage.dailyUsage[day].totalPrice += usage.price;
+    }
+
     // Add cost rates to the response
     totalUsage.rates = {
       costSttPrerecorded,
       costOpenAiInput,
       costOpenAiOutput,
+      costAiContextGenerator,
       priceSttPrerecorded,
       priceOpenAiInput,
-      priceOpenAiOutput
+      priceOpenAiOutput,
+      priceAiContextGenerator
     };
 
     // Return the usage statistics
@@ -252,9 +292,11 @@ router.get('/rates', authenticateToken, async (req, res) => {
         costSttPrerecorded: parseFloat(process.env.COST_STT_PRERECORDED || 0.0052),
         costOpenAiInput: parseFloat(process.env.COST_OPENAI_GPT4O_INPUT || 0.00005),
         costOpenAiOutput: parseFloat(process.env.COST_OPENAI_GPT4O_OUTPUT || 0.00015),
+        costAiContextGenerator: parseFloat(process.env.COST_AI_CONTEXT_GENERATOR || 0.00025),
         priceSttPrerecorded: parseFloat(process.env.PRICE_STT_PRERECORDED || 0.0065),
         priceOpenAiInput: parseFloat(process.env.PRICE_OPENAI_GPT4O_INPUT || 0.0000625),
-        priceOpenAiOutput: parseFloat(process.env.PRICE_OPENAI_GPT4O_OUTPUT || 0.0001875)
+        priceOpenAiOutput: parseFloat(process.env.PRICE_OPENAI_GPT4O_OUTPUT || 0.0001875),
+        priceAiContextGenerator: parseFloat(process.env.PRICE_AI_CONTEXT_GENERATOR || 0.0003125)
       };
   
       res.json(rates);

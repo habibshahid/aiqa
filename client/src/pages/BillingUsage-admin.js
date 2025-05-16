@@ -1,6 +1,6 @@
 // client/src/pages/BillingUsage.js
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Calendar, BarChart2, Clock, MessageSquare, Download, Settings } from 'lucide-react';
+import { DollarSign, Calendar, BarChart2, Clock, MessageSquare, Download, Settings, Sparkles } from 'lucide-react';
 import { api } from '../services/api';
 import BillingRates from '../components/BillingRates';
 import CreditBalance from '../components/CreditBalance';
@@ -263,6 +263,20 @@ const BillingUsage = () => {
                         <td>{formatCurrency(billingData.costBreakdown.openAiOutput)}</td>
                         <td>{formatCurrency(billingData.priceBreakdown.openAiOutput)}</td>
                       </tr>
+                      {(billingData.costBreakdown.aiContextGenerator > 0 || billingData.aiContextGeneratorUses > 0) && (
+                        <tr>
+                          <td>
+                            <div className="d-flex align-items-center">
+                              <Sparkles size={16} className="me-2" />
+                              AI Context Generator
+                            </div>
+                          </td>
+                          <td>{billingData.aiContextGeneratorUses || 0} uses</td>
+                          <td>{formatCurrency(billingData.rates.costAiContextGenerator)}/use</td>
+                          <td>{formatCurrency(billingData.costBreakdown.aiContextGenerator)}</td>
+                          <td>{formatCurrency(billingData.priceBreakdown.aiContextGenerator)}</td>
+                        </tr>
+                      )}
                       <tr className="fw-bold table-light">
                         <td>Total</td>
                         <td>{billingData.totalTokens.toLocaleString()} tokens</td>

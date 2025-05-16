@@ -712,6 +712,39 @@ const schedulerHistorySchema = new mongoose.Schema({
   collection: 'schedulerhistory'
 });
 
+const contextGeneratorUsageSchema = new mongoose.Schema({
+  userId: {
+    type: String,
+    required: true
+  },
+  username: String,
+  timestamp: {
+    type: Date,
+    default: Date.now
+  },
+  paramName: {
+    type: String,
+    required: true
+  },
+  cost: {
+    type: Number,
+    required: true
+  },
+  price: {
+    type: Number,
+    required: true
+  },
+  existingContext: String,
+  scoringType: String,
+  maxScore: Number,
+  classification: String
+}, {
+  collection: 'contextgeneratorusage',
+  timestamps: true
+});
+
+const ContextGeneratorUsage = mongoose.model('ContextGeneratorUsage', contextGeneratorUsageSchema);
+
 // Create the model for scheduler history
 const CriteriaProfile = mongoose.model('CriteriaProfile', criteriaProfileSchema);
 const SchedulerHistory = mongoose.model('SchedulerHistory', schedulerHistorySchema);
@@ -724,5 +757,6 @@ module.exports = {
   Interactions,
   QAForm,
   CriteriaProfile,
-  SchedulerHistory
+  SchedulerHistory,
+  ContextGeneratorUsage  
 };

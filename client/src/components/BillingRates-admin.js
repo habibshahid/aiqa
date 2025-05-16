@@ -9,9 +9,11 @@ const BillingRates = () => {
     costSttPrerecorded: 0.0052,
     costOpenAiInput: 0.00005,
     costOpenAiOutput: 0.00015,
+    costAiContextGenerator: 0.00025,
     priceSttPrerecorded: 0.0065,
     priceOpenAiInput: 0.0000625,
-    priceOpenAiOutput: 0.0001875
+    priceOpenAiOutput: 0.0001875,
+    priceAiContextGenerator: 0.0003125
   });
   
   const fetchRates = async () => {
@@ -65,9 +67,11 @@ const BillingRates = () => {
         costSttPrerecorded: 0.0052,
         costOpenAiInput: 0.00005,
         costOpenAiOutput: 0.00015,
+        costAiContextGenerator: 0.00025,
         priceSttPrerecorded: 0.0065,
         priceOpenAiInput: 0.0000625,
-        priceOpenAiOutput: 0.0001875
+        priceOpenAiOutput: 0.0001875,
+        priceAiContextGenerator: 0.0003125
       });
     } finally {
       setLoading(false);
@@ -161,6 +165,11 @@ const BillingRates = () => {
                 <td className="text-end">{formatCurrency(rates.costOpenAiOutput)}</td>
                 <td>GPT-4o completion tokens</td>
               </tr>
+              <tr>
+                <td>AI Context Generator (per use)</td>
+                <td className="text-end">{formatCurrency(rates.costAiContextGenerator)}</td>
+                <td>AI-assisted context generation for QA forms</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -190,6 +199,11 @@ const BillingRates = () => {
                 <td>OpenAI Output (per token)</td>
                 <td className="text-end">{formatCurrency(rates.priceOpenAiOutput)}</td>
                 <td>GPT-4o completion tokens</td>
+              </tr>
+              <tr>
+                <td>AI Context Generator (per use)</td>
+                <td className="text-end">{formatCurrency(rates.priceAiContextGenerator)}</td>
+                <td>AI-assisted context generation for QA forms</td>
               </tr>
             </tbody>
           </table>

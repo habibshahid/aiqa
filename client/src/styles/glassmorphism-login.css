@@ -134,7 +134,7 @@
 }
 
 .logo-text {
-  font-size: 3rem;
+  font-size: 2rem;
   font-weight: 700;
   background: linear-gradient(45deg, #fff, #f0f0f0);
   -webkit-background-clip: text;
@@ -386,4 +386,116 @@ body, html {
 
 *, *::before, *::after {
   box-sizing: border-box;
+}
+
+/* Add these styles to your glassmorphism-login.css file */
+
+/* Logo container styling */
+.logo-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 15px;
+  transition: all 0.3s ease;
+}
+
+/* Add subtle animation to the AIQA logo */
+.logo-container svg {
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+  transition: transform 0.3s ease;
+}
+
+.logo-container:hover svg {
+  transform: translateY(-3px);
+}
+
+/* Tagline styling */
+.tagline {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+  margin-top: 5px;
+}
+
+/* Intellicon logo in footer */
+.intellicon-link {
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+  transition: color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+}
+
+.intellicon-link:hover {
+  color: white;
+  text-decoration: none;
+}
+
+.intellicon-link svg {
+  transition: filter 0.3s ease;
+}
+
+.intellicon-link:hover svg {
+  filter: brightness(1.1) drop-shadow(0 0 3px rgba(255, 255, 255, 0.3));
+}
+
+/* More modern styling for the login footer */
+.login-footer {
+  margin-top: auto;
+  padding-top: 30px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+  .intellicon-link {
+    justify-content: center;
+    margin-top: 5px;
+  }
+}
+
+.logo-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 10px;
+  transition: all 0.3s ease;
+}
+
+.logo-container:hover {
+  transform: translateY(-5px);
+}
+
+.logo-container svg {
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+  transition: all 0.3s ease;
+}
+
+.logo-container:hover svg {
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.3));
+  transform: scale(1.05);
+}
+
+/* Add a subtle pulse animation to the logo */
+@keyframes logoPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+
+.logo-container svg {
+  animation: logoPulse 3s ease-in-out infinite;
+}
+
+/* Enhanced text logo styling */
+.logo-text {
+  margin-top: 10px;
+  background: linear-gradient(45deg, #fff, #f0f0f0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }

@@ -78,11 +78,18 @@ const Login = () => {
                 {/* Left side - Features */}
                 <div className="col-lg-6 d-none d-lg-block">
                   <div className="features-container">
-                    <div className="text-center mb-5">
-                      <div className="logo-container">
+                    <div className="text-center mb-2">
+                      <div className="logo-container d-flex flex-column align-items-center">
+                        {/* AIQA Logo */}
+                        <img 
+                          src="/images/logo-intellicon.png" 
+                          alt="AIQA Logo" 
+                          className="aiqa-logo mb-2" 
+                          width="220" 
+                        />
                         <h1 className="logo-text">AIQA</h1>
+                        <p className="tagline">Quality Assurance Reimagined</p>
                       </div>
-                      <p className="tagline">Quality Assurance Reimagined</p>
                     </div>
                     
                     <div className={`feature-item ${featuresVisible ? 'feature-visible' : ''}`} style={{transitionDelay: '0.1s'}}>
@@ -123,6 +130,13 @@ const Login = () => {
                 <div className="col-lg-6">
                   <div className="login-form-container">
                     <div className="d-block d-lg-none text-center mb-4">
+                      {/* AIQA Logo for mobile view */}
+                      <img 
+                        src="/images/logo-intellicon.png" 
+                        alt="AIQA Logo" 
+                        className="aiqa-logo mb-2" 
+                        width="180" 
+                      />
                       <h1 className="logo-text">AIQA</h1>
                       <p className="tagline">Quality Assurance Reimagined</p>
                     </div>

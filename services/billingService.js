@@ -11,8 +11,9 @@ const CONFIG = {
       gpt4o: {
         inputToken: parseFloat(process.env.COST_OPENAI_GPT4O_INPUT) || 0.00005,
         outputToken: parseFloat(process.env.COST_OPENAI_GPT4O_OUTPUT) || 0.00015,
-      }
-    }
+      },
+    },
+    aiContextGenerator: parseFloat(process.env.COST_AI_CONTEXT_GENERATOR) || 0.00025
   },
   price: {
     stt: {
@@ -23,7 +24,8 @@ const CONFIG = {
         inputToken: parseFloat(process.env.PRICE_OPENAI_GPT4O_INPUT) || 0.0000625,
         outputToken: parseFloat(process.env.PRICE_OPENAI_GPT4O_OUTPUT) || 0.0001875,
       }
-    }
+    },
+    aiContextGenerator: parseFloat(process.env.PRICE_AI_CONTEXT_GENERATOR) || 0.0003125
   }
 };
 

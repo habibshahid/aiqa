@@ -228,11 +228,30 @@ router.post('/generate-context', authenticateToken, async (req, res) => {
     // Extract context from AI response
     const generatedContext = response.data.context.trim();
     
+    
     if (!generatedContext) {
       return res.status(500).json({ message: 'Failed to generate context from AI response' });
     }
     
-    res.json({ context: generatedContext });
+    const costRate = parseFloat(process.env.COST_AI_CONTEXT_GENERATOR) || 0.00025;
+    const priceRate = parseFloat(process.env.PRICE_AI_CONTEXT_GENERATOR) || 0.0003125;
+
+    const { ContextGeneratorUsage } = require('../config/mongodb');
+    
+    await ContextGeneratorUsage.create({
+      userId: req.user.id,
+      username: req.user.username || req.user.email,
+      timestamp: new Date(),
+      paramName,
+      cost: costRate,
+      price: priceRate,
+      existingContext: existingContext || '',
+      scoringType: scoringType || 'variable',
+      maxScore: maxScore || 5,
+      classification: classification || 'none'
+    });
+
+    res.json({ context: generatedContext, usageCost: { cost: costRate, price: priceRate } });
   } catch (error) {
     console.error('Error generating context with AI:', error);
     res.status(500).json({ 
