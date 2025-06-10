@@ -4,7 +4,7 @@ const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const analyticsService = require('../services/analyticsService');
 const qaDetailService = require('../services/qaDetailService');
-
+const { pool } = require('../config/database'); 
 router.use(authenticateToken);
 
 // Get dashboard metrics and QA data

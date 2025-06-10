@@ -4,11 +4,16 @@ import { triggerSessionTimeout } from '../context/AppContext';
 export const fetchWithAuth = async (url, options = {}) => {
   const token = localStorage.getItem('token');
   
+  // If no token exists, don't attempt authenticated requests
+  if (!token) {
+    throw new Error('No authentication token available');
+  }
+  
   const requestOptions = {
     ...options,
     headers: {
       ...options.headers,
-      'Authorization': token ? `Bearer ${token}` : '',
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
     }
   };
@@ -17,10 +22,17 @@ export const fetchWithAuth = async (url, options = {}) => {
     const response = await fetch(url, requestOptions);
     
     if (response.status === 401) {
+      // Check if we're already on the login page to avoid showing session timeout
+      const isLoginPage = window.location.pathname === '/';
+      
       // Create a retry function
       const retryRequest = {
         retry: async () => {
           const newToken = localStorage.getItem('token');
+          if (!newToken) {
+            throw new Error('Still no authentication token available after re-login');
+          }
+          
           const retriedResponse = await fetch(url, {
             ...requestOptions,
             headers: {
@@ -37,8 +49,10 @@ export const fetchWithAuth = async (url, options = {}) => {
         }
       };
 
-      // Trigger session timeout with retry function
-      triggerSessionTimeout(retryRequest);
+      // Only trigger session timeout if not already on login page
+      if (!isLoginPage) {
+        triggerSessionTimeout(retryRequest);
+      }
       
       // Return a promise that will be resolved after re-authentication
       return new Promise((resolve, reject) => {

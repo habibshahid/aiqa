@@ -75,7 +75,7 @@ router.post('/search', async (req, res) => {
 
     // Work codes filter
     if (workCodes && workCodes.length > 0) {
-      query['workCode.code'] = { $in: workCodes };
+      query['workCodes.id'] = { $in: workCodes.map(String) };
     }
 
     // Ensure we only get interactions with recordings

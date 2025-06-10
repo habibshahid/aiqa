@@ -428,15 +428,42 @@ const getFilterOptions = async () => {
     console.log('Getting filter options from databases...');
     const tablePrefix = process.env.TABLE_PREFIX || 'yovo_tbl_';
     
-    // Get unique agents from interactions
-    const agents = await Interactions.aggregate([
-      { $match: { "agent.id": { $exists: true, $ne: null } } },
-      { $group: { _id: "$agent.id", name: { $first: "$agent.name" } } },
-      { $sort: { name: 1 } },
-      { $project: { _id: 0, id: "$_id", name: 1 } }
-    ]);
+    let agents = [];
     
-    console.log(`Found ${agents.length} agents from MongoDB`);
+    try {
+      // Query the users table for agents
+      const [agentsResult] = await db.query(
+        `SELECT id, CONCAT_WS(' ', first_name, last_name) as name 
+         FROM ${tablePrefix}users 
+         WHERE is_agent = 1 
+         ORDER BY name`
+      );
+      
+      // Format the results to match the expected structure
+      agents = agentsResult.map(row => ({
+        id: row.id.toString(), // Convert to string for consistency
+        name: row.name || `Agent ${row.id}` // Use concatenated name or fallback
+      }));
+      
+      console.log(`Found ${agents.length} agents from SQL database`);
+    } catch (sqlError) {
+      console.error('Error fetching agents from SQL database:', sqlError);
+      // If SQL query fails, try the MongoDB approach as fallback
+      try {
+        console.log('Falling back to MongoDB for agents...');
+        const mongoAgents = await Interactions.aggregate([
+          { $match: { "agent.id": { $exists: true, $ne: null } } },
+          { $group: { _id: "$agent.id", name: { $first: "$agent.name" } } },
+          { $sort: { name: 1 } },
+          { $project: { _id: 0, id: "$_id", name: 1 } }
+        ]);
+        
+        agents = mongoAgents;
+        console.log(`Fallback to MongoDB - found ${agents.length} agents`);
+      } catch (mongoError) {
+        console.error('Fallback MongoDB agent query also failed:', mongoError);
+      }
+    }
     
     // Get queues directly from the SQL database (yovo_tbl_queues table)
     let queues = [];

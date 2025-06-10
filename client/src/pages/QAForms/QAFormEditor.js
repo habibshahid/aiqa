@@ -618,7 +618,6 @@ const QAFormEditor = () => {
                                           type="number"
                                           className="form-control"
                                           min="1"
-                                          max="5"
                                           value={param.maxScore}
                                           onChange={(e) => handleParameterChange(paramIndex, 'maxScore', parseInt(e.target.value))}
                                           required

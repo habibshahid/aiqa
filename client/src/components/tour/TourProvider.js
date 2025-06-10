@@ -1,87 +1,87 @@
 // src/components/tour/TourProvider.js
-import React, { useEffect, createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import tourService from '../../services/tourService';
 
-// Create context for tour
-const TourContext = createContext({
-  startMainTour: () => {},
-  startSchedulerTour: () => {},
-  startNewEvaluationTour: () => {},
-  hasSeenTour: false,
-  resetTour: () => {}
-});
+// Create a context for tour functionality
+const TourContext = createContext(null);
 
-export const useTour = () => useContext(TourContext);
-
+/**
+ * Tour Provider component that automatically starts tours
+ * based on the current route
+ */
 const TourProvider = ({ children }) => {
   const location = useLocation();
-  const [hasSeenTour, setHasSeenTour] = useState(tourService.hasSeenTour);
   const [initialized, setInitialized] = useState(false);
-  
-  // Initialize tour service
+  const [currentPath, setCurrentPath] = useState('');
+
+  // Initialize tours and watch for path changes
   useEffect(() => {
     if (!initialized) {
       tourService.initialize();
       setInitialized(true);
-      setHasSeenTour(tourService.hasSeenTour);
     }
-  }, [initialized]);
-  
-  // Start tour on first login if on dashboard
-  useEffect(() => {
-    if (initialized && location.pathname === '/dashboard' && !hasSeenTour) {
-      // Small delay to let components render
-      const timer = setTimeout(() => {
-        tourService.startMainTour();
-      }, 1000);
+
+    // Store current path to avoid running tours multiple times
+    // on the same path if other state changes cause re-renders
+    if (currentPath !== location.pathname) {
+      setCurrentPath(location.pathname);
       
-      return () => clearTimeout(timer);
+      // Only run tours if user has not seen them
+      if (!tourService.hasSeenTour) {
+        // Start appropriate tour based on path
+        if (location.pathname === '/dashboard') {
+          // Wait for page to fully render
+          setTimeout(() => {
+            tourService.startMainTour();
+          }, 1000);
+        } else if (location.pathname.includes('/scheduler')) {
+          setTimeout(() => {
+            tourService.startSchedulerTour();
+          }, 1000);
+        } else if (location.pathname.includes('/new-evaluations')) {
+          setTimeout(() => {
+            tourService.startNewEvaluationTour();
+          }, 1000);
+        }
+      }
     }
-  }, [location.pathname, initialized, hasSeenTour]);
-  
-  // Start section-specific tours
-  useEffect(() => {
-    if (!initialized) return;
-    
-    // Show scheduler tour if on scheduler page
-    if (location.pathname === '/scheduler' && !localStorage.getItem('hasSeenSchedulerTour')) {
-      const timer = setTimeout(() => {
-        tourService.startSchedulerTour();
-        localStorage.setItem('hasSeenSchedulerTour', 'true');
-      }, 1000);
-      
-      return () => clearTimeout(timer);
-    }
-    
-    // Show new evaluation tour if on new evaluations page
-    if (location.pathname === '/new-evaluations' && !localStorage.getItem('hasSeenNewEvalTour')) {
-      const timer = setTimeout(() => {
-        tourService.startNewEvaluationTour();
-        localStorage.setItem('hasSeenNewEvalTour', 'true');
-      }, 1000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [location.pathname, initialized]);
-  
-  // Tour context value
+  }, [location, initialized, currentPath]);
+
+  // Methods for manually controlling tours
+  const startMainTour = () => tourService.startMainTour();
+  const startSchedulerTour = () => tourService.startSchedulerTour();
+  const startNewEvaluationTour = () => tourService.startNewEvaluationTour();
+  const resetTour = () => tourService.resetTour();
+  const markTourAsCompleted = () => tourService.markTourAsCompleted();
+
+  // Create a value object with tour methods and state
   const tourContextValue = {
-    startMainTour: () => tourService.startMainTour(),
-    startSchedulerTour: () => tourService.startSchedulerTour(),
-    startNewEvaluationTour: () => tourService.startNewEvaluationTour(),
-    hasSeenTour,
-    resetTour: () => {
-      tourService.resetTour();
-      setHasSeenTour(false);
-    }
+    hasSeenTour: tourService.hasSeenTour,
+    startMainTour,
+    startSchedulerTour,
+    startNewEvaluationTour,
+    resetTour,
+    markTourAsCompleted
   };
-  
+
+  // Provide the tour context to children
   return (
     <TourContext.Provider value={tourContextValue}>
       {children}
     </TourContext.Provider>
   );
+};
+
+/**
+ * Hook to access tour functionality in components
+ */
+export const useTour = () => {
+  const context = useContext(TourContext);
+  if (!context) {
+    throw new Error("useTour must be used within a TourProvider");
+  }
+  return context;
 };
 
 export default TourProvider;

@@ -1,31 +1,64 @@
 // src/components/tour/TourButton.js
 import React from 'react';
 import { HelpCircle } from 'lucide-react';
-import { useTour } from './TourProvider';
 import { useLocation } from 'react-router-dom';
+import { useTour } from './TourProvider';
 
-const TourButton = () => {
-  const { startMainTour, startSchedulerTour, startNewEvaluationTour } = useTour();
+/**
+ * Tour Button component that allows users to manually start tours
+ */
+const TourButton = ({ className, variant = 'icon' }) => {
   const location = useLocation();
-  
+  const { startMainTour, startSchedulerTour, startNewEvaluationTour } = useTour();
+
+  // Determine which tour to start based on current path
   const handleStartTour = () => {
-    // Determine which tour to start based on current route
-    if (location.pathname === '/scheduler') {
+    if (location.pathname === '/dashboard') {
+      startMainTour();
+    } else if (location.pathname.includes('/scheduler')) {
       startSchedulerTour();
-    } else if (location.pathname === '/new-evaluations') {
+    } else if (location.pathname.includes('/new-evaluations')) {
       startNewEvaluationTour();
     } else {
+      // If not on a page with a specific tour, start the main tour
       startMainTour();
     }
   };
-  
+
+  // Get appropriate text based on current page
+  const getTourText = () => {
+    if (location.pathname === '/dashboard') {
+      return 'Dashboard Tour';
+    } else if (location.pathname.includes('/scheduler')) {
+      return 'Scheduler Tour';
+    } else if (location.pathname.includes('/new-evaluations')) {
+      return 'New Evaluations Tour';
+    } else {
+      return 'Start Tour';
+    }
+  };
+
+  // Icon-only variant
+  if (variant === 'icon') {
+    return (
+      <button
+        className={`btn btn-link p-0 ${className || ''}`}
+        onClick={handleStartTour}
+        title={`Start ${getTourText()}`}
+      >
+        <HelpCircle size={20} />
+      </button>
+    );
+  }
+
+  // Text button variant
   return (
     <button
-      className="btn btn-light"
+      className={`btn btn-sm btn-outline-info d-flex align-items-center ${className || ''}`}
       onClick={handleStartTour}
-      title="Start Tour"
     >
-      <HelpCircle size={18} />
+      <HelpCircle size={16} className="me-1" />
+      {getTourText()}
     </button>
   );
 };

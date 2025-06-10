@@ -10,7 +10,19 @@ const tourConfig = {
     },
     classes: 'shepherd-theme-default',
     scrollTo: true,
-    arrow: true
+    arrow: true,
+    // Add this to make the modal more visible
+    modalOverlayOpeningPadding: 10,
+    highlightClass: 'shepherd-highlight',
+    // Fix dark modal background by ensuring proper styles
+    popperOptions: {
+      modifiers: [{
+        name: 'offset',
+        options: {
+          offset: [0, 12]
+        }
+      }]
+    }
   },
   useModalOverlay: true,
   exitOnEsc: true
@@ -50,6 +62,17 @@ const tourSteps = [
       element: '.bg-light.border-end',
       on: 'right'
     },
+    beforeShowPromise: function() {
+      return new Promise(resolve => {
+        // Check if the element exists before proceeding
+        if (document.querySelector('.bg-light.border-end')) {
+          resolve();
+        } else {
+          // Cancel this step if element doesn't exist
+          this.cancel();
+        }
+      });
+    },
     buttons: [
       {
         text: 'Back',
@@ -72,6 +95,17 @@ const tourSteps = [
     attachTo: {
       element: '.bg-white.border-bottom',
       on: 'bottom'
+    },
+    beforeShowPromise: function() {
+      return new Promise(resolve => {
+        // Check if the element exists before proceeding
+        if (document.querySelector('.bg-white.border-bottom')) {
+          resolve();
+        } else {
+          // Cancel this step if element doesn't exist
+          this.cancel();
+        }
+      });
     },
     buttons: [
       {
@@ -98,8 +132,15 @@ const tourSteps = [
     },
     beforeShowPromise: function() {
       return new Promise(resolve => {
-        // Ensure queue monitor button is visible before proceeding
-        setTimeout(resolve, 300);
+        // Give some time for the element to render, then check
+        setTimeout(() => {
+          if (document.querySelector('.btn-light svg[data-icon="list-checks"]')) {
+            resolve();
+          } else {
+            // Cancel this step if element doesn't exist
+            this.cancel();
+          }
+        }, 300);
       });
     },
     buttons: [
@@ -125,6 +166,18 @@ const tourSteps = [
       element: '.container-fluid',
       on: 'top'
     },
+    beforeShowPromise: function() {
+      return new Promise(resolve => {
+        // Check if we're on the dashboard page
+        if (window.location.pathname.includes('/dashboard') && 
+            document.querySelector('.container-fluid')) {
+          resolve();
+        } else {
+          // Cancel this step if not on dashboard
+          this.cancel();
+        }
+      });
+    },
     buttons: [
       {
         text: 'Back',
@@ -149,12 +202,17 @@ const tourSteps = [
       on: 'bottom'
     },
     beforeShowPromise: function() {
-      // Find the first primary button on the dashboard
-      const firstButtonSelector = document.querySelector('.btn.btn-primary');
-      if (firstButtonSelector) {
-        this.options.attachTo.element = firstButtonSelector;
-      }
-      return Promise.resolve();
+      return new Promise(resolve => {
+        // Find the first primary button on the dashboard
+        const firstButtonSelector = document.querySelector('.btn.btn-primary');
+        if (firstButtonSelector) {
+          this.options.attachTo.element = firstButtonSelector;
+          resolve();
+        } else {
+          // Cancel this step if button not found
+          this.cancel();
+        }
+      });
     },
     buttons: [
       {
@@ -229,6 +287,18 @@ const schedulerTourSteps = [
       element: '.container-fluid',
       on: 'top'
     },
+    beforeShowPromise: function() {
+      return new Promise(resolve => {
+        // Check if we're on the scheduler page
+        if (window.location.pathname.includes('/scheduler') && 
+            document.querySelector('.container-fluid')) {
+          resolve();
+        } else {
+          // Cancel this step if not on scheduler page
+          this.cancel();
+        }
+      });
+    },
     buttons: [
       {
         text: 'Skip Tour',
@@ -252,6 +322,15 @@ const schedulerTourSteps = [
     attachTo: {
       element: '.card:first-child',
       on: 'bottom'
+    },
+    beforeShowPromise: function() {
+      return new Promise(resolve => {
+        if (document.querySelector('.card:first-child')) {
+          resolve();
+        } else {
+          this.cancel();
+        }
+      });
     },
     buttons: [
       {
@@ -277,13 +356,15 @@ const schedulerTourSteps = [
       on: 'left'
     },
     beforeShowPromise: function() {
-      const btnGroup = document.querySelector('.btn-group');
-      if (btnGroup) {
-        this.options.attachTo.element = btnGroup;
-        return Promise.resolve();
-      } else {
-        return Promise.reject();
-      }
+      return new Promise(resolve => {
+        const btnGroup = document.querySelector('.btn-group');
+        if (btnGroup) {
+          this.options.attachTo.element = btnGroup;
+          resolve();
+        } else {
+          this.cancel();
+        }
+      });
     },
     buttons: [
       {
@@ -307,6 +388,15 @@ const schedulerTourSteps = [
     attachTo: {
       element: '.row .card:first-child',
       on: 'top'
+    },
+    beforeShowPromise: function() {
+      return new Promise(resolve => {
+        if (document.querySelector('.row .card:first-child')) {
+          resolve();
+        } else {
+          this.cancel();
+        }
+      });
     },
     buttons: [
       {
@@ -335,6 +425,18 @@ const newEvaluationTourSteps = [
       element: '.container-fluid',
       on: 'top'
     },
+    beforeShowPromise: function() {
+      return new Promise(resolve => {
+        // Check if we're on the new evaluations page
+        if (window.location.pathname.includes('/new-evaluations') && 
+            document.querySelector('.container-fluid')) {
+          resolve();
+        } else {
+          // Cancel this step if not on new evaluations page
+          this.cancel();
+        }
+      });
+    },
     buttons: [
       {
         text: 'Skip Tour',
@@ -358,6 +460,15 @@ const newEvaluationTourSteps = [
     attachTo: {
       element: '.card:first-child',
       on: 'bottom'
+    },
+    beforeShowPromise: function() {
+      return new Promise(resolve => {
+        if (document.querySelector('.card:first-child')) {
+          resolve();
+        } else {
+          this.cancel();
+        }
+      });
     },
     buttons: [
       {
@@ -383,19 +494,22 @@ const newEvaluationTourSteps = [
       on: 'bottom'
     },
     beforeShowPromise: function() {
-      const formSelector = document.querySelector('select[name="qaFormId"]');
-      if (formSelector) {
-        this.options.attachTo.element = formSelector;
-        return Promise.resolve();
-      } else {
-        // Try to find React Select component
-        const reactSelect = document.querySelector('.form-control + div[class*="react-select"]');
-        if (reactSelect) {
-          this.options.attachTo.element = reactSelect;
-          return Promise.resolve();
+      return new Promise(resolve => {
+        const formSelector = document.querySelector('select[name="qaFormId"]');
+        if (formSelector) {
+          this.options.attachTo.element = formSelector;
+          resolve();
+        } else {
+          // Try to find React Select component
+          const reactSelect = document.querySelector('.form-control + div[class*="react-select"]');
+          if (reactSelect) {
+            this.options.attachTo.element = reactSelect;
+            resolve();
+          } else {
+            this.cancel();
+          }
         }
-        return Promise.reject();
-      }
+      });
     },
     buttons: [
       {
@@ -456,27 +570,63 @@ class TourService {
     this.mainTour.on('cancel', () => {
       this.markTourAsCompleted();
     });
+
+    // Add error handling for when a step's target element doesn't exist
+    this.mainTour.on('error', () => {
+      console.log('Tour error occurred - likely missing element');
+      this.mainTour.next();
+    });
+
+    this.schedulerTour.on('error', () => {
+      console.log('Scheduler tour error occurred');
+      this.schedulerTour.next();
+    });
+
+    this.newEvaluationTour.on('error', () => {
+      console.log('New evaluation tour error occurred');
+      this.newEvaluationTour.next();
+    });
   }
 
   startMainTour() {
     if (!this.mainTour) {
       this.initialize();
     }
-    this.mainTour.start();
+    
+    // Check if we're on the dashboard page before starting the tour
+    if (window.location.pathname.includes('/dashboard')) {
+      this.mainTour.start();
+    } else {
+      console.log('Main tour can only be started from the dashboard page');
+      // Optionally navigate to dashboard first
+      // window.location.href = '/dashboard';
+    }
   }
 
   startSchedulerTour() {
     if (!this.schedulerTour) {
       this.initialize();
     }
-    this.schedulerTour.start();
+    
+    // Check if we're on the scheduler page before starting the tour
+    if (window.location.pathname.includes('/scheduler')) {
+      this.schedulerTour.start();
+    } else {
+      console.log('Scheduler tour can only be started from the scheduler page');
+    }
   }
 
   startNewEvaluationTour() {
     if (!this.newEvaluationTour) {
       this.initialize();
     }
-    this.newEvaluationTour.start();
+    
+    // Check if we're on the new evaluations page before starting the tour
+    if (window.location.pathname.includes('/new-evaluations')) {
+      this.newEvaluationTour.start();
+    } else {
+      console.log('New evaluation tour can only be started from the new evaluations page');
+    }
   }
 
   markTourAsCompleted() {

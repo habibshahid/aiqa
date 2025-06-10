@@ -192,8 +192,8 @@ export const api = {
       console.log('User profile fetched:', userData);
       // Update userRoles in localStorage
       localStorage.setItem('userRoles', JSON.stringify({
-        isAgent: (userData.isAgent === 1) ? true : false,
-        isAdmin: (userData.isAdmin === 1) ? true : false,
+        isAgent: (userData.isAgent === true) ? true : false,
+        isAdmin: (userData.isAdmin === true) ? true : false,
         agentId: (userData.agentId) ? userData.agentId : null
       }));
       

@@ -7,8 +7,10 @@
   - [Logging In](#logging-in)
   - [User Interface Overview](#user-interface-overview)
   - [Navigation Menu](#navigation-menu)
+  - [Interactive Tour](#interactive-tour)
 - [Dashboard](#dashboard)
   - [Overview](#overview)
+  - [Performance Metrics Cards](#performance-metrics-cards)
   - [Filter Options](#filter-options)
   - [Performance Metrics](#performance-metrics)
 - [QA Evaluations](#qa-evaluations)
@@ -45,9 +47,16 @@
   - [Creating Groups](#creating-groups)
   - [Managing User Access](#managing-user-access)
   - [Permissions](#permissions)
+- [Billing & Usage](#billing--usage)
+  - [Usage Statistics](#usage-statistics)
+  - [Credit Management](#credit-management)
+  - [Transaction History](#transaction-history)
 - [System Settings](#system-settings)
   - [User Profile](#user-profile)
   - [Changing Password](#changing-password)
+- [Troubleshooting](#troubleshooting)
+  - [Common Issues](#common-issues)
+  - [Contact Support](#contact-support)
 
 ## Introduction
 
@@ -87,12 +96,56 @@ The side menu provides access to these main sections:
 - **Trend Analysis**: Analyze QA metrics over time
 - **Export Reports**: Generate CSV reports for analysis
 - **Group Management**: Manage user groups and permissions
+- **Billing & Usage**: View usage statistics and manage credits
+
+### Interactive Tour
+
+AIQA includes an interactive tour to help you get familiar with the system:
+
+1. **First-time Login**: The tour automatically starts on your first login to the dashboard.
+2. **Tour Navigation**: Use the "Next" and "Back" buttons to navigate through the tour steps.
+3. **Skip Option**: You can skip the tour at any time by clicking "Skip Tour" or the X button.
+4. **Page-Specific Tours**: Different pages have specialized tours focusing on their specific features.
+5. **Restart Tours**: You can restart any tour by clicking your profile icon and selecting "Restart Tours."
+
+**Note**: Tours are designed to run on specific pages. The dashboard tour only runs on the dashboard, the scheduler tour only on the scheduler page, etc. If a tour step cannot find its target element, it will automatically skip to the next available step.
 
 ## Dashboard
 
 ### Overview
 
 The Dashboard provides a bird's-eye view of your quality assurance program. It displays key metrics, agent performance statistics, and recent evaluation results.
+
+### Performance Metrics Cards
+
+The dashboard features several performance metric cards that provide at-a-glance insights:
+
+1. **Overall QA Score**:
+   - Shows your average evaluation score
+   - Includes trend indicators comparing to previous periods
+   - Color-coded to quickly identify performance levels
+
+2. **Customer Sentiment**:
+   - Displays percentage of positive sentiment interactions
+   - Shows breakdown of positive/neutral/negative sentiment ratios
+   - Tracks sentiment trends over time
+
+3. **Evaluation Completion**:
+   - Shows progress toward evaluation targets
+   - Indicates completion percentage against goals
+   - Helps track quality assurance coverage
+
+4. **Areas Needing Focus**:
+   - Identifies critical improvement areas
+   - Highlights most common issues across evaluations
+   - Prioritizes areas for agent coaching
+
+5. **Agent Performance Spread**:
+   - Shows distribution of agent performance scores
+   - Helps identify performance gaps across your team
+   - Indicates overall team consistency
+
+Each card provides visual indicators through colors and icons to quickly communicate status, and many include sparkline charts showing recent trends.
 
 ### Filter Options
 
@@ -199,6 +252,7 @@ QA Forms define the criteria and scoring system for evaluations:
    - **Max Score**: Maximum points possible (typically 5)
    - **Scoring Type**: Binary (0 or max) or Variable (any value between)
    - **Context**: Instructions for evaluating this criterion
+   - **AI Context Generator**: Click to automatically generate context based on parameter name
 5. Click "Save Form" to create the form
 
 ### Editing Forms
@@ -396,6 +450,41 @@ Permissions control what actions users can perform:
 - **Reports**: Access to export and view reports
 - **And more**: Additional module-specific permissions
 
+## Billing & Usage
+
+### Usage Statistics
+
+The Billing & Usage page provides detailed information about your system usage:
+
+1. **Usage Overview**:
+   - Total evaluations processed
+   - Total tokens used
+   - Total call duration processed
+   - Cost breakdown by service
+
+2. **Filtering Options**:
+   - Select specific date ranges for analysis
+   - Export CSV reports of usage data
+
+3. **Detailed Breakdowns**:
+   - Usage by agent
+   - Usage by queue
+   - Daily usage statistics
+
+### Credit Management
+
+The Credit Management section allows you to:
+
+1. **View Credit Balance**:
+   - Current credit balance
+   - Low balance warnings
+   - Usage statistics
+
+2. **View Transaction History**:
+   - List of all credit transactions
+   - Filter by date range
+   - Export transaction history
+
 ## System Settings
 
 ### User Profile
@@ -415,6 +504,34 @@ To change your password:
 3. Enter your current password
 4. Enter and confirm your new password
 5. Click "Change Password" to save changes
+
+## Troubleshooting
+
+### Common Issues
+
+**Session Timeout**:
+- If your session times out due to inactivity, you'll see a session timeout dialog
+- Enter your password to continue without losing your work
+- Or click "Cancel" to return to the login page
+
+**Tour Navigation Issues**:
+- If the tour gets stuck or can't find elements, click "Skip Tour"
+- You can restart tours from your profile menu
+- Different tours are available on different pages
+
+**Loading Issues**:
+- If data fails to load, try refreshing the page
+- Check your internet connection
+- Ensure you have the necessary permissions
+
+### Contact Support
+
+If you encounter issues that you cannot resolve:
+
+1. Click on your username in the top-right corner
+2. Select "Help & Support"
+3. Fill out the support form with details about your issue
+4. Or email support directly at support@intellicon.io
 
 ---
 

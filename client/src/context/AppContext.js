@@ -1,11 +1,9 @@
-// src/context/AppContext.js - Fixed to prevent getUserProfile loop
+// src/context/AppContext.js - Fixed to prevent session modal from showing when logged out
 import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import SessionTimeoutModal from '../components/SessionTimeoutModal';
 import { api } from '../services/api';
 import config from '../config';
-
-console.log('Config in AppContext:', config);
 
 const AppContext = createContext(null);
 
@@ -16,18 +14,22 @@ export const AppProvider = ({ children }) => {
   const [failedRequest, setFailedRequest] = useState(null);
   const isCheckingAuth = useRef(false);
   const navigate = useNavigate();
+  const location = useLocation();
   
   // Event handler for session timeout from API service
   useEffect(() => {
     const handleSessionTimeout = (event) => {
-      setShowSessionModal(true);
+      // Only show the session modal if we're not already on the login page
+      if (location.pathname !== '/') {
+        setShowSessionModal(true);
+      }
     };
     
     window.addEventListener('sessionTimeout', handleSessionTimeout);
     return () => {
       window.removeEventListener('sessionTimeout', handleSessionTimeout);
     };
-  }, []);
+  }, [location.pathname]);
   
   // Check auth status on mount - with protection against multiple calls
   useEffect(() => {
@@ -41,6 +43,7 @@ export const AppProvider = ({ children }) => {
     const token = localStorage.getItem('token');
     if (!token) {
       setLoading(false);
+      setUser(null);
       return;
     }
 
@@ -63,11 +66,22 @@ export const AppProvider = ({ children }) => {
       setUser(userData);
     } catch (error) {
       console.error('Auth check error:', error);
-      if (error.message === 'Session expired') {
+      if (error.message === 'Session expired' && location.pathname !== '/') {
+        // Only show session modal if not on login page
         setShowSessionModal(true);
       } else {
+        // Clear token and user data on auth failure
         localStorage.removeItem('token');
-        navigate('/');
+        localStorage.removeItem('user');
+        localStorage.removeItem('userRoles');
+        localStorage.removeItem('cachedUserProfile');
+        localStorage.removeItem('cachedPermissions');
+        setUser(null);
+        
+        // Only navigate to login if not already there
+        if (location.pathname !== '/') {
+          navigate('/');
+        }
       }
     } finally {
       setLoading(false);
@@ -83,12 +97,6 @@ export const AppProvider = ({ children }) => {
       localStorage.setItem('user', JSON.stringify(data.user));
 
       // Use a more efficient way to store user roles
-      // WITHOUT immediately calling getUserProfile() which can cause loops
-
-      console.log('###############################')
-      console.log(data)
-      console.log('###############################')
-
       const userRoles = {
         isAgent: data.user.is_agent === 1,
         isAdmin: data.user.is_agent === 0,
@@ -110,7 +118,6 @@ export const AppProvider = ({ children }) => {
       if (showSessionModal) {
         setShowSessionModal(false);
         // Don't navigate away - the user should stay on the current page
-        // Remove the navigate('/dashboard') line to stay where they are
       } else {
         // Normal login flow - only navigate to dashboard if this is a fresh login
         navigate('/dashboard');
@@ -132,6 +139,7 @@ export const AppProvider = ({ children }) => {
       localStorage.removeItem('user');
       localStorage.removeItem('userRoles');
       localStorage.removeItem('cachedUserProfile');
+      localStorage.removeItem('cachedPermissions');
       setUser(null);
       setShowSessionModal(false);
       navigate('/');
@@ -145,14 +153,16 @@ export const AppProvider = ({ children }) => {
   return (
     <AppContext.Provider value={{ user, login, logout }}>
       {children}
-      <SessionTimeoutModal
-        isOpen={showSessionModal}
-        onClose={() => {
-          setShowSessionModal(false);
-          navigate('/');
-        }}
-        onLogin={login}
-      />
+      {showSessionModal && (
+        <SessionTimeoutModal
+          isOpen={showSessionModal}
+          onClose={() => {
+            setShowSessionModal(false);
+            navigate('/');
+          }}
+          onLogin={login}
+        />
+      )}
     </AppContext.Provider>
   );
 };
