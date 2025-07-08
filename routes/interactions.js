@@ -19,7 +19,8 @@ router.post('/search', async (req, res) => {
       durationComparison,
       workCodes,
       qaFormId,
-      excludeEvaluated
+      excludeEvaluated,
+      direction
     } = req.body;
 
     // Build query object
@@ -78,6 +79,10 @@ router.post('/search', async (req, res) => {
       query['workCodes.id'] = { $in: workCodes.map(String) };
     }
 
+    if (direction && direction !== 'all') {
+      query['direction'] = parseInt(direction);
+    }
+    
     // Ensure we only get interactions with recordings
     query['extraPayload.callRecording.webPath'] = { $exists: true, $ne: null };
 

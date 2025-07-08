@@ -643,8 +643,13 @@ const criteriaProfileSchema = new mongoose.Schema({
   },
   direction: {
     type: String,
-    enum: ['inbound', 'outbound', 'all'],
+    enum: ['0', '1', 'all'],
     default: 'all'
+  },
+  durationComparison: {  // Add this field
+    type: String,
+    enum: ['>', '<', '='],
+    default: '>'
   },
   evaluationForm: {
     formId: {

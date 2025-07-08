@@ -249,9 +249,29 @@ const buildSearchCriteria = (profile) => {
     };
   }
   
+  if (profile.direction && profile.direction !== 'all') {
+    query['direction'] = parseInt(profile.direction);
+  }
+
   // Filter by min call duration
-  if (profile.minCallDuration > 0) {
-    query['connect.duration'] = { $gte: profile.minCallDuration };
+  //if (profile.minCallDuration > 0) {
+    //query['connect.duration'] = { $gte: profile.minCallDuration };
+  //}
+  
+  if (profile.minCallDuration !== undefined && profile.minCallDuration !== null) {
+    switch (profile.durationComparison) {
+      case '>':
+        query['connect.duration'] = { $gt: parseInt(profile.minCallDuration) };
+        break;
+      case '<':
+        query['connect.duration'] = { $lt: parseInt(profile.minCallDuration) };
+        break;
+      case '=':
+        query['connect.duration'] = parseInt(profile.minCallDuration);
+        break;
+      default:
+        query['connect.duration'] = { $gt: parseInt(profile.minCallDuration) };
+    }
   }
   
   // Make sure call has recording

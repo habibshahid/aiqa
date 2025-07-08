@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import Select from 'react-select';
 import { api } from '../services/api';
+import { PhoneIncoming, PhoneOutgoing } from 'lucide-react';
 
 const NewEvaluations = () => {
   const navigate = useNavigate();
@@ -26,7 +27,8 @@ const NewEvaluations = () => {
     durationComparison: '>',
     workCodeIds: [],
     qaFormId: '',
-    excludeEvaluated: true
+    excludeEvaluated: true,
+    direction: 'all',
   });
   
   // Options for dropdowns
@@ -119,6 +121,7 @@ const NewEvaluations = () => {
           agentIds: selectedProfile.agents.map(a => a.agentId),
           workCodeIds: selectedProfile.workCodes.map(w => w.code),
           minDuration: selectedProfile.minCallDuration,
+          durationComparison: selectedProfile.durationComparison || '>',
           qaFormId: selectedProfile.evaluationForm?.formId || '',
           excludeEvaluated: selectedProfile.excludeEvaluated !== false
         }));
@@ -165,7 +168,8 @@ const NewEvaluations = () => {
         durationComparison: filters.durationComparison,
         workCodes: filters.workCodeIds,
         qaFormId: filters.qaFormId,
-        excludeEvaluated: filters.excludeEvaluated // Add this line
+        excludeEvaluated: filters.excludeEvaluated,
+        direction: filters.direction !== 'all' ? filters.direction : undefined // Add this line
       };
       
       // Make API call to search interactions
@@ -381,6 +385,30 @@ const NewEvaluations = () => {
     );
   };  
 
+  const formatDurationHumanReadable = (seconds) => {
+    if (!seconds || isNaN(seconds)) return 'N/A';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    
+    let result = '';
+    
+    if (hours > 0) {
+      result += `${hours} ${hours === 1 ? 'hr' : 'hrs'} `;
+    }
+    
+    if (minutes > 0 || hours > 0) {
+      result += `${minutes} ${minutes === 1 ? 'min' : 'mins'} `;
+    }
+    
+    if (remainingSeconds > 0 || (hours === 0 && minutes === 0)) {
+      result += `${remainingSeconds} ${remainingSeconds === 1 ? 'sec' : 'secs'}`;
+    }
+    
+    return result.trim();
+  };
+
   // Update selectAll state when selections change
   useEffect(() => {
     if (interactions.length > 0 && selectedInteractions.length === interactions.length) {
@@ -444,7 +472,7 @@ const NewEvaluations = () => {
             </div>
             
             {/* Criteria Profile */}
-            <div className="col-md-12">
+            <div className="col-md-6">
               <label className="form-label">Criteria Profile (Optional)</label>
               <Select
                 options={options.criteriaProfiles.map(profile => ({
@@ -462,6 +490,23 @@ const NewEvaluations = () => {
               <small className="form-text text-muted">
                 Selecting a profile will auto-fill the fields below based on the profile settings
               </small>
+            </div>
+            {/* QA Form */}
+            <div className="col-md-6">
+              <label className="form-label">QA Form</label>
+              <Select
+                options={options.qaForms.map(form => ({
+                  value: form._id,
+                  label: form.name
+                }))}
+                value={filters.qaFormId ? {
+                  value: filters.qaFormId,
+                  label: options.qaForms.find(f => f._id === filters.qaFormId)?.name
+                } : null}
+                onChange={(selected) => handleSelectChange('qaFormId', selected)}
+                placeholder="Select QA form"
+                isRequired
+              />
             </div>
 
             {/* Queues */}
@@ -531,9 +576,21 @@ const NewEvaluations = () => {
                 />
               </div>
             </div>
-
+            <div className="col-md-3">
+              <label className="form-label">Direction</label>
+              <select
+                className="form-select"
+                name="direction"
+                value={filters.direction}
+                onChange={handleFilterChange}
+              >
+                <option value="all">All</option>
+                <option value="0">Inbound</option>
+                <option value="1">Outbound</option>
+              </select>
+            </div>
             {/* Work Codes */}
-            <div className="col-md-9">
+            <div className="col-md-6">
               <label className="form-label">Work Codes</label>
               <Select
                 isMulti
@@ -547,24 +604,6 @@ const NewEvaluations = () => {
                 }).filter(Boolean)}
                 onChange={(selected) => handleSelectChange('workCodeIds', selected)}
                 placeholder="Select work codes"
-              />
-            </div>
-
-            {/* QA Form */}
-            <div className="col-md-12">
-              <label className="form-label">QA Form</label>
-              <Select
-                options={options.qaForms.map(form => ({
-                  value: form._id,
-                  label: form.name
-                }))}
-                value={filters.qaFormId ? {
-                  value: filters.qaFormId,
-                  label: options.qaForms.find(f => f._id === filters.qaFormId)?.name
-                } : null}
-                onChange={(selected) => handleSelectChange('qaFormId', selected)}
-                placeholder="Select QA form"
-                isRequired
               />
             </div>
           </div>
@@ -679,8 +718,17 @@ const NewEvaluations = () => {
                     </td>
                     <td>{interaction.agent?.name || 'N/A'}</td>
                     <td>{interaction.queue?.name || 'N/A'}</td>
-                    <td>{interaction.connect?.duration || 'N/A'}</td>
-                    <td>{interaction.caller?.id || 'N/A'}</td>
+                    <td>{formatDurationHumanReadable(interaction.duration || 0)}</td>
+                    <td>
+                      <div className="d-flex align-items-center">
+                        {interaction.direction === '0' || interaction.direction === 0 ? (
+                          <PhoneIncoming size={16} className="text-success me-2" title="Incoming Call" />
+                        ) : (
+                          <PhoneOutgoing size={16} className="text-primary me-2" title="Outgoing Call" />
+                        )}
+                        <span>{interaction.caller?.id || 'Unknown'}</span>
+                      </div>
+                    </td>
                     <td>
                       {interaction.extraPayload?.callRecording?.webPathQA ? (
                         <span className="badge bg-success">Available</span>

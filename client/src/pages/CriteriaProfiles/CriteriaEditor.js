@@ -27,6 +27,7 @@ export default function CriteriaEditor() {
     workCodes: [],
     agents: [],
     minCallDuration: 0,
+    durationComparison: '>',
     direction: 'all',
     evaluationForm: null,
     isActive: true,
@@ -99,6 +100,7 @@ export default function CriteriaEditor() {
             description: w.description || w.name
         })),
         minCallDuration: formData.minCallDuration,
+        durationComparison: formData.durationComparison,
         direction: formData.direction,
         evaluationForm: formData.evaluationForm,
         isActive: formData.isActive,
@@ -290,20 +292,32 @@ export default function CriteriaEditor() {
                   onChange={(e) => setFormData(prev => ({ ...prev, direction: e.target.value }))}
                 >
                   <option value="all">All</option>
-                  <option value="inbound">Inbound</option>
-                  <option value="outbound">Outbound</option>
+                  <option value="0">Inbound</option>
+                  <option value="1">Outbound</option>
                 </select>
               </div>
 
               <div className="col-md-4">
-                <label className="form-label">Min Call Duration (seconds)</label>
-                <input
-                  type="number"
-                  className="form-control"
-                  min="0"
-                  value={formData.minCallDuration}
-                  onChange={(e) => setFormData(prev => ({ ...prev, minCallDuration: parseInt(e.target.value) }))}
-                />
+                <label className="form-label">Duration (seconds)</label>
+                <div className="input-group">
+                  <select
+                    className="form-select"
+                    value={formData.durationComparison}
+                    onChange={(e) => setFormData(prev => ({ ...prev, durationComparison: e.target.value }))}
+                    style={{ maxWidth: '60px' }}
+                  >
+                    <option value=">">{">"}</option>
+                    <option value="<">{"<"}</option>
+                    <option value="=">{"="}</option>
+                  </select>
+                  <input
+                    type="number"
+                    className="form-control"
+                    min="0"
+                    value={formData.minCallDuration}
+                    onChange={(e) => setFormData(prev => ({ ...prev, minCallDuration: parseInt(e.target.value) }))}
+                  />
+                </div>
               </div>
 
               <div className="col-md-4">
