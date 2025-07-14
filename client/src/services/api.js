@@ -430,6 +430,67 @@ export const api = {
         agentComments: comments
       })
     }),
+
+  getChannels: async () => {
+    try {
+      const response = await fetch('/api/interactions/channels', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch channels');
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching channels:', error);
+      return []; // Return empty array as fallback
+    }
+  },
+
+  getInteractionMessages: async (interactionId) => {
+    try {
+      const response = await fetch(`/api/interactions/${interactionId}/messages`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch messages');
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      throw error;
+    }
+  },
+
+  // NEW: Get enhanced interaction details
+  getInteractionDetails: async (interactionId) => {
+    try {
+      const response = await fetch(`/api/interactions/${interactionId}/details`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch interaction details');
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching interaction details:', error);
+      throw error;
+    }
+  },
 };
   
 export default api;

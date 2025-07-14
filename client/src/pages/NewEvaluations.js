@@ -6,6 +6,17 @@ import Select from 'react-select';
 import { api } from '../services/api';
 import { PhoneIncoming, PhoneOutgoing } from 'lucide-react';
 
+// NEW: Multi-channel support constants
+const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
+
+const CHANNEL_DISPLAY_NAMES = {
+  'call': 'Voice Call',
+  'whatsapp': 'WhatsApp',
+  'fb_messenger': 'Facebook Messenger', 
+  'facebook': 'Facebook Comments',
+  'instagram_dm': 'Instagram DM'
+};
+
 const NewEvaluations = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -14,9 +25,9 @@ const NewEvaluations = () => {
   const [success, setSuccess] = useState(null);
   const [showQueueConfirmation, setShowQueueConfirmation] = useState(false);
   const [queuedJobsCount, setQueuedJobsCount] = useState(0);
-  const [userInfo, setUserInfo] = useState(null); // Add this line
+  const [userInfo, setUserInfo] = useState(null);
   
-  // Filters state
+  // Filters state - ENHANCED with channels
   const [filters, setFilters] = useState({
     startDate: format(new Date(new Date().setHours(0, 0, 0, 0)), 'yyyy-MM-dd\'T\'HH:mm'),
     endDate: format(new Date(new Date().setHours(23, 59, 59, 999)), 'yyyy-MM-dd\'T\'HH:mm'),
@@ -29,15 +40,17 @@ const NewEvaluations = () => {
     qaFormId: '',
     excludeEvaluated: true,
     direction: 'all',
+    channels: [] // NEW: Channel filter
   });
   
-  // Options for dropdowns
+  // Options for dropdowns - ENHANCED with channels
   const [options, setOptions] = useState({
     criteriaProfiles: [],
     queues: [],
     agents: [],
     workCodes: [],
-    qaForms: []
+    qaForms: [],
+    channels: [] // NEW: Available channels
   });
   
   // Interactions and selection state
@@ -66,7 +79,7 @@ const NewEvaluations = () => {
     fetchUserInfo();
   }, []);
 
-  // Fetch options for dropdowns
+  // Fetch options for dropdowns - ENHANCED with channels
   useEffect(() => {
     const fetchOptions = async () => {
       try {
@@ -76,13 +89,15 @@ const NewEvaluations = () => {
           queues,
           agents,
           workCodes,
-          qaForms
+          qaForms,
+          channels // NEW: Fetch available channels
         ] = await Promise.all([
           api.getCriteriaProfiles(),
           api.getQueues(),
           api.getAgents(),
           api.getWorkCodes(),
-          api.getQAForms()
+          api.getQAForms(),
+          api.getChannels() // NEW: Add this API call
         ]);
 
         setOptions({
@@ -90,7 +105,8 @@ const NewEvaluations = () => {
           queues,
           agents,
           workCodes,
-          qaForms
+          qaForms,
+          channels // NEW: Add channels to options
         });
         
         setError(null);
@@ -148,13 +164,13 @@ const NewEvaluations = () => {
     }));
   };
 
-  // Search interactions based on filters
+  // Search interactions based on filters - ENHANCED with channels
   const searchInteractions = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Prepare the search criteria
+      // Prepare the search criteria - ENHANCED with channels
       const searchParams = {
         startDate: filters.startDate,
         endDate: filters.endDate,
@@ -169,8 +185,11 @@ const NewEvaluations = () => {
         workCodes: filters.workCodeIds,
         qaFormId: filters.qaFormId,
         excludeEvaluated: filters.excludeEvaluated,
-        direction: filters.direction !== 'all' ? filters.direction : undefined // Add this line
+        direction: filters.direction !== 'all' ? filters.direction : undefined,
+        channels: filters.channels.length > 0 ? filters.channels : undefined // NEW: Include channel filter
       };
+      
+      console.log('Search params with channels:', searchParams);
       
       // Make API call to search interactions
       const response = await fetch('/api/interactions/search', {
@@ -193,7 +212,15 @@ const NewEvaluations = () => {
       setSelectedInteractions([]);
       setSelectAll(false);
       
+      // NEW: Log channel distribution
+      const channelCounts = data.reduce((acc, interaction) => {
+        const channel = interaction.channel || 'call';
+        acc[channel] = (acc[channel] || 0) + 1;
+        return acc;
+      }, {});
+      
       console.log('Found interactions:', data.length);
+      console.log('Channel distribution:', channelCounts);
     } catch (err) {
       console.error('Search error:', err);
       setError(err.message || 'Error searching interactions');
@@ -202,7 +229,7 @@ const NewEvaluations = () => {
     }
   };
 
-  // Run evaluations on selected interactions
+  // Run evaluations on selected interactions - ENHANCED with multi-channel support
   const runEvaluations = async () => {
     if (selectedInteractions.length === 0) {
       setError('Please select at least one interaction to evaluate');
@@ -232,13 +259,13 @@ const NewEvaluations = () => {
         }
       }
       
-      // Format the data for the API
+      // Format the data for the API - ENHANCED with multi-channel support
       const evaluationData = selectedInteractions.map(interactionId => {
         const interaction = interactions.find(item => item._id === interactionId);
-        const recordingUrl = interaction.extraPayload?.callRecording?.webPathQA ? interaction.extraPayload?.callRecording?.webPathQA : interaction.extraPayload?.callRecording?.webPath;
-        return {
+        const isTextChannel = TEXT_CHANNELS.includes(interaction.channel);
+        
+        const evaluationItem = {
           interactionId,
-          recordingUrl: recordingUrl,
           agent: {
             id: interaction.agent?.id,
             name: interaction.agent?.name
@@ -246,9 +273,22 @@ const NewEvaluations = () => {
           caller: {
             id: interaction.caller?.id
           },
-          qaFormId: filters.qaFormId
+          qaFormId: filters.qaFormId,
+          channel: interaction.channel || 'call', // NEW: Include channel info
+          processingType: isTextChannel ? 'text' : 'audio' // NEW: Include processing type
         };
+        
+        // NEW: Only add recording URL for audio channels
+        if (!isTextChannel) {
+          const recordingUrl = interaction.extraPayload?.callRecording?.webPathQA || 
+                              interaction.extraPayload?.callRecording?.webPath;
+          evaluationItem.recordingUrl = recordingUrl;
+        }
+        
+        return evaluationItem;
       });
+      
+      console.log('Prepared evaluation data with channels:', evaluationData);
       
       // Make API call to process evaluations
       const response = await fetch('/api/qa-process/process-evaluations', {
@@ -268,8 +308,18 @@ const NewEvaluations = () => {
       }
       
       const result = await response.json();
-      setSuccess(`Successfully processed ${result.processed} evaluations`);
-      setSuccess(`Queued ${evaluationData.length} evaluations for processing`);
+      
+      // NEW: Enhanced success message with channel breakdown
+      const channelBreakdown = result.summary ? 
+        `(${result.summary.audioChannels || 0} audio, ${result.summary.textChannels || 0} text)` : '';
+      
+      setSuccess(`Successfully queued ${result.processed} evaluations for processing ${channelBreakdown}`);
+      
+      // NEW: Show validation errors if any
+      if (result.validationErrors && result.validationErrors.length > 0) {
+        const errorChannels = result.validationErrors.map(e => e.channel).join(', ');
+        setError(`Some evaluations failed validation for channels: ${errorChannels}`);
+      }
       
       // Clear selections after successful processing
       setSelectedInteractions([]);
@@ -286,6 +336,18 @@ const NewEvaluations = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // NEW: Helper functions for channel display
+  const getChannelDisplayName = (channel) => {
+    return CHANNEL_DISPLAY_NAMES[channel] || channel?.charAt(0).toUpperCase() + channel?.slice(1) || 'Unknown';
+  };
+
+  const getChannelBadgeColor = (channel) => {
+    if (TEXT_CHANNELS.includes(channel)) {
+      return 'bg-info';
+    }
+    return 'bg-primary';
   };
 
   // Handle selection change for an interaction
@@ -442,7 +504,7 @@ const NewEvaluations = () => {
         </div>
       )}
 
-      {/* Filters */}
+      {/* Filters - ENHANCED with channels */}
       <div className="card mb-4">
         <div className="card-header">
           <h5 className="card-title mb-0">Search Filters</h5>
@@ -491,6 +553,7 @@ const NewEvaluations = () => {
                 Selecting a profile will auto-fill the fields below based on the profile settings
               </small>
             </div>
+            
             {/* QA Form */}
             <div className="col-md-6">
               <label className="form-label">QA Form</label>
@@ -529,30 +592,50 @@ const NewEvaluations = () => {
 
             {/* Agents */}
             <div className="col-md-6">
-            <label className="form-label">Agents</label>
-            <Select
-              isMulti
-              options={options.agents.map(agent => ({
-                value: agent.id,
-                label: agent.name
-              }))}
-              value={filters.agentIds.map(id => {
-                const agent = options.agents.find(a => a.id.toString() === id.toString());
-                return agent ? { value: agent.id, label: agent.name } : null;
-              }).filter(Boolean)}
-              onChange={(selected) => handleSelectChange('agentIds', selected)}
-              placeholder="Select agents"
-              isDisabled={userInfo && userInfo.isAgent && !userInfo.isAdmin} // Disable for agents
-            />
-            {userInfo && userInfo.isAgent && !userInfo.isAdmin && (
+              <label className="form-label">Agents</label>
+              <Select
+                isMulti
+                options={options.agents.map(agent => ({
+                  value: agent.id,
+                  label: agent.name
+                }))}
+                value={filters.agentIds.map(id => {
+                  const agent = options.agents.find(a => a.id.toString() === id.toString());
+                  return agent ? { value: agent.id, label: agent.name } : null;
+                }).filter(Boolean)}
+                onChange={(selected) => handleSelectChange('agentIds', selected)}
+                placeholder="Select agents"
+                isDisabled={userInfo && userInfo.isAgent && !userInfo.isAdmin} // Disable for agents
+              />
+              {userInfo && userInfo.isAgent && !userInfo.isAdmin && (
+                <small className="form-text text-muted">
+                  As an agent, you can only create evaluations for yourself
+                </small>
+              )}
+            </div>
+            
+            {/* NEW: Channels */}
+            <div className="col-md-4">
+              <label className="form-label">Channels</label>
+              <Select
+                isMulti
+                options={options.channels.map(channel => ({
+                  value: channel.id,
+                  label: `${channel.name} (${channel.type})`
+                }))}
+                value={filters.channels.map(id => {
+                  const channel = options.channels.find(c => c.id === id);
+                  return channel ? { value: channel.id, label: `${channel.name} (${channel.type})` } : null;
+                }).filter(Boolean)}
+                onChange={(selected) => handleSelectChange('channels', selected)}
+                placeholder="Select channels (leave empty for all)"
+              />
               <small className="form-text text-muted">
-                As an agent, you can only create evaluations for yourself
+                Filter by communication channel. Leave empty to include all channels.
               </small>
-            )}
-          </div>
-
+            </div>
             {/* Duration */}
-            <div className="col-md-3">
+            <div className="col-md-4">
               <label className="form-label">Duration (seconds)</label>
               <div className="input-group">
                 <select
@@ -576,7 +659,8 @@ const NewEvaluations = () => {
                 />
               </div>
             </div>
-            <div className="col-md-3">
+            
+            <div className="col-md-4">
               <label className="form-label">Direction</label>
               <select
                 className="form-select"
@@ -589,6 +673,7 @@ const NewEvaluations = () => {
                 <option value="1">Outbound</option>
               </select>
             </div>
+            
             {/* Work Codes */}
             <div className="col-md-6">
               <label className="form-label">Work Codes</label>
@@ -648,7 +733,7 @@ const NewEvaluations = () => {
         </div>
       </div>
 
-      {/* Interactions Table */}
+      {/* Interactions Table - ENHANCED with channels */}
       {interactions.length > 0 && (
         <div className="card">
           <div className="card-header d-flex justify-content-between align-items-center">
@@ -683,76 +768,117 @@ const NewEvaluations = () => {
                     </div>
                   </th>
                   <th>Date/Time</th>
+                  <th>Channel</th> {/* NEW COLUMN */}
                   <th>Agent</th>
                   <th>Queue</th>
                   <th>Duration</th>
                   <th>Caller ID</th>
-                  <th>Recording</th>
+                  <th>Recording/Messages</th> {/* ENHANCED COLUMN */}
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {interactions.map(interaction => (
-                  <tr key={interaction._id} 
-                    onClick={() => handleInteractionClick(interaction)}
-                    className={interaction.extraPayload?.evaluated ? 'table-info cursor-pointer' : 'cursor-pointer'}
-                  >
-                    <td>
-                      <div className="form-check">
-                        <input
-                          className="form-check-input"
-                          type="checkbox"
-                          checked={selectedInteractions.includes(interaction._id)}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            handleSelectionChange(interaction._id);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      </div>
-                    </td>
-                    <td>
-                      {interaction.createdAt 
-                        ? format(new Date(interaction.createdAt), 'MMM d, yyyy h:mm a')
-                        : 'N/A'}
-                    </td>
-                    <td>{interaction.agent?.name || 'N/A'}</td>
-                    <td>{interaction.queue?.name || 'N/A'}</td>
-                    <td>{formatDurationHumanReadable(interaction.duration || 0)}</td>
-                    <td>
-                      <div className="d-flex align-items-center">
-                        {interaction.direction === '0' || interaction.direction === 0 ? (
-                          <PhoneIncoming size={16} className="text-success me-2" title="Incoming Call" />
-                        ) : (
-                          <PhoneOutgoing size={16} className="text-primary me-2" title="Outgoing Call" />
+                {interactions.map(interaction => {
+                  const isTextChannel = TEXT_CHANNELS.includes(interaction.channel);
+                  const hasRecording = !!(interaction.extraPayload?.callRecording?.webPathQA || 
+                                         interaction.extraPayload?.callRecording?.webPath);
+                  
+                  return (
+                    <tr key={interaction._id} 
+                      onClick={() => handleInteractionClick(interaction)}
+                      className={interaction.extraPayload?.evaluated ? 'table-info cursor-pointer' : 'cursor-pointer'}
+                    >
+                      <td>
+                        <div className="form-check">
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            checked={selectedInteractions.includes(interaction._id)}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleSelectionChange(interaction._id);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                      </td>
+                      <td>
+                        {interaction.createdAt 
+                          ? format(new Date(interaction.createdAt), 'MMM d, yyyy h:mm a')
+                          : 'N/A'}
+                      </td>
+                      {/* NEW: Channel column */}
+                      <td>
+                        <span className={`badge ${getChannelBadgeColor(interaction.channel)} me-1`}>
+                          {getChannelDisplayName(interaction.channel)}
+                        </span>
+                        {isTextChannel && interaction.messageCount > 0 && (
+                          <small className="text-muted d-block">
+                            {interaction.messageCount} messages
+                          </small>
                         )}
-                        <span>{interaction.caller?.id || 'Unknown'}</span>
-                      </div>
-                    </td>
-                    <td>
-                      {interaction.extraPayload?.callRecording?.webPathQA ? (
-                        <span className="badge bg-success">Available</span>
-                      ) : interaction.extraPayload?.callRecording?.webPath ? (
-                        <span className="badge bg-warning">Available</span>
-                      ) : (
-                        <span className="badge bg-danger">Missing</span>
-                      )}
-                    </td>
-                    <td>
-                      {interaction.extraPayload?.evaluated ? (
-                        <button
-                          onClick={() => navigate(`/evaluation/${interaction.extraPayload.evaluationId}`)}
-                          className="btn btn-sm btn-info"
-                        >
-                          <i className="bi bi-check-circle-fill me-1"></i>
-                          View Evaluation
-                        </button>
-                      ) : (
-                        <span className="badge bg-secondary">Not Evaluated</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td>{interaction.agent?.name || 'N/A'}</td>
+                      <td>{interaction.queue?.name || 'N/A'}</td>
+                      <td>
+                        {isTextChannel ? (
+                          <span className="text-muted">Text Conversation</span>
+                        ) : (
+                          formatDurationHumanReadable(interaction.duration || 0)
+                        )}
+                      </td>
+                      <td>
+                        <div className="d-flex align-items-center">
+                          {!isTextChannel && (
+                            <>
+                              {interaction.direction === '0' || interaction.direction === 0 ? (
+                                <PhoneIncoming size={16} className="text-success me-2" title="Incoming Call" />
+                              ) : (
+                                <PhoneOutgoing size={16} className="text-primary me-2" title="Outgoing Call" />
+                              )}
+                            </>
+                          )}
+                          <span>{interaction.caller?.id || 'Unknown'}</span>
+                        </div>
+                      </td>
+                      {/* ENHANCED: Recording/Messages column */}
+                      <td>
+                        {isTextChannel ? (
+                          interaction.messageCount > 0 ? (
+                            <span className="badge bg-success">
+                              {interaction.messageCount} Messages
+                            </span>
+                          ) : (
+                            <span className="badge bg-warning">No Messages</span>
+                          )
+                        ) : (
+                          <>
+                            {interaction.extraPayload?.callRecording?.webPathQA ? (
+                              <span className="badge bg-success">Available</span>
+                            ) : interaction.extraPayload?.callRecording?.webPath ? (
+                              <span className="badge bg-warning">Available</span>
+                            ) : (
+                              <span className="badge bg-danger">Missing</span>
+                            )}
+                          </>
+                        )}
+                      </td>
+                      <td>
+                        {interaction.extraPayload?.evaluated ? (
+                          <button
+                            onClick={() => navigate(`/evaluation/${interaction.extraPayload.evaluationId}`)}
+                            className="btn btn-sm btn-info"
+                          >
+                            <i className="bi bi-check-circle-fill me-1"></i>
+                            View Evaluation
+                          </button>
+                        ) : (
+                          <span className="badge bg-secondary">Not Evaluated</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

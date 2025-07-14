@@ -1,7 +1,17 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Edit, Eye, EyeOff, MessageSquare, CheckCircle, XCircle, AlertTriangle, Save, Lock, AlertCircle } from 'lucide-react';
+import { Edit, Eye, EyeOff, MessageSquare, CheckCircle, XCircle, AlertTriangle, Save, Lock, AlertCircle, Clock, Users, Hash } from 'lucide-react';
 import Select from 'react-select';
+
+const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
+
+const CHANNEL_DISPLAY_NAMES = {
+  'call': 'Voice Call',
+  'whatsapp': 'WhatsApp',
+  'fb_messenger': 'Facebook Messenger',
+  'facebook': 'Facebook Comments', 
+  'instagram_dm': 'Instagram DM'
+};
 
 // Classification Badge Component with improved visibility and interaction
 const ClassificationBadge = ({ classification, onRemove = null, disabled = false }) => {
@@ -49,6 +59,170 @@ const ScoreCard = ({ title, value, maxValue, percentage, bgColor = 'bg-primary',
     </div>
   </div>
 );
+
+// NEW: Channel Info Component
+const ChannelInfoSection = ({ evaluation, messageData }) => {
+  const channel = evaluation.interactionData?.channel || evaluation.interaction?.channel || 'call';
+  const channelName = CHANNEL_DISPLAY_NAMES[channel] || channel;
+  const isText = TEXT_CHANNELS.includes(channel);
+  
+  return (
+    <div className="col-md-6">
+      <h5>Channel Information</h5>
+      <div className="d-flex align-items-center mb-2">
+        <span className={`badge ${isText ? 'bg-info' : 'bg-primary'} me-2`}>
+          {channelName}
+        </span>
+        <small className="text-muted">
+          {isText ? 'Text Conversation' : 'Voice Call'}
+        </small>
+      </div>
+      
+      {isText && messageData && (
+        <>
+          <p className="mb-1">
+            <strong>Messages:</strong> {messageData.stats?.totalMessages || 0}
+          </p>
+          <p className="mb-1">
+            <strong>Duration:</strong> {Math.round(messageData.stats?.duration || 0)}s
+          </p>
+          <p className="mb-1">
+            <strong>Avg Response Time:</strong> {Math.round(messageData.stats?.averageResponseTime || 0)}s
+          </p>
+          {messageData.stats?.multimediaMessages > 0 && (
+            <p className="mb-1">
+              <span className="badge bg-warning">{messageData.stats.multimediaMessages} Multimedia</span>
+            </p>
+          )}
+        </>
+      )}
+      
+      {!isText && (
+        <>
+          <p className="mb-1">
+            <strong>Duration:</strong> {evaluation.interactionData?.duration || evaluation.interaction?.duration || 'N/A'}s
+          </p>
+          <p className="mb-1">
+            <strong>Direction:</strong> {evaluation.interactionData?.direction === 0 ? 'Inbound' : 'Outbound'}
+          </p>
+        </>
+      )}
+    </div>
+  );
+};
+
+// NEW: Message Conversation Component
+const MessageConversationSection = ({ messageData, evaluation }) => {
+  if (!messageData || !messageData.conversation) {
+    return (
+      <div className="card">
+        <div className="card-header">
+          <h5 className="mb-0">Conversation</h5>
+        </div>
+        <div className="card-body">
+          <p className="text-muted">No conversation data available</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { conversation, stats } = messageData;
+
+  // Helper function to format timestamp for messages
+  const formatMessageTime = (timestamp) => {
+    const date = new Date(parseInt(timestamp));
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Helper function to get speaker badge color
+  const getSpeakerBadgeColor = (speakerRole) => {
+    return speakerRole === 'customer' ? 'bg-info' : 'bg-success';
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header d-flex justify-content-between align-items-center">
+        <h5 className="mb-0">Message Conversation</h5>
+        <div className="d-flex gap-2">
+          <span className="badge bg-primary">{stats.totalMessages} messages</span>
+          {stats.multimediaMessages > 0 && (
+            <span className="badge bg-warning">{stats.multimediaMessages} multimedia</span>
+          )}
+        </div>
+      </div>
+      <div className="card-body">
+        {/* Conversation Stats */}
+        <div className="row mb-3">
+          <div className="col-md-3">
+            <small className="text-muted">Customer Messages</small>
+            <div className="fw-bold">{stats.customerMessages}</div>
+          </div>
+          <div className="col-md-3">
+            <small className="text-muted">Agent Messages</small>
+            <div className="fw-bold">{stats.agentMessages}</div>
+          </div>
+          <div className="col-md-3">
+            <small className="text-muted">Duration</small>
+            <div className="fw-bold">{Math.round(stats.duration)}s</div>
+          </div>
+          <div className="col-md-3">
+            <small className="text-muted">Avg Response</small>
+            <div className="fw-bold">{Math.round(stats.averageResponseTime)}s</div>
+          </div>
+        </div>
+
+        {/* Message Thread */}
+        <div className="conversation-thread" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+          {conversation.transcription.map((entry, index) => {
+            const timestamp = Object.keys(entry)[0];
+            const messageData = entry[timestamp];
+            const time = formatMessageTime(timestamp);
+            const isCustomer = messageData.speaker_role === 'customer';
+            
+            return (
+              <div key={index} className={`d-flex mb-3 ${isCustomer ? '' : 'flex-row-reverse'}`}>
+                <div className={`message-bubble p-3 rounded-3 ${isCustomer ? 'bg-light me-2' : 'bg-primary text-white ms-2'}`} 
+                     style={{ maxWidth: '70%' }}>
+                  <div className="d-flex align-items-center mb-1">
+                    <span className={`badge ${getSpeakerBadgeColor(messageData.speaker_role)} me-2`}>
+                      {messageData.speaker_role === 'customer' ? 'Customer' : 'Agent'}
+                    </span>
+                    <small className={isCustomer ? 'text-muted' : 'text-white-50'}>
+                      {time}
+                    </small>
+                  </div>
+                  <div className="message-text">
+                    {messageData.original_text}
+                  </div>
+                  
+                  {/* Show attachment indicators */}
+                  {messageData.attachments && messageData.attachments.length > 0 && (
+                    <div className="mt-2">
+                      {messageData.attachments.map((attachment, i) => (
+                        <span key={i} className={`badge ${isCustomer ? 'bg-secondary' : 'bg-light text-dark'} me-1`}>
+                          {attachment.type}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Show forwarded indicator */}
+                  {messageData.forwarded && (
+                    <div className="mt-1">
+                      <small className={isCustomer ? 'text-muted' : 'text-white-50'}>
+                        <i className="fas fa-share me-1"></i>Forwarded
+                      </small>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Enhanced Section-wise Scores Component
 const SectionWiseScores = ({ evaluation, qaForm, updatedScores = null }) => {
@@ -396,11 +570,13 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
   const [isAgent, setIsAgent] = useState(false);
   const [formParams, setFormParams] = useState(null);
   const [qaForm, setQaForm] = useState(null);
-
   const [agentAccessChecked, setAgentAccessChecked] = useState(false);
-  
   const [resolutionComment, setResolutionComment] = useState('');
   const [resolvingDispute, setResolvingDispute] = useState(false);
+  
+  // NEW: Multi-channel support states
+  const [messageData, setMessageData] = useState(null);
+  const [isTextChannel, setIsTextChannel] = useState(false);
 
   const handleResolveDispute = async (resolution) => {
     try {
@@ -523,6 +699,33 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
       // Set evaluation data
       setEvaluation(data);
       setAgentAccessChecked(true);
+      
+      // NEW: Determine if this is a text channel and load message data
+      const channel = data.interactionData?.channel || data.interaction?.channel || 'call';
+      const isText = TEXT_CHANNELS.includes(channel);
+      setIsTextChannel(isText);
+      
+      // Load messages for text channels
+      if (isText && data.interactionId) {
+        try {
+          console.log(`Loading messages for text channel: ${channel}, interaction: ${data.interactionId}`);
+          const messageResponse = await fetch(`/api/interactions/${data.interactionId}/messages`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          if (messageResponse.ok) {
+            const messages = await messageResponse.json();
+            setMessageData(messages);
+            console.log(`Loaded ${messages.count} messages for text conversation`);
+          } else {
+            console.warn('Could not load messages:', messageResponse.statusText);
+          }
+        } catch (error) {
+          console.warn('Error loading messages:', error);
+        }
+      }
       
       // Initialize human evaluation state
       const initialParameters = {};
@@ -1200,7 +1403,7 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
                 <div className={`badge ${getSentimentColor(getAgentSentiment())} me-2`}>
                   {getAgentSentiment()}
                 </div>
-                <span className="text-muted small">Overall Call Sentiment</span>
+                <span className="text-muted small">Overall {isTextChannel ? 'Conversation' : 'Call'} Sentiment</span>
               </div>
             </div>
             <div className="col-md-6">
@@ -1209,7 +1412,7 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
                 <div className={`badge ${getSentimentColor(getCustomerSentiment())} me-2`}>
                   {getCustomerSentiment()}
                 </div>
-                <span className="text-muted small">Overall Call Sentiment</span>
+                <span className="text-muted small">Overall {isTextChannel ? 'Conversation' : 'Call'} Sentiment</span>
               </div>
             </div>
           </div>
@@ -1302,46 +1505,17 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
     );
   };
 
-  // Render Call Summary Section
-  const renderCallSummary = () => {
+  // Enhanced Interaction Summary Section
+  const renderInteractionSummary = () => {
     return (
       <div className="card mb-4">
         <div className="card-header">
-          <h5 className="card-title mb-0">Call Summary</h5>
+          <h5 className="card-title mb-0">{isTextChannel ? 'Conversation' : 'Call'} Summary</h5>
         </div>
         <div className="card-body">
           <div className="row mb-4">
-            <div className="col-md-6">
-              <h6 className="mb-3">Duration Details</h6>
-              <table className="table table-sm">
-                <tbody>
-                  <tr>
-                    <td><strong>Queue Duration:</strong></td>
-                    <td>{formatDurationHumanReadable(evaluation.interaction?.timestamps?.queueDuration)}</td>
-                  </tr>
-                  <tr>
-                    <td><strong>Talk Duration:</strong></td>
-                    <td>{formatDurationHumanReadable(evaluation.interaction?.timestamps?.talkDuration)}</td>
-                  </tr>
-                  <tr>
-                    <td><strong>Wrap Up Duration:</strong></td>
-                    <td>{formatDurationHumanReadable(evaluation.interaction?.timestamps?.wrapUpDuration)}</td>
-                  </tr>
-                  {evaluation.interaction?.workCodes && evaluation.interaction.workCodes.length > 0 && (
-                    <tr>
-                      <td><strong>Work Codes:</strong></td>
-                      <td>
-                        {evaluation.interaction.workCodes.map((code, index) => (
-                          <span key={index} className="badge bg-light text-dark me-1 mb-1">
-                            {code.name || code.code}
-                          </span>
-                        ))}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            {/* Channel Information */}
+            <ChannelInfoSection evaluation={evaluation} messageData={messageData} />
             
             <div className="col-md-6">
               <h6 className="mb-3">Contact Details</h6>
@@ -1353,15 +1527,17 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
                   </tr>
                   <tr>
                     <td><strong>Direction:</strong></td>
-                    <td className="text-capitalize">{(evaluation.interaction?.direction === 0) ? 'Inbound' : 'Outbound'}</td>
+                    <td className="text-capitalize">
+                      {(evaluation.interactionData?.direction === 0 || evaluation.interaction?.direction === 0) ? 'Inbound' : 'Outbound'}
+                    </td>
                   </tr>
                   <tr>
-                    <td><strong>Channel / Queue:</strong></td>
-                    <td className="text-capitalize">{evaluation.interaction?.channel || 'call'} / {evaluation.interaction?.queue?.name || ''}</td>
+                    <td><strong>Queue:</strong></td>
+                    <td>{evaluation.interactionData?.queue?.name || evaluation.interaction?.queue?.name || 'N/A'}</td>
                   </tr>
                   <tr>
                     <td><strong>Customer ID:</strong></td>
-                    <td>{evaluation.interaction?.caller?.id || 'N/A'}</td>
+                    <td>{evaluation.interactionData?.caller?.id || evaluation.interaction?.caller?.id || 'N/A'}</td>
                   </tr>
                   <tr>
                     <td><strong>Evaluated By:</strong></td>
@@ -1376,6 +1552,43 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
             </div>
           </div>
           
+          {/* Duration Details - Only for calls */}
+          {!isTextChannel && (
+            <div className="row mb-4">
+              <div className="col-md-12">
+                <h6 className="mb-3">Duration Details</h6>
+                <table className="table table-sm">
+                  <tbody>
+                    <tr>
+                      <td><strong>Queue Duration:</strong></td>
+                      <td>{formatDurationHumanReadable(evaluation.interaction?.timestamps?.queueDuration)}</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Talk Duration:</strong></td>
+                      <td>{formatDurationHumanReadable(evaluation.interaction?.timestamps?.talkDuration)}</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Wrap Up Duration:</strong></td>
+                      <td>{formatDurationHumanReadable(evaluation.interaction?.timestamps?.wrapUpDuration)}</td>
+                    </tr>
+                    {evaluation.interaction?.workCodes && evaluation.interaction.workCodes.length > 0 && (
+                      <tr>
+                        <td><strong>Work Codes:</strong></td>
+                        <td>
+                          {evaluation.interaction.workCodes.map((code, index) => (
+                            <span key={index} className="badge bg-light text-dark me-1 mb-1">
+                              {code.name || code.code}
+                            </span>
+                          ))}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          
           <div className="mt-4">
             <h6 className="mb-3">Evaluation Summary</h6>
             <p className="text-muted mb-0">
@@ -1383,116 +1596,17 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
             </p>
           </div>
         </div>
-      
-        {evaluation.interaction?.recording?.webPath && (
-          <div className="card mb-4">
-            <div className="card-header">
-              <h5 className="card-title mb-0">Call Recording</h5>
-            </div>
-            <div className="card-body">
-              <audio 
-                controls 
-                className="w-100" 
-                controlsList="nodownload"
-                preload="metadata"
-              >
-                <source 
-                  src={`/api/audio-proxy?url=${encodeURIComponent(evaluation.interaction.recording.webPath)}`}
-                  type="audio/mpeg"
-                />
-                <p>Your browser does not support the audio element.</p>
-              </audio>
-            </div>
-          </div>
-        )}
       </div>
     );
   };
 
-  // Render Areas of Improvement Section
-  const renderAreasOfImprovement = () => {
-    if (!evaluation.evaluation?.areasOfImprovement?.length) return null;
-
-    return (
-      <div className="card mb-4">
-        <div className="card-header">
-          <h5 className="card-title mb-0">Areas of Improvement</h5>
-        </div>
-        <div className="card-body p-0">
-          <ul className="list-group list-group-flush">
-            {evaluation.evaluation.areasOfImprovement.map((area, index) => (
-              <li key={index} className="list-group-item">
-                <i className="bi bi-exclamation-triangle text-warning me-2"></i>
-                {area}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    );
-  };
-
-  // Render What the Agent Did Well Section
-  const renderAgentStrengths = () => {
-    if (!evaluation.evaluation?.whatTheAgentDidWell?.length) return null;
-
-    return (
-      <div className="card mb-4">
-        <div className="card-header">
-          <h5 className="card-title mb-0">What the Agent Did Well</h5>
-        </div>
-        <div className="card-body p-0">
-          <ul className="list-group list-group-flush">
-            {evaluation.evaluation.whatTheAgentDidWell.map((strength, index) => (
-              <li key={index} className="list-group-item">
-                <i className="bi bi-check-circle text-success me-2"></i>
-                {strength}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    );
-  };
-
-  // Render Silence Periods Section
-  const renderSilencePeriods = () => {
-    if (!evaluation.evaluation?.silencePeriods?.length) return null;
-
-    return (
-      <div className="card mb-4">
-        <div className="card-header">
-          <h5 className="card-title mb-0">Silence Periods</h5>
-        </div>
-        <div className="card-body">
-          <div className="table-responsive">
-            <table className="table table-hover">
-              <thead>
-                <tr>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Duration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {evaluation.evaluation.silencePeriods.map((period, index) => (
-                  <tr key={index}>
-                    <td>{period.fromTimeStamp}</td>
-                    <td>{period.toTimeStamp}</td>
-                    <td>{period.silenceDuration} seconds</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Render Transcription Section
-  const renderTranscription = () => {
-    // Check if transcription exists
+  // Enhanced Transcription Section that handles both audio and text
+  const renderTranscriptionSection = () => {
+    if (isTextChannel && messageData) {
+      return <MessageConversationSection messageData={messageData} evaluation={evaluation} />;
+    }
+    
+    // Return existing audio transcription component
     const hasTranscription = () => {
       const transcriptionSources = [
         evaluation.transcription,
@@ -1535,7 +1649,7 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
       <div className="card mb-4">
         <div className="card-header d-flex justify-content-between align-items-center">
           <h5 className="card-title mb-0">
-            Conversation Transcription 
+            Call Transcription 
             {evaluation.transcriptionVersion && (
               <span className="ms-2 badge bg-info">
                 {evaluation.transcriptionVersion}
@@ -1623,6 +1737,87 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
     );
   };
 
+  // Render Areas of Improvement Section
+  const renderAreasOfImprovement = () => {
+    if (!evaluation.evaluation?.areasOfImprovement?.length) return null;
+
+    return (
+      <div className="card mb-4">
+        <div className="card-header">
+          <h5 className="card-title mb-0">Areas of Improvement</h5>
+        </div>
+        <div className="card-body p-0">
+          <ul className="list-group list-group-flush">
+            {evaluation.evaluation.areasOfImprovement.map((area, index) => (
+              <li key={index} className="list-group-item">
+                <i className="bi bi-exclamation-triangle text-warning me-2"></i>
+                {area}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  };
+
+  // Render What the Agent Did Well Section
+  const renderAgentStrengths = () => {
+    if (!evaluation.evaluation?.whatTheAgentDidWell?.length) return null;
+
+    return (
+      <div className="card mb-4">
+        <div className="card-header">
+          <h5 className="card-title mb-0">What the Agent Did Well</h5>
+        </div>
+        <div className="card-body p-0">
+          <ul className="list-group list-group-flush">
+            {evaluation.evaluation.whatTheAgentDidWell.map((strength, index) => (
+              <li key={index} className="list-group-item">
+                <i className="bi bi-check-circle text-success me-2"></i>
+                {strength}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  };
+
+  // Render Silence Periods Section (only for calls)
+  const renderSilencePeriods = () => {
+    if (isTextChannel || !evaluation.evaluation?.silencePeriods?.length) return null;
+
+    return (
+      <div className="card mb-4">
+        <div className="card-header">
+          <h5 className="card-title mb-0">Silence Periods</h5>
+        </div>
+        <div className="card-body">
+          <div className="table-responsive">
+            <table className="table table-hover">
+              <thead>
+                <tr>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {evaluation.evaluation.silencePeriods.map((period, index) => (
+                  <tr key={index}>
+                    <td>{period.fromTimeStamp}</td>
+                    <td>{period.toTimeStamp}</td>
+                    <td>{period.silenceDuration} seconds</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Render Transcription Analysis Section
   const renderTranscriptionAnalysis = () => {
     if (!evaluation.transcriptionAnalysis) return null;
@@ -1698,7 +1893,7 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
             <div className="col-md-6">
               <div className="card">
                 <div className="card-body">
-                  <h6 className="card-subtitle mb-2 text-muted">Message Count</h6>
+                  <h6 className="card-subtitle mb-2 text-muted">{isTextChannel ? 'Message' : 'Transcription'} Count</h6>
                   <h4>{evaluation.transcriptionAnalysis.messageCount || 0}</h4>
                 </div>
               </div>
@@ -2047,8 +2242,31 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
       {/* Sentiment Analysis Section */}
       {renderSentimentAnalysis()}
 
-      {/* Call Summary Section */}
-      {renderCallSummary()}
+      {/* Enhanced Interaction Summary */}
+      {renderInteractionSummary()}
+
+      {/* Recording section - only show for audio channels */}
+      {!isTextChannel && evaluation.interaction?.recording?.webPath && (
+        <div className="card mb-4">
+          <div className="card-header">
+            <h5 className="card-title mb-0">Call Recording</h5>
+          </div>
+          <div className="card-body">
+            <audio 
+              controls 
+              className="w-100" 
+              controlsList="nodownload"
+              preload="metadata"
+            >
+              <source 
+                src={`/api/audio-proxy?url=${encodeURIComponent(evaluation.interaction.recording.webPath)}`}
+                type="audio/mpeg"
+              />
+              <p>Your browser does not support the audio element.</p>
+            </audio>
+          </div>
+        </div>
+      )}
 
       {/* Areas of Improvement and Agent Strengths */}
       <div className="row">
@@ -2061,14 +2279,32 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
         </div>
       </div>
 
-      {/* Silence Periods */}
+      {/* Silence Periods (only for calls) */}
       {renderSilencePeriods()}
 
-      {/* Transcription */}
-      {renderTranscription()}
+      {/* Enhanced Transcription Section */}
+      {renderTranscriptionSection()}
 
       {/* Transcription Analysis */}
       {renderTranscriptionAnalysis()}
+      
+      <style jsx>{`
+        .message-bubble {
+          word-wrap: break-word;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .conversation-thread {
+          border: 1px solid #dee2e6;
+          border-radius: 0.375rem;
+          padding: 1rem;
+          background-color: #f8f9fa;
+        }
+
+        .message-text {
+          line-height: 1.4;
+        }
+      `}</style>
     </div>
   );
 };

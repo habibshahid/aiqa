@@ -11,6 +11,9 @@ const mkdirAsync = promisify(fs.mkdir);
 const { InteractionTranscription, QAForm, Interactions, InteractionAIQA } = require('../config/mongodb');
 const { calculateEvaluationCost } = require('./costProcessor');
 const mongoose = require('mongoose');
+const { processTextInteraction } = require('./messageProcessor');
+
+const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
 
 /**
  * Download a file from URL to local filesystem
@@ -719,171 +722,208 @@ const processEvaluation = async (evaluation) => {
       duration = interactionData.connect.duration || 0;
       interactionStartTime = interactionData?.connect?.startDtTime || new Date();
       queue = interactionData.queue?.name || '';
+      
+      if (interactionData) {
+        channel = interactionData.channel || 'call';
+        direction = interactionData.direction || 0;
+        duration = interactionData.connect?.duration || 0;
+        interactionStartTime = interactionData?.connect?.startDtTime || new Date();
+        queue = interactionData.queue?.name || '';
+        
+        console.log(`\n=== QA Processor: Processing interaction ${interactionId} ===`);
+        console.log(`Channel: ${channel}`);
+        console.log(`Direction: ${direction}`);
+        console.log(`Duration: ${duration}`);
+        console.log(`Queue: ${queue}`);
+      }
     } catch (error) {
       console.warn(`Could not find interaction start time: ${error.message}`);
       interactionStartTime = new Date();
     }
     
-    // Step 1: Download the recording file locally
-    console.log(`Processing recording for interaction: ${interactionId}`);
-    localFilePath = await downloadRecording(recordingUrl, interactionId);
-    
-    // Step 2: Upload to democc for public access
-    publicUrl = await uploadToPublicStorage(localFilePath, interactionId);
-    
-    // Step 3: Process with Deepgram
-    console.log(`Sending to Deepgram: ${publicUrl}`);
-    const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
-    
-    const deepgramResponse = await axios.post(
-      'https://api.deepgram.com/v1/listen',
-      {
-        url: publicUrl
-      },
-      {
-        headers: {
-          'Authorization': `Token ${deepgramApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        params: {
-          smart_format: true,
-          punctuate: true,
-          diarize: true,
-          language: 'hi-latn',
-          model: 'nova-2',
-          multichannel: true,
-          utterances: true
-        }
+    if (TEXT_CHANNELS.includes(channel)) {
+      console.log(`\n=== Routing to Message Processor for channel: ${channel} ===`);
+      
+      // Route to text/message processor
+      const result = await processTextInteraction(interactionId, qaFormId, evaluator);
+      
+      if (result.success) {
+        console.log(`\n=== Successfully processed text interaction ${interactionId} ===`);
+        return {
+          success: true,
+          interactionId,
+          evaluationId: result.evaluationId,
+          processingType: 'text',
+          channel,
+          messageCount: result.messageCount,
+          conversationStats: result.conversationStats
+        };
+      } else {
+        throw new Error(result.error || 'Text processing failed');
       }
-    );
-    
-    // Step 4: Process transcription
-    const processedTranscription = await processTranscriptV2(
-      deepgramResponse.data, 
-      agent, 
-      caller,
-      interactionStartTime
-    );
-    
-    // Step 5: Save to database
-    const transcriptionDoc = {
-      interactionId,
-	    transcriptionVersion: 'recorded',
-      transcription: processedTranscription.transcription
-    };
-
-    // Check if a transcription already exists
-    const existingTranscription = await InteractionTranscription.findOne({ interactionId });
-    
-    if (existingTranscription) {
-      // Update existing transcription
-      await InteractionTranscription.updateOne(
-        { interactionId },
-        { 
-          $set: { 
-			    transcriptionVersion: 'recorded',
-            transcription: processedTranscription.transcription 
+    } 
+    else {
+      // Step 1: Download the recording file locally
+      console.log(`Processing recording for interaction: ${interactionId}`);
+      localFilePath = await downloadRecording(recordingUrl, interactionId);
+      
+      // Step 2: Upload to democc for public access
+      publicUrl = await uploadToPublicStorage(localFilePath, interactionId);
+      
+      // Step 3: Process with Deepgram
+      console.log(`Sending to Deepgram: ${publicUrl}`);
+      const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
+      
+      const deepgramResponse = await axios.post(
+        'https://api.deepgram.com/v1/listen',
+        {
+          url: publicUrl
+        },
+        {
+          headers: {
+            'Authorization': `Token ${deepgramApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          params: {
+            smart_format: true,
+            punctuate: true,
+            diarize: true,
+            language: 'hi-latn',
+            model: 'nova-2',
+            multichannel: true,
+            utterances: true
           }
         }
       );
-    } else {
-      // Create new transcription
-      await InteractionTranscription.create(transcriptionDoc);
-    }
-    
-    // Step 6: Get QA form data
-    const qaForm = await QAForm.findById(qaFormId);
-    if (!qaForm) {
-      throw new Error('QA Form not found');
-    }
-  
-	  // Step 7: Format QA form parameters into instructions
-    const formattedQAForm = {
-      formId: qaForm._id,
-      formName: qaForm.name,
-      parameters: qaForm.parameters.map(param => ({
-        label: param.name,
-        evaluationContext: param.context,
-        maxScore: param.maxScore,
-        scoringType: param.scoringType,
-		    classification: param.classification
-      })),
-      classifications: qaForm.classifications 
-    };
-    
-    const instructions = formatInstructions(formattedQAForm);
-    // Step 8: Create simplified transcription
-    const simplifiedTranscription = createFormattedTranscriptionText(processedTranscription.transcription);
-    
-    // Step 9: Call QA evaluation API
-    const evaluationResult = await callQAEvaluationApi(
-      simplifiedTranscription,
-      instructions,
-      interactionId
-    );
-    
-	// Step 10: process evaluation response
-	const processedDocument = await processEvaluationResponse(
-      evaluationResult,
-      interactionId,
-      qaForm._id,
-      qaForm.name,
-      agent, 
-      caller, 
-      channel, 
-      direction,
-      duration,
-      evaluator,
-      queue
-    );
-    
-    //console.log('processedDocument', processedDocument);
-    
-    // Step 11: insert into collection
-    const aiqaDoc = await InteractionAIQA.create(processedDocument);
-    console.log('InteractionAIQA Document Created with ID:', aiqaDoc._id);
-    console.log('Total Score:', aiqaDoc.evaluationData.evaluation.totalScore);
-    console.log('Max Score:', aiqaDoc.evaluationData.evaluation.maxScore);
-    
-    updateEvaluationForClassification(evaluationResult, aiqaDoc, qaFormId);
-    
-    try {
-      // Calculate and save cost data
-      await calculateEvaluationCost(aiqaDoc._id);
-      console.log('Cost data calculated and saved for evaluation:', aiqaDoc._id);
-    } catch (costError) {
-      console.error('Error calculating cost data:', costError);
-      // Continue without cost data if calculation fails
-    }
+      
+      // Step 4: Process transcription
+      const processedTranscription = await processTranscriptV2(
+        deepgramResponse.data, 
+        agent, 
+        caller,
+        interactionStartTime
+      );
+      
+      // Step 5: Save to database
+      const transcriptionDoc = {
+        interactionId,
+        transcriptionVersion: 'recorded',
+        transcription: processedTranscription.transcription
+      };
 
-    const interactionObjectId = mongoose.Types.ObjectId.isValid(interactionId) 
-      ? new mongoose.Types.ObjectId(interactionId) 
-      : interactionId;
-
-    // Mark the interaction as evaluated
-    await Interactions.updateOne(
-      { _id: interactionObjectId },
-      { 
-        $set: { 
-          "extraPayload.evaluated": true,
-          "extraPayload.evaluationId": aiqaDoc['_id'].toString() // Store the evaluation ID for linking
-        } 
+      // Check if a transcription already exists
+      const existingTranscription = await InteractionTranscription.findOne({ interactionId });
+      
+      if (existingTranscription) {
+        // Update existing transcription
+        await InteractionTranscription.updateOne(
+          { interactionId },
+          { 
+            $set: { 
+            transcriptionVersion: 'recorded',
+              transcription: processedTranscription.transcription 
+            }
+          }
+        );
+      } else {
+        // Create new transcription
+        await InteractionTranscription.create(transcriptionDoc);
       }
-    );
-
-    return { 
-      success: true, 
-      qaForm: { 
-        formId: qaForm._id, 
-        formName: qaForm.name, 
-        evaluationId: aiqaDoc._id.toString() 
-      },
-      scores: {
-        totalScore: aiqaDoc.evaluationData.evaluation.totalScore,
-        maxScore: aiqaDoc.evaluationData.evaluation.maxScore,
-        percentage: aiqaDoc.sectionScores?.overall?.percentage || 0
+      
+      // Step 6: Get QA form data
+      const qaForm = await QAForm.findById(qaFormId);
+      if (!qaForm) {
+        throw new Error('QA Form not found');
       }
-    };
+    
+      // Step 7: Format QA form parameters into instructions
+      const formattedQAForm = {
+        formId: qaForm._id,
+        formName: qaForm.name,
+        parameters: qaForm.parameters.map(param => ({
+          label: param.name,
+          evaluationContext: param.context,
+          maxScore: param.maxScore,
+          scoringType: param.scoringType,
+          classification: param.classification
+        })),
+        classifications: qaForm.classifications 
+      };
+      
+      const instructions = formatInstructions(formattedQAForm);
+      // Step 8: Create simplified transcription
+      const simplifiedTranscription = createFormattedTranscriptionText(processedTranscription.transcription);
+      
+      // Step 9: Call QA evaluation API
+      const evaluationResult = await callQAEvaluationApi(
+        simplifiedTranscription,
+        instructions,
+        interactionId
+      );
+    
+      // Step 10: process evaluation response
+      const processedDocument = await processEvaluationResponse(
+        evaluationResult,
+        interactionId,
+        qaForm._id,
+        qaForm.name,
+        agent, 
+        caller, 
+        channel, 
+        direction,
+        duration,
+        evaluator,
+        queue
+      );
+      
+      //console.log('processedDocument', processedDocument);
+      
+      // Step 11: insert into collection
+      const aiqaDoc = await InteractionAIQA.create(processedDocument);
+      console.log('InteractionAIQA Document Created with ID:', aiqaDoc._id);
+      console.log('Total Score:', aiqaDoc.evaluationData.evaluation.totalScore);
+      console.log('Max Score:', aiqaDoc.evaluationData.evaluation.maxScore);
+      
+      updateEvaluationForClassification(evaluationResult, aiqaDoc, qaFormId);
+      
+      try {
+        // Calculate and save cost data
+        await calculateEvaluationCost(aiqaDoc._id);
+        console.log('Cost data calculated and saved for evaluation:', aiqaDoc._id);
+      } catch (costError) {
+        console.error('Error calculating cost data:', costError);
+        // Continue without cost data if calculation fails
+      }
+
+      const interactionObjectId = mongoose.Types.ObjectId.isValid(interactionId) 
+        ? new mongoose.Types.ObjectId(interactionId) 
+        : interactionId;
+
+      // Mark the interaction as evaluated
+      await Interactions.updateOne(
+        { _id: interactionObjectId },
+        { 
+          $set: { 
+            "extraPayload.evaluated": true,
+            "extraPayload.evaluationId": aiqaDoc['_id'].toString() // Store the evaluation ID for linking
+          } 
+        }
+      );
+
+      return { 
+        success: true, 
+        qaForm: { 
+          formId: qaForm._id, 
+          formName: qaForm.name, 
+          evaluationId: aiqaDoc._id.toString() 
+        },
+        scores: {
+          totalScore: aiqaDoc.evaluationData.evaluation.totalScore,
+          maxScore: aiqaDoc.evaluationData.evaluation.maxScore,
+          percentage: aiqaDoc.sectionScores?.overall?.percentage || 0
+        }
+      };
+    }
   } catch (error) {
     console.error(`Error processing evaluation for interaction ${evaluation.interactionId}:`, error);
     return {
