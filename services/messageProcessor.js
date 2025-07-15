@@ -1,7 +1,10 @@
 // services/messageProcessor.js
 const axios = require('axios');
-const { InteractionAIQA, InteractionTranscription, QAForm } = require('../config/mongodb');
+const { InteractionTranscription, QAForm, Interactions, InteractionAIQA } = require('../config/mongodb');
 const messageService = require('./messageService');
+const { calculateEvaluationCost } = require('./costProcessor');
+const { processEvaluationResponse, updateEvaluationForClassification } = require('./qaProcessor');
+const mongoose = require('mongoose');
 
 // Text-based channels that should use message processing
 const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
@@ -57,43 +60,53 @@ function formatInstructions(form) {
 
 /**
  * Process text-based interaction (WhatsApp, Facebook, Instagram, etc.)
- * @param {string} interactionId - The interaction ID
- * @param {string} qaFormId - QA form to use for evaluation
- * @param {Object} evaluator - Evaluator information
- * @returns {Promise<Object>} Processing result
+ * @param {Object} evaluation - Evaluation data containing interactionId, qaFormId, evaluator
+ * @returns {Object} Processing result
  */
-async function processTextInteraction(interactionId, qaFormId, evaluator = null) {
-  console.log(`\n=== Message Processor: Starting text interaction processing ===`);
-  console.log(`Interaction ID: ${interactionId}`);
-  console.log(`QA Form ID: ${qaFormId}`);
-  console.log(`Evaluator:`, evaluator);
-
+async function processTextInteraction(evaluation) {
+  const { interactionId, qaFormId, evaluator } = evaluation;
+  
+  console.log(`\n=== Message Processor: Starting text interaction processing for ${interactionId} ===`);
+  
   try {
-    // Step 1: Fetch messages for this interaction
+    // Step 1: Get messages from message service
+    console.log('Step 1: Fetching messages from message service...');
     const messages = await messageService.getMessagesByInteractionId(interactionId);
     
     if (!messages || messages.length === 0) {
       throw new Error(`No messages found for interaction ${interactionId}`);
     }
+    
+    console.log(`Found ${messages.length} messages for interaction ${interactionId}`);
 
-    console.log(`Found ${messages.length} messages for processing`);
-
-    // Step 2: Format messages as conversation
+    // Step 2: Format messages into conversation using messageService
+    console.log('Step 2: Formatting messages into conversation...');
     const conversation = messageService.formatMessagesAsConversation(messages);
+    
+    // Step 3: Generate conversation stats using messageService
+    console.log('Step 3: Generating conversation statistics...');
     const conversationStats = messageService.getConversationStats(messages);
-
-    console.log(`Conversation stats:`, conversationStats);
-
-    // Step 3: Create conversation text for AI analysis
+    
+    // Step 4: Create conversation text for AI analysis
+    console.log('Step 4: Creating conversation text for AI analysis...');
     const conversationText = await createConversationText(conversation, messages);
     
-    // Step 4: Perform sentiment analysis on the conversation
-    const sentimentAnalysis = await performSentimentAnalysis(conversationText);
+    // Step 5: Perform sentiment analysis (optional, can be skipped if service is down)
+    console.log('Step 5: Performing sentiment analysis...');
+    let sentimentAnalysis;
+    try {
+      sentimentAnalysis = await performSentimentAnalysis(conversationText);
+    } catch (sentimentError) {
+      console.warn('Sentiment analysis failed, using defaults:', sentimentError.message);
+      sentimentAnalysis = getDefaultSentimentAnalysis(conversationText);
+    }
 
-    // Step 5: Save conversation as transcription
+    // Step 6: Save conversation as transcription
+    console.log('Step 6: Saving conversation transcription...');
     await saveConversationTranscription(interactionId, conversation, sentimentAnalysis);
 
-    // Step 6: Get QA form and format instructions
+    // Step 7: Get QA form and format instructions
+    console.log('Step 7: Getting QA form and formatting instructions...');
     const qaForm = await QAForm.findById(qaFormId);
     if (!qaForm) {
       throw new Error(`QA Form not found: ${qaFormId}`);
@@ -115,30 +128,76 @@ async function processTextInteraction(interactionId, qaFormId, evaluator = null)
 
     const instructions = formatInstructions(formattedQAForm);
 
-    // Step 7: Send to AI evaluation service
-    const evaluation = await sendToAIEvaluation(conversationText, instructions, sentimentAnalysis);
+    // Step 8: Send to AI evaluation service
+    console.log('Step 8: Sending to AI evaluation service...');
+    const evaluationResult = await sendToAIEvaluation(conversationText, instructions, sentimentAnalysis);
 
-    // Step 8: Get interaction metadata
+    // Step 9: Get interaction metadata
+    console.log('Step 9: Getting interaction metadata...');
     const interactionMetadata = await getInteractionMetadata(interactionId, messages, conversationStats);
 
-    // Step 9: Save evaluation results
-    const savedEvaluation = await saveEvaluationResults(
+    // Step 10: Process evaluation response (SAME AS qaProcessor!)
+    console.log('Step 10: Processing evaluation response...');
+    const processedDocument = await processEvaluationResponse(
+      evaluationResult,
       interactionId,
-      qaForm,
-      evaluation,
-      interactionMetadata,
-      evaluator
+      qaForm._id,
+      qaForm.name,
+      interactionMetadata.agent, 
+      interactionMetadata.caller, 
+      interactionMetadata.channel, 
+      interactionMetadata.direction,
+      interactionMetadata.duration,
+      evaluator,
+      interactionMetadata.queue.name
     );
+
+    // Step 11: Insert into collection (SAME AS qaProcessor!)
+    console.log('Step 11: Creating evaluation document...');
+    const aiqaDoc = await InteractionAIQA.create(processedDocument);
+    console.log('InteractionAIQA Document Created with ID:', aiqaDoc._id);
+    console.log('Total Score:', aiqaDoc.evaluationData.evaluation.totalScore);
+    console.log('Max Score:', aiqaDoc.evaluationData.evaluation.maxScore);
+    
+    // Step 12: Update evaluation for classification (SAME AS qaProcessor!)
+    console.log('Step 12: Updating evaluation for classification...');
+    updateEvaluationForClassification(evaluationResult, aiqaDoc, qaFormId);
+
+    // Step 13: Calculate and save cost data (THE ORIGINAL FIX!)
+    try {
+      console.log('Step 13: Calculating cost data for text evaluation...');
+      await calculateEvaluationCost(aiqaDoc._id);
+      console.log('Cost data calculated and saved for evaluation:', aiqaDoc._id);
+    } catch (costError) {
+      console.error('Error calculating cost data:', costError);
+      // Continue without cost data if calculation fails
+    }
 
     console.log(`\n=== Message Processor: Successfully processed text interaction ${interactionId} ===`);
     
+    const interactionObjectId = mongoose.Types.ObjectId.isValid(interactionId) 
+            ? new mongoose.Types.ObjectId(interactionId) 
+            : interactionId;
+    
+          // Mark the interaction as evaluated
+          await Interactions.updateOne(
+            { _id: interactionObjectId },
+            { 
+              $set: { 
+                "extraPayload.evaluated": true,
+                "extraPayload.evaluationId": aiqaDoc['_id'].toString() // Store the evaluation ID for linking
+              } 
+            }
+          );
+    
+
     return {
       success: true,
       interactionId,
-      evaluationId: savedEvaluation._id,
+      evaluationId: aiqaDoc._id,
       messageCount: messages.length,
       conversationStats,
-      evaluation: savedEvaluation
+      evaluation: aiqaDoc
     };
 
   } catch (error) {
@@ -156,51 +215,184 @@ async function processTextInteraction(interactionId, qaFormId, evaluator = null)
 }
 
 /**
+ * Format messages into transcription-like format
+ * @param {Array} messages - Array of message objects
+ * @returns {Object} Formatted conversation object
+ */
+async function formatMessagesForTranscription(messages) {
+  console.log(`Formatting ${messages.length} messages into transcription format`);
+  
+  const transcription = [];
+  const metadata = {
+    totalMessages: messages.length,
+    participants: [],
+    channels: [],
+    timespan: {
+      start: null,
+      end: null
+    },
+    hasMultimedia: false
+  };
+  
+  // Sort messages by timestamp
+  const sortedMessages = messages.sort((a, b) => 
+    new Date(a.timestamp) - new Date(b.timestamp)
+  );
+  
+  // Process each message
+  sortedMessages.forEach((message, index) => {
+    const timestamp = new Date(message.timestamp).getTime();
+    
+    // Build transcription entry
+    const transcriptionEntry = {
+      [timestamp]: {
+        original_text: message.content || message.text || '',
+        speaker_role: message.direction === 'inbound' ? 'customer' : 'agent',
+        message_type: message.type || 'text',
+        attachments: message.attachments || [],
+        forwarded: message.forwarded || false,
+        replied_to: message.replied_to || null
+      }
+    };
+    
+    transcription.push(transcriptionEntry);
+    
+    // Update metadata
+    if (!metadata.timespan.start || timestamp < metadata.timespan.start) {
+      metadata.timespan.start = timestamp;
+    }
+    if (!metadata.timespan.end || timestamp > metadata.timespan.end) {
+      metadata.timespan.end = timestamp;
+    }
+    
+    // Track participants
+    const participant = message.direction === 'inbound' ? 'customer' : 'agent';
+    if (!metadata.participants.includes(participant)) {
+      metadata.participants.push(participant);
+    }
+    
+    // Track channels
+    if (message.channel && !metadata.channels.includes(message.channel)) {
+      metadata.channels.push(message.channel);
+    }
+    
+    // Check for multimedia
+    if (message.attachments && message.attachments.length > 0) {
+      metadata.hasMultimedia = true;
+    }
+  });
+  
+  console.log(`Created transcription with ${transcription.length} entries`);
+  
+  return {
+    transcription,
+    metadata
+  };
+}
+
+/**
+ * Generate conversation statistics
+ * @param {Array} messages - Array of message objects
+ * @returns {Object} Conversation statistics
+ */
+function generateConversationStats(messages) {
+  const stats = {
+    totalMessages: messages.length,
+    inboundMessages: 0,
+    outboundMessages: 0,
+    multimediaMessages: 0,
+    averageResponseTime: 0,
+    conversationDuration: 0
+  };
+  
+  let responseTimes = [];
+  let lastInboundTime = null;
+  let firstMessageTime = null;
+  let lastMessageTime = null;
+  
+  messages.forEach(message => {
+    const messageTime = new Date(message.timestamp);
+    
+    if (!firstMessageTime) firstMessageTime = messageTime;
+    lastMessageTime = messageTime;
+    
+    if (message.direction === 'inbound') {
+      stats.inboundMessages++;
+      lastInboundTime = messageTime;
+    } else {
+      stats.outboundMessages++;
+      // Calculate response time if we have a previous inbound message
+      if (lastInboundTime) {
+        const responseTime = messageTime - lastInboundTime;
+        responseTimes.push(responseTime);
+      }
+    }
+    
+    if (message.attachments && message.attachments.length > 0) {
+      stats.multimediaMessages++;
+    }
+  });
+  
+  // Calculate average response time
+  if (responseTimes.length > 0) {
+    const avgResponseTime = responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
+    stats.averageResponseTime = Math.round(avgResponseTime / 1000); // Convert to seconds
+  }
+  
+  // Calculate conversation duration
+  if (firstMessageTime && lastMessageTime) {
+    stats.conversationDuration = Math.round((lastMessageTime - firstMessageTime) / 1000); // Convert to seconds
+  }
+  
+  return stats;
+}
+
+/**
  * Create formatted conversation text for AI analysis
- * @param {Object} conversation - Formatted conversation object
+ * @param {Object} conversation - Formatted conversation object from messageService
  * @param {Array} messages - Original messages array
  * @returns {string} Formatted conversation text
  */
 async function createConversationText(conversation, messages) {
-  console.log(`Creating conversation text from ${conversation.transcription.length} entries`);
+  console.log(`Creating conversation text from ${messages.length} messages`);
   
   let conversationText = '';
   
   // Add conversation header
   conversationText += `=== CONVERSATION TRANSCRIPT ===\n`;
-  conversationText += `Channel: ${conversation.metadata.channels.join(', ')}\n`;
-  conversationText += `Participants: ${conversation.metadata.participants.join(', ')}\n`;
-  conversationText += `Total Messages: ${conversation.metadata.totalMessages}\n`;
-  conversationText += `Has Multimedia: ${conversation.metadata.hasMultimedia ? 'Yes' : 'No'}\n`;
+  conversationText += `Channel: ${messages[0]?.channel || 'Unknown'}\n`;
+  conversationText += `Total Messages: ${messages.length}\n`;
   
-  if (conversation.metadata.timespan.start && conversation.metadata.timespan.end) {
-    const duration = (conversation.metadata.timespan.end - conversation.metadata.timespan.start) / 1000;
-    conversationText += `Duration: ${Math.round(duration)} seconds\n`;
+  // Calculate duration if we have messages
+  if (messages.length > 1) {
+    const firstMessage = new Date(messages[0].createdAt);
+    const lastMessage = new Date(messages[messages.length - 1].createdAt);
+    const duration = Math.round((lastMessage - firstMessage) / 1000);
+    conversationText += `Duration: ${duration} seconds\n`;
   }
   
   conversationText += `\n=== MESSAGES ===\n`;
 
   // Add each message with timestamp and speaker info
-  conversation.transcription.forEach((entry, index) => {
-    const timestamp = Object.keys(entry)[0];
-    const messageData = entry[timestamp];
+  messages.forEach((message, index) => {
+    const messageTime = new Date(message.createdAt);
+    const timeString = messageTime.toLocaleTimeString();
     
-    // Format timestamp for readability
-    const date = new Date(parseInt(timestamp));
-    const timeString = date.toLocaleTimeString();
+    // Use messageService to determine speaker role
+    const speaker = messageService.determineSpeakerRole(message);
+    const speakerLabel = speaker.role === 'customer' ? 'CUSTOMER' : 'AGENT';
     
-    // Determine speaker label
-    const speakerLabel = messageData.speaker_role === 'customer' ? 'CUSTOMER' : 'AGENT';
+    // Get message content
+    let messageContent = message.message || '';
     
-    conversationText += `\n[${timeString}] ${speakerLabel}: ${messageData.original_text}`;
-    
-    // Add multimedia indicators
-    if (messageData.attachments && messageData.attachments.length > 0) {
-      const attachmentTypes = messageData.attachments.map(att => att.type).join(', ');
-      conversationText += ` [Attachments: ${attachmentTypes}]`;
+    // Add multimedia descriptions if present
+    if (message.attachments && message.attachments.length > 0) {
+      messageContent += ` ${messageService.describeMultimediaContent(message.attachments)}`;
     }
     
-    if (messageData.forwarded) {
+    conversationText += `\n[${timeString}] ${speakerLabel}: ${messageContent}`;
+    
+    if (message.forwarded) {
       conversationText += ` [Forwarded]`;
     }
   });
@@ -253,20 +445,41 @@ async function performSentimentAnalysis(conversationText) {
       },
       intents: [],
       language: "en",
-      translationInEnglish: conversationText,
-      usage: {
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        total_tokens: 0
-      }
+      translationInEnglish: conversationText
     };
   }
 }
 
 /**
+ * Get default sentiment analysis when service fails
+ * @param {string} conversationText - The conversation text
+ * @returns {Object} Default sentiment analysis
+ */
+function getDefaultSentimentAnalysis(conversationText) {
+  return {
+    sentiment: {
+      score: 0.5,
+      sentiment: "neutral"
+    },
+    profanity: {
+      score: 0,
+      words: []
+    },
+    intents: [],
+    language: "en",
+    translationInEnglish: conversationText,
+    usage: {
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0
+    }
+  };
+}
+
+/**
  * Save conversation as transcription in database
  * @param {string} interactionId - Interaction ID
- * @param {Object} conversation - Formatted conversation
+ * @param {Object} conversation - Formatted conversation from messageService
  * @param {Object} sentimentAnalysis - Sentiment analysis results
  */
 async function saveConversationTranscription(interactionId, conversation, sentimentAnalysis) {
@@ -276,8 +489,11 @@ async function saveConversationTranscription(interactionId, conversation, sentim
     const transcriptionDoc = {
       interactionId,
       transcriptionVersion: 'messages',
-      transcription: conversation.transcription,
-      metadata: conversation.metadata,
+      transcription: conversation, // Use the conversation object from messageService
+      metadata: {
+        source: 'messageService',
+        totalMessages: conversation.length || 0
+      },
       sentimentAnalysis
     };
 
@@ -314,16 +530,14 @@ async function sendToAIEvaluation(conversationText, instructions) {
     
     const evaluationUrl = process.env.QAEVALUATION_URL || 'http://democc.contegris.com:60027/aiqa';
     
-    const requestPayload = {
-      instructions,
-      transcript: conversationText
-    };
-
-    const response = await axios.post(evaluationUrl, requestPayload, {
+    const response = await axios.post(evaluationUrl, {
+      text: conversationText,
+      instructions: instructions
+    }, {
       headers: {
         'Content-Type': 'application/json'
       },
-      timeout: 120000 // 2 minute timeout for AI processing
+      timeout: 60000 // 60 second timeout for AI evaluation
     });
 
     console.log('AI evaluation completed successfully');
@@ -331,12 +545,12 @@ async function sendToAIEvaluation(conversationText, instructions) {
     
   } catch (error) {
     console.error('AI evaluation failed:', error.message);
-    throw new Error(`AI evaluation service error: ${error.message}`);
+    throw error;
   }
 }
 
 /**
- * Get interaction metadata from messages
+ * Get interaction metadata from messages and stats
  * @param {string} interactionId - Interaction ID
  * @param {Array} messages - Messages array
  * @param {Object} conversationStats - Conversation statistics
@@ -346,30 +560,32 @@ async function getInteractionMetadata(interactionId, messages, conversationStats
   try {
     // Extract basic info from messages
     const firstMessage = messages[0];
-    const lastMessage = messages[messages.length - 1];
+    const channel = firstMessage?.channel || 'unknown';
     
-    // Determine primary participants
-    const customerMessage = messages.find(m => messageService.determineSpeakerRole(m).role === 'customer');
+    // Find agent and customer messages using messageService
     const agentMessage = messages.find(m => messageService.determineSpeakerRole(m).role === 'agent');
+    const customerMessage = messages.find(m => messageService.determineSpeakerRole(m).role === 'customer');
+    
+    const agent = {
+      id: agentMessage?.recipient || agentMessage?.interactionDestination || 'unknown',
+      name: agentMessage?.author?.name || 'Agent'
+    };
+    
+    const caller = {
+      id: customerMessage?.author?.id || customerMessage?.interactionSource || 'unknown', 
+      name: customerMessage?.author?.name || 'Customer'
+    };
     
     return {
-      queue: {
-        name: firstMessage.queue || 'Unknown'
-      },
-      agent: {
-        id: agentMessage?.recipient || agentMessage?.interactionDestination || 'unknown',
-        name: agentMessage?.author?.name || 'Agent'
-      },
-      caller: {
-        id: customerMessage?.author?.id || customerMessage?.interactionSource || 'unknown',
-        name: customerMessage?.author?.name || 'Customer'
-      },
-      direction: firstMessage.direction || 0,
-      duration: conversationStats.duration,
-      channel: firstMessage.channel || 'unknown',
-      messageCount: conversationStats.totalMessages,
+      queue: { name: firstMessage?.queue || 'Unknown' },
+      agent,
+      caller,
+      direction: firstMessage?.direction || 0, // Default for text conversations
+      duration: conversationStats.duration || 0,
+      channel,
+      messageCount: messages.length,
       hasMultimedia: conversationStats.multimediaMessages > 0,
-      averageResponseTime: conversationStats.averageResponseTime
+      averageResponseTime: conversationStats.averageResponseTime || 0
     };
     
   } catch (error) {
@@ -385,48 +601,6 @@ async function getInteractionMetadata(interactionId, messages, conversationStats
       hasMultimedia: false,
       averageResponseTime: 0
     };
-  }
-}
-
-/**
- * Save evaluation results to database
- * @param {string} interactionId - Interaction ID
- * @param {Object} qaForm - QA form object
- * @param {Object} evaluation - AI evaluation results
- * @param {Object} interactionMetadata - Interaction metadata
- * @param {Object} evaluator - Evaluator information
- * @returns {Object} Saved evaluation document
- */
-async function saveEvaluationResults(interactionId, qaForm, evaluation, interactionMetadata, evaluator) {
-  try {
-    console.log(`Saving evaluation results for interaction ${interactionId}`);
-    
-    const evaluationDoc = {
-      interactionId,
-      qaFormName: qaForm.name,
-      qaFormId: qaForm._id,
-      evaluator: evaluator || {
-        id: 'system',
-        name: 'AI System'
-      },
-      evaluationData: {
-        usage: evaluation.usage || {},
-        evaluation: evaluation.evaluation || evaluation
-      },
-      interactionData: interactionMetadata,
-      status: 'completed',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    const savedEvaluation = await InteractionAIQA.create(evaluationDoc);
-    console.log(`Saved evaluation with ID: ${savedEvaluation._id}`);
-    
-    return savedEvaluation;
-    
-  } catch (error) {
-    console.error('Error saving evaluation results:', error);
-    throw error;
   }
 }
 

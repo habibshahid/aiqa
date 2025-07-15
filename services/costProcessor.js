@@ -35,21 +35,42 @@ const calculateEvaluationCost = async (evaluationId) => {
     // Get call duration from interaction data
     const callDuration = evaluation.interactionData?.duration || 0; // in seconds
     
-    // Calculate costs
-    const sttCost = (callDuration / 60) * costSttPrerecorded; // Convert to minutes
+    // Determine if this is a text-based evaluation (no STT needed)
+    const channel = evaluation.interactionData?.channel;
+    const textChannels = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
+    const isTextEvaluation = textChannels.includes(channel);
+    
+    console.log(`Evaluation channel: ${channel}, isTextEvaluation: ${isTextEvaluation}`);
+    
+    // Calculate STT costs (only for voice/audio evaluations)
+    let sttCost = 0;
+    let sttPrice = 0;
+    let sttDuration = 0;
+    
+    if (!isTextEvaluation) {
+      // Voice evaluation - include STT costs
+      sttDuration = callDuration;
+      sttCost = (callDuration / 60) * costSttPrerecorded; // Convert to minutes
+      sttPrice = (callDuration / 60) * priceSttPrerecorded; // Convert to minutes
+      console.log(`Voice evaluation - STT cost: $${sttCost.toFixed(6)} for ${callDuration} seconds`);
+    } else {
+      // Text evaluation - no STT costs
+      console.log(`Text evaluation - no STT costs`);
+    }
+    
+    // Calculate OpenAI costs (for both voice and text)
     const promptCost = promptTokens * costOpenAiInput;
     const completionCost = completionTokens * costOpenAiOutput;
     const totalCost = sttCost + promptCost + completionCost;
     
     // Calculate prices (what we charge)
-    const sttPrice = (callDuration / 60) * priceSttPrerecorded; // Convert to minutes
     const promptPrice = promptTokens * priceOpenAiInput;
     const completionPrice = completionTokens * priceOpenAiOutput;
     const totalPrice = sttPrice + promptPrice + completionPrice;
     
     // Create cost model
     const costModel = {
-      sttDuration: callDuration,
+      sttDuration,
       sttCost,
       sttPrice,
       
@@ -64,6 +85,10 @@ const calculateEvaluationCost = async (evaluationId) => {
       totalCost,
       totalPrice,
       
+      // Add metadata about evaluation type
+      evaluationType: isTextEvaluation ? 'text' : 'voice',
+      channel,
+      
       createdAt: new Date()
     };
     
@@ -71,11 +96,15 @@ const calculateEvaluationCost = async (evaluationId) => {
     evaluation.costModel = costModel;
     await evaluation.save();
     
-    console.log(`Cost calculation completed for evaluation ${evaluationId}, total cost: $${totalCost.toFixed(4)}, price: $${totalPrice.toFixed(4)}`);
+    console.log(`Cost calculation completed for evaluation ${evaluationId}`);
+    console.log(`  Type: ${isTextEvaluation ? 'text' : 'voice'}`);
+    console.log(`  STT cost: $${sttCost.toFixed(6)} (${sttDuration} seconds)`);
+    console.log(`  OpenAI cost: $${(promptCost + completionCost).toFixed(6)} (${promptTokens + completionTokens} tokens)`);
+    console.log(`  Total cost: $${totalCost.toFixed(6)}, price: $${totalPrice.toFixed(6)}`);
     
     // Deduct credits based on price
     try {
-      const description = `Evaluation: ${evaluationId} - ${callDuration} seconds, ${promptTokens + completionTokens} tokens`;
+      const description = `Evaluation: ${evaluationId} - ${isTextEvaluation ? 'Text' : 'Voice'} (${isTextEvaluation ? '0' : callDuration} seconds, ${promptTokens + completionTokens} tokens)`;
       const creditResult = await creditService.deductCredits(totalPrice, evaluationId, description);
       
       console.log(`Credits deducted for evaluation ${evaluationId}:`, creditResult);

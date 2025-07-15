@@ -11,7 +11,6 @@ const mkdirAsync = promisify(fs.mkdir);
 const { InteractionTranscription, QAForm, Interactions, InteractionAIQA } = require('../config/mongodb');
 const { calculateEvaluationCost } = require('./costProcessor');
 const mongoose = require('mongoose');
-const { processTextInteraction } = require('./messageProcessor');
 
 const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
 
@@ -743,9 +742,23 @@ const processEvaluation = async (evaluation) => {
     
     if (TEXT_CHANNELS.includes(channel)) {
       console.log(`\n=== Routing to Message Processor for channel: ${channel} ===`);
-      
+      // Create proper evaluation object for text processor
+      const textEvaluation = {
+        interactionId,
+        qaFormId,
+        evaluator,
+        agent,
+        caller,
+        channel,
+        direction,
+        duration,
+        queue,
+        processingType: 'text',  // Set correct processing type
+        isTextChannel: true     // Add this flag
+      };
       // Route to text/message processor
-      const result = await processTextInteraction(interactionId, qaFormId, evaluator);
+      const { processTextInteraction } = require('./messageProcessor');
+      const result = await processTextInteraction(textEvaluation);
       
       if (result.success) {
         console.log(`\n=== Successfully processed text interaction ${interactionId} ===`);
@@ -754,12 +767,18 @@ const processEvaluation = async (evaluation) => {
           interactionId,
           evaluationId: result.evaluationId,
           processingType: 'text',
-          channel,
-          messageCount: result.messageCount,
-          conversationStats: result.conversationStats
+          channel: channel,
+          messageCount: result.messageCount
         };
       } else {
-        throw new Error(result.error || 'Text processing failed');
+        console.error(`\n=== Failed to process text interaction ${interactionId} ===`);
+        return {
+          success: false,
+          interactionId,
+          error: result.error,
+          processingType: 'text',  // Return correct processing type even on failure
+          channel: channel
+        };
       }
     } 
     else {
@@ -1543,6 +1562,7 @@ async function callQAEvaluationApi(transcription, instructions, interactionId) {
 
 module.exports = {
   processEvaluationResponse,
+  updateEvaluationForClassification,
   processEvaluation,
   processTranscript,
   processTranscriptV2,
