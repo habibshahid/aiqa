@@ -699,7 +699,7 @@ const processEvaluation = async (evaluation) => {
     // Extract required data
     const { interactionId, recordingUrl, agent, caller, qaFormId, evaluator } = evaluation;
     
-    if (!recordingUrl) {
+    if (!recordingUrl && evaluation.channel == 'call') {
       throw new Error('Recording URL is required');
     }
     

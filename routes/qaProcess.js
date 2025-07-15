@@ -96,7 +96,7 @@ router.post('/process-evaluations', authenticateToken, async (req, res) => {
       // Text channels might process faster, so give them higher priority
       const priority = validation.isTextChannel ? 2 : 1;
       
-      const job = await evaluationQueue.add('processEvaluation', enhancedEvaluation, {
+      const job = await evaluationQueue.add(enhancedEvaluation, {
         priority,
         attempts: 3,
         backoff: {

@@ -308,7 +308,7 @@ async function saveConversationTranscription(interactionId, conversation, sentim
  * @param {Object} sentimentAnalysis - Sentiment analysis results
  * @returns {Object} AI evaluation results
  */
-async function sendToAIEvaluation(conversationText, instructions, sentimentAnalysis) {
+async function sendToAIEvaluation(conversationText, instructions) {
   try {
     console.log('Sending conversation to AI evaluation service...');
     
@@ -316,9 +316,7 @@ async function sendToAIEvaluation(conversationText, instructions, sentimentAnaly
     
     const requestPayload = {
       instructions,
-      transcript: conversationText,
-      sentimentData: sentimentAnalysis,
-      interactionType: 'text_conversation'
+      transcript: conversationText
     };
 
     const response = await axios.post(evaluationUrl, requestPayload, {
