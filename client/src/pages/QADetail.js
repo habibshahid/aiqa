@@ -68,6 +68,7 @@ const ChannelInfoSection = ({ evaluation, messageData }) => {
   const channel = evaluation.interactionData?.channel || evaluation.interaction?.channel || 'call';
   const channelName = CHANNEL_DISPLAY_NAMES[channel] || channel;
   const isText = TEXT_CHANNELS.includes(channel);
+  const isEmail = channel === 'email';
   
   return (
     <div className="col-md-6">
@@ -77,14 +78,14 @@ const ChannelInfoSection = ({ evaluation, messageData }) => {
           {channelName}
         </span>
         <small className="text-muted">
-          {isText ? 'Text Conversation' : 'Voice Call'}
+          {isText ? (isEmail ? 'Email Conversation' : 'Text Conversation') : 'Voice Call'}
         </small>
       </div>
       
       {isText && messageData && (
         <>
           <p className="mb-1">
-            <strong>Messages:</strong> {messageData.stats?.totalMessages || 0}
+            <strong>{isEmail ? 'Emails' : 'Messages'}:</strong> {messageData.stats?.totalMessages || 0}
           </p>
           <p className="mb-1">
             <strong>Duration:</strong> {Math.round(messageData.stats?.duration || 0)}s
@@ -92,7 +93,25 @@ const ChannelInfoSection = ({ evaluation, messageData }) => {
           <p className="mb-1">
             <strong>Avg Response Time:</strong> {Math.round(messageData.stats?.averageResponseTime || 0)}s
           </p>
-          {messageData.stats?.multimediaMessages > 0 && (
+          
+          {/* Email-specific info */}
+          {isEmail && (
+            <>
+              {messageData.stats?.firstResponseTime && (
+                <p className="mb-1">
+                  <strong>First Response:</strong> {messageData.stats.firstResponseTime}s
+                </p>
+              )}
+              {messageData.stats?.uniqueSubjectCount > 1 && (
+                <p className="mb-1">
+                  <strong>Subjects:</strong> {messageData.stats.uniqueSubjectCount}
+                </p>
+              )}
+            </>
+          )}
+          
+          {/* Non-email text channels */}
+          {!isEmail && messageData.stats?.multimediaMessages > 0 && (
             <p className="mb-1">
               <span className="badge bg-warning">{messageData.stats.multimediaMessages} Multimedia</span>
             </p>
@@ -130,6 +149,8 @@ const MessageConversationSection = ({ messageData, evaluation }) => {
   }
 
   const { conversation, stats } = messageData;
+  const channel = evaluation.interactionData?.channel || evaluation.interaction?.channel || 'call';
+  const isEmail = channel === 'email';
 
   // Helper function to format timestamp for messages
   const formatMessageTime = (timestamp) => {
@@ -145,11 +166,11 @@ const MessageConversationSection = ({ messageData, evaluation }) => {
   return (
     <div className="card">
       <div className="card-header d-flex justify-content-between align-items-center">
-        <h5 className="mb-0">Message Conversation</h5>
+        <h5 className="mb-0">{isEmail ? 'Email Thread' : 'Message Conversation'}</h5>
         <div className="d-flex gap-2">
-          <span className="badge bg-primary">{stats.totalMessages} messages</span>
+          <span className="badge bg-primary">{stats.totalMessages} {isEmail ? 'emails' : 'messages'}</span>
           {stats.multimediaMessages > 0 && (
-            <span className="badge bg-warning">{stats.multimediaMessages} multimedia</span>
+            <span className="badge bg-warning">{stats.multimediaMessages} {isEmail ? 'with attachments' : 'multimedia'}</span>
           )}
         </div>
       </div>
@@ -157,11 +178,11 @@ const MessageConversationSection = ({ messageData, evaluation }) => {
         {/* Conversation Stats */}
         <div className="row mb-3">
           <div className="col-md-3">
-            <small className="text-muted">Customer Messages</small>
+            <small className="text-muted">{isEmail ? 'Inbound Emails' : 'Customer Messages'}</small>
             <div className="fw-bold">{stats.customerMessages}</div>
           </div>
           <div className="col-md-3">
-            <small className="text-muted">Agent Messages</small>
+            <small className="text-muted">{isEmail ? 'Outbound Emails' : 'Agent Messages'}</small>
             <div className="fw-bold">{stats.agentMessages}</div>
           </div>
           <div className="col-md-3">
@@ -194,6 +215,16 @@ const MessageConversationSection = ({ messageData, evaluation }) => {
                       {time}
                     </small>
                   </div>
+                  
+                  {/* Show subject for emails */}
+                  {isEmail && messageData.subject && (
+                    <div className="mb-2">
+                      <small className={isCustomer ? 'text-dark fw-bold' : 'text-white fw-bold'}>
+                        Subject: {messageData.subject}
+                      </small>
+                    </div>
+                  )}
+                  
                   <div className="message-text">
                     {messageData.original_text}
                   </div>
@@ -203,7 +234,7 @@ const MessageConversationSection = ({ messageData, evaluation }) => {
                     <div className="mt-2">
                       {messageData.attachments.map((attachment, i) => (
                         <span key={i} className={`badge ${isCustomer ? 'bg-secondary' : 'bg-light text-dark'} me-1`}>
-                          {attachment.type}
+                          {attachment.type || attachment.data?.extension || 'attachment'}
                         </span>
                       ))}
                     </div>

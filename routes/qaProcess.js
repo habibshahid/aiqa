@@ -5,6 +5,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { evaluationQueue, addEvaluationJob } = require('../services/queueService');
 const { InteractionAIQA } = require('../config/mongodb');
 const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
+const emailService = require('../services/emailService');
 
 router.use(authenticateToken);
 
@@ -452,7 +453,7 @@ router.post('/search-interactions', async (req, res) => {
         ];
       } else if (channel === 'text') {
         // All text channels
-        query.channel = { $in: ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'] };
+        query.channel = { $in: ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'email'] };
       } else {
         // Specific channel
         query.channel = channel;
@@ -487,8 +488,10 @@ router.post('/search-interactions', async (req, res) => {
 
     // UPDATED: For text channels, add message count
     const textChannels = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
-    
+    const emailChannel = 'email';
+
     for (let interaction of interactions) {
+      console.log('$$$$$$$$$$$$$$$$$$$$$$$$$$$$$', interaction)
       if (textChannels.includes(interaction.channel)) {
         // Count messages for text-based interactions
         const messageCount = await mongoose.connection.collection('messages').countDocuments({
@@ -497,14 +500,28 @@ router.post('/search-interactions', async (req, res) => {
         });
         
         interaction.messageCount = messageCount;
-        
-        // Check if interaction has any messages with content
         interaction.hasContent = messageCount > 0;
         
         // For text channels, we need at least one message
         if (messageCount === 0) {
           interaction.canEvaluate = false;
           interaction.evaluationStatus = 'No messages found';
+        } else {
+          interaction.canEvaluate = true;
+        }
+      } else if (interaction.channel === emailChannel) {
+        // Count emails for email interactions
+        const emailCount = await mongoose.connection.collection('emails').countDocuments({
+          interactionId: interaction._id,
+          isDeleted: { $ne: true }
+        });
+        
+        interaction.messageCount = emailCount;
+        interaction.hasContent = emailCount > 0;
+        
+        if (emailCount === 0) {
+          interaction.canEvaluate = false;
+          interaction.evaluationStatus = 'No emails found';
         } else {
           interaction.canEvaluate = true;
         }

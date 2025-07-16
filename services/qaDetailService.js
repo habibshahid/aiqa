@@ -51,7 +51,8 @@ const qaDetailService = {
         sectionScores: 1 // Include section scores
       })
       .lean();
-
+console.log('Evaluation found:', evaluation);
+      // If no evaluation found, return null
       if (!evaluation) {
         console.log('No evaluation found for ID:', id);
         return null;
@@ -93,6 +94,7 @@ const qaDetailService = {
         'connect.duration': 1,
         'wrapUp.duration': 1,
         'extraPayload.callRecording': 1,
+        'channel': 1,
         _id: 0
       }).lean();
 
@@ -164,6 +166,7 @@ const qaDetailService = {
           },
           direction: evaluation.interactionData?.direction,
           caller: evaluation.interactionData?.caller || {},
+          channel: evaluation.interactionData?.channel || {},
           queue: interaction?.queue || {},
           recording: interaction?.extraPayload?.callRecording || null,
           channel: evaluation.interactionData?.channel || 'call'

@@ -5,6 +5,7 @@ const messageService = require('./messageService');
 const { calculateEvaluationCost } = require('./costProcessor');
 const { processEvaluationResponse, updateEvaluationForClassification } = require('./qaProcessor');
 const mongoose = require('mongoose');
+const emailService = require('./emailService');
 
 // Text-based channels that should use message processing
 const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
@@ -68,30 +69,53 @@ async function processTextInteraction(evaluation) {
   
   console.log(`\n=== Message Processor: Starting text interaction processing for ${interactionId} ===`);
   
+console.log('$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$', evaluation);
+
   try {
-    // Step 1: Get messages from message service
-    console.log('Step 1: Fetching messages from message service...');
-    const messages = await messageService.getMessagesByInteractionId(interactionId);
-    
-    if (!messages || messages.length === 0) {
-      throw new Error(`No messages found for interaction ${interactionId}`);
+    const interaction = await Interactions.findById(interactionId).lean();
+    if (!interaction) {
+      throw new Error(`Interaction not found: ${interactionId}`);
     }
     
-    console.log(`Found ${messages.length} messages for interaction ${interactionId}`);
+    const channel = interaction.channel || 'text';
+    const isEmail = channel === 'email';
+    
+    console.log(`Processing ${channel} interaction`);
+    
+    // Step 2: Get messages/emails based on channel
+    console.log(`Step 1: Fetching ${isEmail ? 'emails' : 'messages'} from ${isEmail ? 'email' : 'message'} service...`);
+    
+    let messages;
+    if (isEmail) {
+      messages = await emailService.getEmailsByInteractionId(interactionId);
+    } else {
+      messages = await messageService.getMessagesByInteractionId(interactionId);
+    }
+    
+    if (!messages || messages.length === 0) {
+      throw new Error(`No ${isEmail ? 'emails' : 'messages'} found for interaction ${interactionId}`);
+    }
+    
+    console.log(`Found ${messages.length} ${isEmail ? 'emails' : 'messages'} for interaction ${interactionId}`);
 
-    // Step 2: Format messages into conversation using messageService
-    console.log('Step 2: Formatting messages into conversation...');
-    const conversation = messageService.formatMessagesAsConversation(messages);
+    // Step 3: Format messages into conversation using appropriate service
+    console.log('Step 2: Formatting into conversation...');
+    const conversation = isEmail ? 
+      emailService.formatEmailsAsConversation(messages) : 
+      messageService.formatMessagesAsConversation(messages);
     
-    // Step 3: Generate conversation stats using messageService
+    // Step 4: Generate conversation stats using appropriate service
     console.log('Step 3: Generating conversation statistics...');
-    const conversationStats = messageService.getConversationStats(messages);
+    const conversationStats = isEmail ? 
+      emailService.getConversationStats(messages) : 
+      messageService.getConversationStats(messages);
     
-    // Step 4: Create conversation text for AI analysis
+    // Step 5: Create conversation text for AI analysis
+    // Note: conversation structure is the same for both services
     console.log('Step 4: Creating conversation text for AI analysis...');
-    const conversationText = await createConversationText(conversation, messages);
+    const conversationText = await createConversationText(conversation, messages, channel);
     
-    // Step 5: Perform sentiment analysis (optional, can be skipped if service is down)
+    // Step 6: Perform sentiment analysis (optional, can be skipped if service is down)
     console.log('Step 5: Performing sentiment analysis...');
     let sentimentAnalysis;
     try {
@@ -101,11 +125,11 @@ async function processTextInteraction(evaluation) {
       sentimentAnalysis = getDefaultSentimentAnalysis(conversationText);
     }
 
-    // Step 6: Save conversation as transcription
+    // Step 7: Save conversation as transcription
     console.log('Step 6: Saving conversation transcription...');
     await saveConversationTranscription(interactionId, conversation, sentimentAnalysis);
 
-    // Step 7: Get QA form and format instructions
+    // Step 8: Get QA form and format instructions
     console.log('Step 7: Getting QA form and formatting instructions...');
     const qaForm = await QAForm.findById(qaFormId);
     if (!qaForm) {
@@ -115,7 +139,7 @@ async function processTextInteraction(evaluation) {
     const formattedQAForm = {
       formId: qaForm._id,
       formName: qaForm.name,
-      interactionType: 'text_conversation', // Specify this is a text interaction
+      interactionType: `${channel}_conversation`, // email_conversation or text_conversation
       parameters: qaForm.parameters.map(param => ({
         label: param.name,
         evaluationContext: param.context,
@@ -128,15 +152,14 @@ async function processTextInteraction(evaluation) {
 
     const instructions = formatInstructions(formattedQAForm);
 
-    // Step 8: Send to AI evaluation service
     console.log('Step 8: Sending to AI evaluation service...');
     const evaluationResult = await sendToAIEvaluation(conversationText, instructions, sentimentAnalysis);
 
     // Step 9: Get interaction metadata
     console.log('Step 9: Getting interaction metadata...');
-    const interactionMetadata = await getInteractionMetadata(interactionId, messages, conversationStats);
+    const interactionMetadata = await getInteractionMetadata(interactionId, messages, conversationStats, channel, interaction);
 
-    // Step 10: Process evaluation response (SAME AS qaProcessor!)
+    // Step 10: Process evaluation response
     console.log('Step 10: Processing evaluation response...');
     const processedDocument = await processEvaluationResponse(
       evaluationResult,
@@ -152,9 +175,12 @@ async function processTextInteraction(evaluation) {
       interactionMetadata.queue.name
     );
 
-    // Step 11: Insert into collection (SAME AS qaProcessor!)
-    console.log('Step 11: Creating evaluation document...');
+    // Step 11: Insert into collection
+    console.log('Step 11: Saving evaluation to database...');
     const aiqaDoc = await InteractionAIQA.create(processedDocument);
+    
+    console.log(`Successfully processed ${channel} interaction ${interactionId}`);
+    
     console.log('InteractionAIQA Document Created with ID:', aiqaDoc._id);
     console.log('Total Score:', aiqaDoc.evaluationData.evaluation.totalScore);
     console.log('Max Score:', aiqaDoc.evaluationData.evaluation.maxScore);
@@ -199,7 +225,6 @@ async function processTextInteraction(evaluation) {
       conversationStats,
       evaluation: aiqaDoc
     };
-
   } catch (error) {
     console.error(`\n=== Message Processor: Error processing interaction ${interactionId} ===`);
     console.error('Error:', error.message);
@@ -349,57 +374,58 @@ function generateConversationStats(messages) {
 
 /**
  * Create formatted conversation text for AI analysis
- * @param {Object} conversation - Formatted conversation object from messageService
- * @param {Array} messages - Original messages array
+ * Updated to support both messages and emails using the same transcription format
+ * @param {Object} conversation - Formatted conversation object from messageService or emailService
+ * @param {Array} messages - Original messages/emails array
+ * @param {string} channel - Channel type (defaults to 'text' for backward compatibility)
  * @returns {string} Formatted conversation text
  */
-async function createConversationText(conversation, messages) {
-  console.log(`Creating conversation text from ${messages.length} messages`);
+async function createConversationText(conversation, messages, channel = 'text') {
+  console.log(`Creating conversation text from ${messages.length} ${channel === 'email' ? 'emails' : 'messages'}`);
   
   let conversationText = '';
   
   // Add conversation header
   conversationText += `=== CONVERSATION TRANSCRIPT ===\n`;
-  conversationText += `Channel: ${messages[0]?.channel || 'Unknown'}\n`;
-  conversationText += `Total Messages: ${messages.length}\n`;
+  conversationText += `Channel: ${channel}\n`;
+  conversationText += `Total ${channel === 'email' ? 'Emails' : 'Messages'}: ${messages.length}\n`;
   
   // Calculate duration if we have messages
   if (messages.length > 1) {
-    const firstMessage = new Date(messages[0].createdAt);
-    const lastMessage = new Date(messages[messages.length - 1].createdAt);
+    const firstMessage = new Date(channel === 'email' ? (messages[0].receivedAt || messages[0].createdAt) : messages[0].createdAt);
+    const lastMessage = new Date(channel === 'email' ? (messages[messages.length - 1].receivedAt || messages[messages.length - 1].createdAt) : messages[messages.length - 1].createdAt);
     const duration = Math.round((lastMessage - firstMessage) / 1000);
     conversationText += `Duration: ${duration} seconds\n`;
   }
   
-  conversationText += `\n=== MESSAGES ===\n`;
+  conversationText += `\n=== ${channel === 'email' ? 'EMAILS' : 'MESSAGES'} ===\n`;
 
-  // Add each message with timestamp and speaker info
-  messages.forEach((message, index) => {
-    const messageTime = new Date(message.createdAt);
+  // Use the conversation.transcription format (same for both messages and emails)
+  conversation.transcription.forEach((entry, index) => {
+    const timestamp = Object.keys(entry)[0];
+    const messageData = entry[timestamp];
+    const messageTime = new Date(parseInt(timestamp));
     const timeString = messageTime.toLocaleTimeString();
     
-    // Use messageService to determine speaker role
-    const speaker = messageService.determineSpeakerRole(message);
-    const speakerLabel = speaker.role === 'customer' ? 'CUSTOMER' : 'AGENT';
+    const speakerLabel = messageData.speaker_role === 'customer' ? 'Customer' : 'Agent';
     
-    // Get message content
-    let messageContent = message.message || '';
-    
-    // Add multimedia descriptions if present
-    if (message.attachments && message.attachments.length > 0) {
-      messageContent += ` ${messageService.describeMultimediaContent(message.attachments)}`;
+    // For emails, include subject line
+    if (channel === 'email' && messageData.subject) {
+      conversationText += `\n[${timeString}] ${speakerLabel}: [Subject: ${messageData.subject}]\n`;
+    } else {
+      conversationText += `\n[${timeString}] ${speakerLabel}:\n`;
     }
     
-    conversationText += `\n[${timeString}] ${speakerLabel}: ${messageContent}`;
+    // Add message content
+    conversationText += `${messageData.original_text || '[No content]'}\n`;
     
-    if (message.forwarded) {
-      conversationText += ` [Forwarded]`;
+    // Add attachment info if present
+    if (messageData.attachments && messageData.attachments.length > 0) {
+      conversationText += `[Attachments: ${messageData.attachments.length}]\n`;
     }
   });
-
-  conversationText += `\n\n=== END TRANSCRIPT ===`;
   
-  console.log(`Created conversation text: ${conversationText.length} characters`);
+  conversationText += '\n=== END OF TRANSCRIPT ===\n';
   
   return conversationText;
 }
@@ -531,7 +557,7 @@ async function sendToAIEvaluation(conversationText, instructions) {
     const evaluationUrl = process.env.QAEVALUATION_URL || 'http://democc.contegris.com:60027/aiqa';
     
     const response = await axios.post(evaluationUrl, {
-      text: conversationText,
+      transcription: conversationText,
       instructions: instructions
     }, {
       headers: {
@@ -556,24 +582,24 @@ async function sendToAIEvaluation(conversationText, instructions) {
  * @param {Object} conversationStats - Conversation statistics
  * @returns {Object} Interaction metadata
  */
-async function getInteractionMetadata(interactionId, messages, conversationStats) {
+async function getInteractionMetadata(interactionId, messages, conversationStats, channel = 'unknown', interaction) {
   try {
     // Extract basic info from messages
+    
     const firstMessage = messages[0];
-    const channel = firstMessage?.channel || 'unknown';
     
     // Find agent and customer messages using messageService
     const agentMessage = messages.find(m => messageService.determineSpeakerRole(m).role === 'agent');
     const customerMessage = messages.find(m => messageService.determineSpeakerRole(m).role === 'customer');
     
     const agent = {
-      id: agentMessage?.recipient || agentMessage?.interactionDestination || 'unknown',
-      name: agentMessage?.author?.name || 'Agent'
+      id: interaction?.agent.id || 'unknown',
+      name: interaction?.agent?.name || 'Agent'
     };
     
     const caller = {
-      id: customerMessage?.author?.id || customerMessage?.interactionSource || 'unknown', 
-      name: customerMessage?.author?.name || 'Customer'
+      id: interaction?.caller?.id || 'unknown', 
+      name: interaction?.caller?.name || 'Customer'
     };
     
     return {

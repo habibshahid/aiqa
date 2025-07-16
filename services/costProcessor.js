@@ -37,7 +37,7 @@ const calculateEvaluationCost = async (evaluationId) => {
     
     // Determine if this is a text-based evaluation (no STT needed)
     const channel = evaluation.interactionData?.channel;
-    const textChannels = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
+    const textChannels = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'email'];
     const isTextEvaluation = textChannels.includes(channel);
     
     console.log(`Evaluation channel: ${channel}, isTextEvaluation: ${isTextEvaluation}`);

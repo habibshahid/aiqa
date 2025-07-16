@@ -7,6 +7,19 @@ import Select from 'react-select';
 import WelcomeTourDialog from '../components/tour/WelcomeTourDialog';
 import LowBalanceNotification from '../components/LowBalanceNotification';
 
+const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
+
+const CHANNEL_DISPLAY_NAMES = {
+  'call': 'Voice Call',
+  'whatsapp': 'WhatsApp',
+  'fb_messenger': 'Facebook Messenger', 
+  'facebook': 'Facebook Comments',
+  'instagram_dm': 'Instagram DM',
+  'email': 'Email',
+  'chat': 'Live Chat',
+  'sms': 'SMS'
+};
+
 // Updated StatsCard Component with optional subtitle and icon color
 const StatsCard = ({ 
   title, 
@@ -335,6 +348,17 @@ const Dashboard = () => {
   const prevFiltersRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const getChannelBadgeColor = (channel) => {
+    if (TEXT_CHANNELS.includes(channel)) {
+      return 'bg-info';
+    }
+    return 'bg-primary';
+  };
+
+  const getChannelDisplayName = (channel) => {
+    return CHANNEL_DISPLAY_NAMES[channel] || channel?.charAt(0).toUpperCase() + channel?.slice(1) || 'Unknown';
+  };
 
   const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
     const totalPages = Math.ceil(totalItems / itemsPerPage);
@@ -1053,11 +1077,13 @@ const Dashboard = () => {
             <table className="table table-hover align-middle mb-0">
               <thead className="table-light">
                 <tr>
-                  <th>Agent</th>
-                  <th>Score</th>
                   <th>Date</th>
-                  <th>Caller ID</th>
+                  <th>Channel</th>
+                  <th>Agent</th>
+                  <th>Queue</th>
                   <th>Duration</th>
+                  <th>Caller ID</th>
+                  <th>Score</th>
                   <th>Evaluator</th>
                   <th>Actions</th>
                 </tr>
@@ -1067,6 +1093,12 @@ const Dashboard = () => {
                   .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
                   .map(evaluation => (
                     <tr key={evaluation.id}>
+                      <td>{format(new Date(evaluation.createdAt), 'MMM d, yyyy')}</td>
+                      <td>
+                        <span className={`badge ${getChannelBadgeColor(evaluation.channel)} me-1`}>
+                          {getChannelDisplayName(evaluation.channel)}
+                        </span>
+                      </td>
                       <td>
                         <div className="d-flex align-items-center">
                           <div className="avatar-xs me-2">
@@ -1077,16 +1109,10 @@ const Dashboard = () => {
                           <span>{evaluation.agent?.name || 'Unknown'}</span>
                         </div>
                       </td>
+                      <td>{evaluation.queue?.name || 'N/A'}</td>
                       <td>
-                        <div className={`badge bg-${
-                          evaluation.scorePerc >= 90 ? 'success' : 
-                          evaluation.scorePerc >= 70 ? 'warning' : 'danger'
-                        }`}>
-                          {evaluation.score || 0}
-                          {evaluation.maxScore ? ` / ${evaluation.maxScore}` : ''}
-                        </div>
+                        {formatDurationHumanReadable(evaluation?.duration || 0)}
                       </td>
-                      <td>{format(new Date(evaluation.createdAt), 'MMM d, yyyy')}</td>
                       <td>
                         <div className="d-flex align-items-center">
                           {evaluation.direction === '0' || evaluation.direction === 0 ? (
@@ -1098,8 +1124,14 @@ const Dashboard = () => {
                         </div>
                       </td>
                       <td>
-                        {formatDurationHumanReadable(evaluation?.duration || 0)}
-                      </td>
+                        <div className={`badge bg-${
+                          evaluation.scorePerc >= 90 ? 'success' : 
+                          evaluation.scorePerc >= 70 ? 'warning' : 'danger'
+                        }`}>
+                          {evaluation.score || 0}
+                          {evaluation.maxScore ? ` / ${evaluation.maxScore}` : ''}
+                        </div>
+                      </td>  
                       <td>
                         <small className="text-muted">
                           Evaluated by: {evaluation.evaluator?.name || 'AI System'}

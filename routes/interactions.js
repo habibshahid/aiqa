@@ -6,6 +6,7 @@ const { Interactions } = require('../config/mongodb');
 const mongoose = require('mongoose');
 const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
 const messageService = require('../services/messageService');
+const emailService = require('../services/emailService');
 
 router.use(authenticateToken);
 
@@ -120,8 +121,23 @@ router.post('/search', async (req, res) => {
     let messageCountMap = {};
     
     if (textChannelInteractions.length > 0) {
-      const textChannelIds = textChannelInteractions.map(interaction => interaction._id.toString());
-      messageCountMap = await messageService.getMessageCountsForInteractions(textChannelIds);
+      // Separate email interactions from other text channels
+      const emailInteractions = textChannelInteractions.filter(i => i.channel === 'email');
+      const otherTextInteractions = textChannelInteractions.filter(i => i.channel !== 'email');
+      
+      // Get message counts for non-email text channels
+      if (otherTextInteractions.length > 0) {
+        const textChannelIds = otherTextInteractions.map(interaction => interaction._id.toString());
+        const messageCounts = await messageService.getMessageCountsForInteractions(textChannelIds);
+        Object.assign(messageCountMap, messageCounts);
+      }
+      
+      // Get email counts for email channel
+      if (emailInteractions.length > 0) {
+        const emailIds = emailInteractions.map(interaction => interaction._id.toString());
+        const emailCounts = await emailService.countEmailsForInteractions(emailIds);
+        Object.assign(messageCountMap, emailCounts);
+      }
     }
 
     // Step 3: Enhance the results with metadata
@@ -192,7 +208,10 @@ function formatChannelName(channel) {
     'whatsapp': 'WhatsApp',
     'fb_messenger': 'Facebook Messenger',
     'facebook': 'Facebook Comments',
-    'instagram_dm': 'Instagram DM'
+    'instagram_dm': 'Instagram DM',
+    'email': 'Email',
+    'chat': 'Live Chat',
+    'sms': 'SMS'
   };
   
   return channelNames[channel] || channel.charAt(0).toUpperCase() + channel.slice(1);
@@ -203,21 +222,46 @@ router.get('/:interactionId/messages', async (req, res) => {
   try {
     const { interactionId } = req.params;
     
-    console.log(`Fetching messages for interaction: ${interactionId}`);
+    const interaction = await Interactions.findById(interactionId).lean();
     
-    // Import message service
-    const messageService = require('../services/messageService');
-    
-    // Get messages for this interaction
-    const messages = await messageService.getMessagesByInteractionId(interactionId);
-    
-    if (!messages || messages.length === 0) {
-      return res.status(404).json({ message: 'No messages found for this interaction' });
+    if (!interaction) {
+      return res.status(404).json({ message: 'Interaction not found' });
     }
     
-    // Format messages as conversation
-    const conversation = messageService.formatMessagesAsConversation(messages);
-    const stats = messageService.getConversationStats(messages);
+    let messages, conversation, stats;
+
+    if (interaction.channel === 'email') {
+      console.log('Using email service for email channel');
+      
+      // Get emails for this interaction
+      messages = await emailService.getEmailsByInteractionId(interactionId);
+      
+      if (!messages || messages.length === 0) {
+        return res.status(404).json({ message: 'No emails found for this interaction' });
+      }
+      
+      // Format emails as conversation (same structure as messages)
+      conversation = emailService.formatEmailsAsConversation(messages);
+      stats = emailService.getConversationStats(messages);
+      
+    } else {
+
+      console.log(`Fetching messages for interaction: ${interactionId}`);
+      
+      // Import message service
+      const messageService = require('../services/messageService');
+      
+      // Get messages for this interaction
+      messages = await messageService.getMessagesByInteractionId(interactionId);
+      
+      if (!messages || messages.length === 0) {
+        return res.status(404).json({ message: 'No messages found for this interaction' });
+      }
+      
+      // Format messages as conversation
+      conversation = messageService.formatMessagesAsConversation(messages);
+      stats = messageService.getConversationStats(messages);
+    }
     
     res.json({
       messages,
@@ -258,10 +302,17 @@ router.get('/:interactionId/details', async (req, res) => {
     
     // For text channels, also include message count
     if (isTextChannel) {
-      const messageService = require('../services/messageService');
-      const messages = await messageService.getMessagesByInteractionId(interactionId);
-      enhancedInteraction.messageCount = messages.length;
-      enhancedInteraction.hasMessages = messages.length > 0;
+      if (interaction.channel === 'email') {
+        // Use email service for email channel
+        const emails = await emailService.getEmailsByInteractionId(interactionId);
+        enhancedInteraction.messageCount = emails.length;
+        enhancedInteraction.hasMessages = emails.length > 0;
+      } else {
+        // Use message service for other text channels
+        const messages = await messageService.getMessagesByInteractionId(interactionId);
+        enhancedInteraction.messageCount = messages.length;
+        enhancedInteraction.hasMessages = messages.length > 0;
+      }
     }
     
     res.json(enhancedInteraction);
