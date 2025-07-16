@@ -824,7 +824,7 @@ const NewEvaluations = () => {
                         {isTextChannel ? (
                           <span className="text-muted">Text Conversation</span>
                         ) : (
-                          formatDurationHumanReadable(interaction.duration || 0)
+                          formatDurationHumanReadable(interaction?.connect?.duration || 0)
                         )}
                       </td>
                       <td>

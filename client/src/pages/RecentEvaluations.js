@@ -5,6 +5,16 @@ import { format } from 'date-fns';
 import { PhoneIncoming, PhoneOutgoing, Lock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { api } from '../services/api';
 
+const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
+
+const CHANNEL_DISPLAY_NAMES = {
+  'call': 'Voice Call',
+  'whatsapp': 'WhatsApp',
+  'fb_messenger': 'Facebook Messenger', 
+  'facebook': 'Facebook Comments',
+  'instagram_dm': 'Instagram DM'
+};
+
 const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   
@@ -208,6 +218,17 @@ const RecentEvaluations = () => {
     loadQueues();
   }, [filters, fetchQueues]);
   
+  const getChannelBadgeColor = (channel) => {
+    if (TEXT_CHANNELS.includes(channel)) {
+      return 'bg-info';
+    }
+    return 'bg-primary';
+  };
+
+  const getChannelDisplayName = (channel) => {
+    return CHANNEL_DISPLAY_NAMES[channel] || channel?.charAt(0).toUpperCase() + channel?.slice(1) || 'Unknown';
+  };
+
   const fetchData = useCallback(async () => {
     // Check if we're already fetching - prevents duplicate calls
     if (isFetchingRef.current) return;
@@ -446,13 +467,15 @@ const RecentEvaluations = () => {
           <table className="table table-hover align-middle mb-0">
             <thead className="table-light">
               <tr>
-              <th>Agent</th>
-                  <th>Score</th>
-                  <th>Date</th>
-                  <th>Caller ID</th>
-                  <th>Duration</th>
-                  <th>Evaluator</th>
-                  <th>Actions</th>
+                <th>Date</th>
+                <th>Channel</th>
+                <th>Agent</th>
+                <th>Queue</th>
+                <th>Duration</th>
+                <th>Caller ID</th>
+                <th>Score</th>
+                <th>Evaluator</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -470,6 +493,12 @@ const RecentEvaluations = () => {
                   .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
                   .map(evaluation => (
                     <tr key={evaluation.id}>
+                      <td>{format(new Date(evaluation.createdAt), 'MMM d, yyyy')}</td>
+                      <td>
+                        <span className={`badge ${getChannelBadgeColor(evaluation.channel)} me-1`}>
+                          {getChannelDisplayName(evaluation.channel)}
+                        </span>
+                      </td>
                       <td>
                         <div className="d-flex align-items-center">
                           <div className="avatar-xs me-2">
@@ -480,16 +509,10 @@ const RecentEvaluations = () => {
                           <span>{evaluation.agent?.name || 'Unknown'}</span>
                         </div>
                       </td>
+                      <td>{evaluation.queue?.name || 'N/A'}</td>
                       <td>
-                        <div className={`badge bg-${
-                          evaluation.scorePerc >= 90 ? 'success' : 
-                          evaluation.scorePerc >= 70 ? 'warning' : 'danger'
-                        }`}>
-                          {evaluation.score || 0}
-                          {evaluation.maxScore ? ` / ${evaluation.maxScore}` : ''}
-                        </div>
+                        {formatDurationHumanReadable(evaluation?.duration || 0)}
                       </td>
-                      <td>{format(new Date(evaluation.createdAt), 'MMM d, yyyy')}</td>
                       <td>
                         <div className="d-flex align-items-center">
                           {evaluation.direction === '0' || evaluation.direction === 0 ? (
@@ -501,7 +524,13 @@ const RecentEvaluations = () => {
                         </div>
                       </td>
                       <td>
-                        {formatDurationHumanReadable(evaluation?.duration || 0)}
+                        <div className={`badge bg-${
+                          evaluation.scorePerc >= 90 ? 'success' : 
+                          evaluation.scorePerc >= 70 ? 'warning' : 'danger'
+                        }`}>
+                          {evaluation.score || 0}
+                          {evaluation.maxScore ? ` / ${evaluation.maxScore}` : ''}
+                        </div>
                       </td>
                       <td>
                         <small className="text-muted">

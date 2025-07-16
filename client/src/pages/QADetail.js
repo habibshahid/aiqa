@@ -103,7 +103,7 @@ const ChannelInfoSection = ({ evaluation, messageData }) => {
             <strong>Duration:</strong> {evaluation.interactionData?.duration || evaluation.interaction?.duration || 'N/A'}s
           </p>
           <p className="mb-1">
-            <strong>Direction:</strong> {evaluation.interactionData?.direction === 0 ? 'Inbound' : 'Outbound'}
+            <strong>Direction:</strong> {evaluation.interactionData?.direction === 0 || evaluation.interactionData?.direction === '0' ? 'Inbound' : 'Outbound'}
           </p>
         </>
       )}
@@ -1528,7 +1528,7 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
                   <tr>
                     <td><strong>Direction:</strong></td>
                     <td className="text-capitalize">
-                      {(evaluation.interactionData?.direction === 0 || evaluation.interaction?.direction === 0) ? 'Inbound' : 'Outbound'}
+                      {(evaluation.interactionData?.direction === 0 || evaluation.interaction?.direction === 0) || (evaluation.interactionData?.direction === "0" || evaluation.interaction?.direction === "0") ? 'Inbound' : 'Outbound'}
                     </td>
                   </tr>
                   <tr>
