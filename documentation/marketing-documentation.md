@@ -113,12 +113,7 @@ AIQA revolutionizes call center quality assurance through a comprehensive, AI-po
 - **API-First Design**: Comprehensive RESTful API for all functions
 - **Webhooks**: Real-time event notifications
 - **Supported Platforms**:
-  - Amazon Connect
-  - Genesys Cloud
-  - NICE inContact
-  - Twilio
-  - Avaya
-  - Five9
+  - Intellicon
   - Custom systems via API
 
 ## Deployment Options
@@ -216,10 +211,10 @@ Qualify for our 30-day pilot program to experience the full capabilities of AIQA
 
 ### Contact Information
 
-- **Website**: www.aiqa.io
+- **Website**: www.intellicon.io/aiqa
 - **Email**: sales@intellicon.io
-- **Phone**: +1 (800) 555-AIQA
-- **LinkedIn**: linkedin.com/company/aiqa
+- **Phone**: +92 42 3250 0900
+- **LinkedIn**: linkedin.com/company/contegris
 
 ## About Us
 
