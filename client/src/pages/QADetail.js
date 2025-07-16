@@ -3,14 +3,17 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Edit, Eye, EyeOff, MessageSquare, CheckCircle, XCircle, AlertTriangle, Save, Lock, AlertCircle, Clock, Users, Hash } from 'lucide-react';
 import Select from 'react-select';
 
-const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
+const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
 
 const CHANNEL_DISPLAY_NAMES = {
   'call': 'Voice Call',
   'whatsapp': 'WhatsApp',
   'fb_messenger': 'Facebook Messenger',
   'facebook': 'Facebook Comments', 
-  'instagram_dm': 'Instagram DM'
+  'instagram_dm': 'Instagram DM',
+  'email': 'Email',
+  'chat': 'Live Chat',
+  'sms': 'SMS'
 };
 
 // Classification Badge Component with improved visibility and interaction

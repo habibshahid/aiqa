@@ -5,14 +5,17 @@ import { format } from 'date-fns';
 import { PhoneIncoming, PhoneOutgoing, Lock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { api } from '../services/api';
 
-const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
+const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
 
 const CHANNEL_DISPLAY_NAMES = {
   'call': 'Voice Call',
   'whatsapp': 'WhatsApp',
   'fb_messenger': 'Facebook Messenger', 
   'facebook': 'Facebook Comments',
-  'instagram_dm': 'Instagram DM'
+  'instagram_dm': 'Instagram DM',
+  'email': 'Email',
+  'chat': 'Live Chat',
+  'sms': 'SMS'
 };
 
 const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {

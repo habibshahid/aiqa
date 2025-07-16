@@ -12,7 +12,7 @@ const { InteractionTranscription, QAForm, Interactions, InteractionAIQA } = requ
 const { calculateEvaluationCost } = require('./costProcessor');
 const mongoose = require('mongoose');
 
-const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
+const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
 
 /**
  * Download a file from URL to local filesystem

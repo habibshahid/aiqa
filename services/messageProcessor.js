@@ -7,7 +7,7 @@ const { processEvaluationResponse, updateEvaluationForClassification } = require
 const mongoose = require('mongoose');
 
 // Text-based channels that should use message processing
-const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
+const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
 
 /**
  * Format QA form parameters into instructions for AI evaluation

@@ -7,14 +7,17 @@ import { api } from '../services/api';
 import { PhoneIncoming, PhoneOutgoing } from 'lucide-react';
 
 // NEW: Multi-channel support constants
-const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm'];
+const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
 
 const CHANNEL_DISPLAY_NAMES = {
   'call': 'Voice Call',
   'whatsapp': 'WhatsApp',
   'fb_messenger': 'Facebook Messenger', 
   'facebook': 'Facebook Comments',
-  'instagram_dm': 'Instagram DM'
+  'instagram_dm': 'Instagram DM',
+  'email': 'Email',
+  'chat': 'Live Chat',
+  'sms': 'SMS'
 };
 
 const NewEvaluations = () => {
@@ -139,7 +142,9 @@ const NewEvaluations = () => {
           minDuration: selectedProfile.minCallDuration,
           durationComparison: selectedProfile.durationComparison || '>',
           qaFormId: selectedProfile.evaluationForm?.formId || '',
-          excludeEvaluated: selectedProfile.excludeEvaluated !== false
+          excludeEvaluated: selectedProfile.excludeEvaluated !== false,
+          channels: selectedProfile.channels.map(ch => ch.channelId),
+          direction: selectedProfile.direction || 'all'
         }));
       }
     }

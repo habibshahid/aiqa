@@ -68,6 +68,7 @@ export default function CriteriaList() {
                 <th>Name</th>
                 <th>Queues</th>
                 <th>Agents</th>
+                <th>Channels</th>
                 <th>Form</th>
                 <th>Direction</th>
                 <th>Min Duration</th>
@@ -103,9 +104,26 @@ export default function CriteriaList() {
                         </span>
                         ))}
                     </td>
+                    <td>
+                      {profile.channels && profile.channels.length > 0 ? (
+                        profile.channels.map(ch => (
+                          <span key={ch.channelId} className="badge bg-info text-white me-1">
+                            {ch.channelName}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-muted small">All channels</span>
+                      )}
+                    </td>
                     <td>{profile.evaluationForm.formName}</td>
                     <td>
-                        <span className="text-capitalize">{profile.direction}</span>
+                        <span className="text-capitalize">
+                          {profile.direction === '0' || profile.direction === 0 ? (
+                              "Inbound"
+                            ) : (
+                              "Outbound"
+                            )}
+                        </span>
                     </td>
                     <td>{profile.minCallDuration}s</td>
                     <td>

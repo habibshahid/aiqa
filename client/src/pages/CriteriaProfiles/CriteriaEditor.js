@@ -20,11 +20,14 @@ export default function CriteriaEditor() {
   const [workCodesByCategory, setWorkCodesByCategory] = useState({});
   const [qaForms, setQaForms] = useState([]);
   
+  const [channels, setChannels] = useState([]);
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     queues: [],
     workCodes: [],
+    channels: [],
     agents: [],
     minCallDuration: 0,
     durationComparison: '>',
@@ -44,12 +47,13 @@ export default function CriteriaEditor() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [queuesData, agentsData, formsData, categoriesData, workCodesData] = await Promise.all([
+        const [queuesData, agentsData, formsData, categoriesData, workCodesData, channelsData] = await Promise.all([
           api.getQueues(),
           api.getAgents(),
           api.getQAForms(),
           api.getWorkCodeCategories(),
-          api.getWorkCodes()
+          api.getWorkCodes(),
+          api.getChannels(),
         ]);
 
         console.log('Fetched Data:', {
@@ -61,14 +65,35 @@ export default function CriteriaEditor() {
         setQueues(queuesData);
         setAgents(agentsData);
         setQaForms(formsData);
+        setChannels(channelsData);
         setWorkCodeCategories(categoriesData);
         
         const groupedCodes = _.groupBy(workCodesData, 'category_id');
         setWorkCodesByCategory(groupedCodes);
 
         if (id) {
-          const profileData = await api.getCriteriaProfile(id);
-          setFormData(profileData);
+          const profile = await api.getCriteriaProfile(id);
+          setFormData({
+            name: profile.name || '',
+            description: profile.description || '',
+            queues: profile.queues || [],
+            agents: profile.agents || [],
+            workCodes: profile.workCodes || [],
+            channels: profile.channels || [], // NEW: Load existing channels
+            minCallDuration: profile.minCallDuration || 0,
+            durationComparison: profile.durationComparison || '>',
+            direction: profile.direction || 'all',
+            evaluationForm: profile.evaluationForm || null,
+            isActive: profile.isActive !== false,
+            excludeEvaluated: profile.excludeEvaluated !== false,
+            scheduler: {
+              enabled: profile.scheduler?.enabled || false,
+              frequency: profile.scheduler?.frequency || 'daily',
+              time: profile.scheduler?.time || '09:00',
+              maxEvaluations: profile.scheduler?.maxEvaluations || 50,
+              timezone: profile.scheduler?.timezone || 'UTC'
+            }
+          })
         }
       } catch (error) {
         console.error('Fetch error:', error);
@@ -98,6 +123,10 @@ export default function CriteriaEditor() {
         workCodes: formData.workCodes.map(w => ({
             code: w.code || w.id,  // Handle both create and update cases
             description: w.description || w.name
+        })),
+        channels: formData.channels.map(ch => ({
+          channelId: ch.channelId || ch.id,
+          channelName: ch.channelName || ch.name
         })),
         minCallDuration: formData.minCallDuration,
         durationComparison: formData.durationComparison,
@@ -167,7 +196,7 @@ export default function CriteriaEditor() {
       )}
 
       <form onSubmit={handleSubmit}>
-        <div className="card mb-4">
+        <div className="card mb-6">
           <div className="card-body">
             <div className="row g-3">
               <div className="col-md-6">
@@ -182,15 +211,24 @@ export default function CriteriaEditor() {
               </div>
 
               <div className="col-md-6">
-                <label className="form-label">Status</label>
-                <select
-                  className="form-select"
-                  value={formData.isActive}
-                  onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.value === 'true' }))}
-                >
-                  <option value="true">Active</option>
-                  <option value="false">Inactive</option>
-                </select>
+                <label className="form-label">Evaluation Form</label>
+                <Select
+                  options={qaForms.map(f => ({
+                    value: f._id,
+                    label: f.name
+                  }))}
+                  value={formData.evaluationForm ? {
+                    value: formData.evaluationForm.formId,
+                    label: formData.evaluationForm.formName
+                  } : null}
+                  onChange={(selected) => setFormData(prev => ({
+                    ...prev,
+                    evaluationForm: selected ? {
+                      formId: selected.value,
+                      formName: selected.label
+                    } : null
+                  }))}
+                />
               </div>
 
               <div className="col-12">
@@ -255,7 +293,71 @@ export default function CriteriaEditor() {
                 />
               </div>
 
-              <div className="col-12">
+              <div className="col-6">
+                <label className="form-label">Channels</label>
+                <Select
+                  isMulti
+                  options={channels.map(channel => ({
+                    value: channel.id,
+                    label: `${channel.name} (${channel.type})`
+                  }))}
+                  value={formData.channels.map(ch => ({
+                    value: ch.channelId || ch.id,
+                    label: ch.channelName || ch.name
+                  }))}
+                  onChange={(selected) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      channels: selected.map(s => ({
+                        channelId: s.value,
+                        channelName: s.label
+                      }))
+                    }));
+                  }}
+                  placeholder="Select channels (leave empty for all)"
+                />
+                <small className="form-text text-muted">
+                  Specify which communication channels this profile applies to. Leave empty to include all channels.
+                </small>
+              </div>
+
+              <div className="col-md-3">
+                <label className="form-label">Duration (seconds)</label>
+                <div className="input-group">
+                  <select
+                    className="form-select"
+                    value={formData.durationComparison}
+                    onChange={(e) => setFormData(prev => ({ ...prev, durationComparison: e.target.value }))}
+                    style={{ maxWidth: '60px' }}
+                  >
+                    <option value=">">{">"}</option>
+                    <option value="<">{"<"}</option>
+                    <option value="=">{"="}</option>
+                  </select>
+                  <input
+                    type="number"
+                    className="form-control"
+                    min="0"
+                    value={formData.minCallDuration}
+                    onChange={(e) => setFormData(prev => ({ ...prev, minCallDuration: parseInt(e.target.value) }))}
+                  />
+                </div>
+              </div>
+              
+              <div className="col-md-3">
+                <label className="form-label">Direction</label>
+                <select
+                  className="form-select"
+                  value={formData.direction}
+                  onChange={(e) => setFormData(prev => ({ ...prev, direction: e.target.value }))}
+                >
+                  <option value="all">All</option>
+                  <option value="0">Inbound</option>
+                  <option value="1">Outbound</option>
+                </select>
+              </div>
+
+              <div className="col-6">
                 <label className="form-label">Work Codes</label>
                 <Select
                   isMulti
@@ -284,81 +386,37 @@ export default function CriteriaEditor() {
                 />
               </div>
 
-              <div className="col-md-4">
-                <label className="form-label">Direction</label>
-                <select
-                  className="form-select"
-                  value={formData.direction}
-                  onChange={(e) => setFormData(prev => ({ ...prev, direction: e.target.value }))}
-                >
-                  <option value="all">All</option>
-                  <option value="0">Inbound</option>
-                  <option value="1">Outbound</option>
-                </select>
-              </div>
-
-              <div className="col-md-4">
-                <label className="form-label">Duration (seconds)</label>
-                <div className="input-group">
-                  <select
-                    className="form-select"
-                    value={formData.durationComparison}
-                    onChange={(e) => setFormData(prev => ({ ...prev, durationComparison: e.target.value }))}
-                    style={{ maxWidth: '60px' }}
-                  >
-                    <option value=">">{">"}</option>
-                    <option value="<">{"<"}</option>
-                    <option value="=">{"="}</option>
-                  </select>
-                  <input
-                    type="number"
-                    className="form-control"
-                    min="0"
-                    value={formData.minCallDuration}
-                    onChange={(e) => setFormData(prev => ({ ...prev, minCallDuration: parseInt(e.target.value) }))}
-                  />
-                </div>
-              </div>
-
-              <div className="col-md-4">
-                <label className="form-label">Evaluation Form</label>
-                <Select
-                  options={qaForms.map(f => ({
-                    value: f._id,
-                    label: f.name
-                  }))}
-                  value={formData.evaluationForm ? {
-                    value: formData.evaluationForm.formId,
-                    label: formData.evaluationForm.formName
-                  } : null}
-                  onChange={(selected) => setFormData(prev => ({
-                    ...prev,
-                    evaluationForm: selected ? {
-                      formId: selected.value,
-                      formName: selected.label
-                    } : null
-                  }))}
-                />
-              </div>
-
-              <div className="col-12 mt-3">
-                <div className="form-check form-switch">
-                  <input
-                    className="form-check-input"
-                    type="checkbox"
-                    id="excludeEvaluated"
-                    checked={formData.excludeEvaluated}
-                    onChange={(e) => setFormData(prev => ({
-                      ...prev,
-                      excludeEvaluated: e.target.checked
-                    }))}
-                  />
-                  <label className="form-check-label" htmlFor="excludeEvaluated">
-                    Exclude already evaluated interactions
-                  </label>
-                  <div className="form-text">
-                    When enabled, interactions that have already been evaluated will be excluded from scheduled evaluations.
+              <div className="row g-3">
+                <div className="col-md-6">
+                  <div className="form-check form-switch">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      id="excludeEvaluated"
+                      checked={formData.excludeEvaluated}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        excludeEvaluated: e.target.checked
+                      }))}
+                    />
+                    <label className="form-check-label" htmlFor="excludeEvaluated">
+                      Exclude already evaluated interactions
+                    </label>
+                    <div className="form-text">
+                      When enabled, interactions that have already been evaluated will be excluded from scheduled evaluations.
+                    </div>
                   </div>
+                </div>
+                <div className="col-md-6">
+                    <label className="form-label">Status</label>
+                    <select
+                      className="form-select"
+                      value={formData.isActive}
+                      onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.value === 'true' }))}
+                    >
+                      <option value="true">Active</option>
+                      <option value="false">Inactive</option>
+                    </select>
                 </div>
               </div>
             </div>

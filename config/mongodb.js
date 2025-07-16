@@ -540,6 +540,10 @@ const criteriaProfileSchema = new mongoose.Schema({
     code: String,
     description: String
   }],
+  channels: [{
+    channelId: String,
+    channelName: String
+  }],
   agents: [{
     agentId: String,
     agentName: String
