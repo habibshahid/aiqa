@@ -18,6 +18,53 @@ const CHANNEL_DISPLAY_NAMES = {
   'sms': 'SMS'
 };
 
+const ScoreDisplay = ({ evaluation }) => {
+  const isDeductMode = evaluation.scoringMechanism === 'deduct';
+  const percentage = evaluation?.sectionScores?.overall?.percentage || 
+                    (evaluation?.sectionScores?.overall?.average / 5 * 100) || 0;
+  
+  return (
+    <div className="d-flex flex-column align-items-center">
+      {/* Scoring mechanism badge */}
+      <span className={`badge mb-1 bg-${isDeductMode ? 'warning text-dark' : 'success'}`}>
+        {isDeductMode ? 'Deduct' : 'Award'}
+      </span>
+      
+      {/* Score display */}
+      <div className={`badge bg-${
+        percentage >= 80 ? 'success' : 
+        percentage >= 60 ? 'warning' : 'danger'
+      }`}>
+        {isDeductMode ? (
+          <>
+            {evaluation?.sectionScores?.overall?.adjustedScore || evaluation.evaluation?.totalScore || 0}
+            {' / '}
+            {evaluation.totalScore || 100}
+          </>
+        ) : (
+          <>
+            {evaluation?.sectionScores?.overall?.adjustedScore || evaluation.evaluation?.totalScore || 0}
+            {' / '}
+            {evaluation?.sectionScores?.overall?.maxScore || evaluation.evaluation?.maxScore || 'N/A'}
+          </>
+        )}
+      </div>
+      
+      {/* Percentage */}
+      <small className="text-muted mt-1">
+        {percentage.toFixed(0)}%
+      </small>
+      
+      {/* Deductions for deduct mode */}
+      {isDeductMode && evaluation.evaluation?.sectionScores?.overall?.totalDeductions > 0 && (
+        <small className="text-danger">
+          -{evaluation.evaluation?.sectionScores?.overall?.totalDeductions} pts
+        </small>
+      )}
+    </div>
+  );
+};
+
 const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   
@@ -73,6 +120,7 @@ const RecentEvaluations = () => {
   const [selectedFilters, setSelectedFilters] = useState({
     agentId: '',
     queueId: '',
+    channelId: '',
     startDate: format(new Date(), 'yyyy-MM-dd'),
     endDate: format(new Date(), 'yyyy-MM-dd'),
     formId: ''
@@ -204,6 +252,16 @@ const RecentEvaluations = () => {
     }
   }, []);
 
+  const fetchChannels = useCallback(async () => {
+    try {
+      const channels = await api.getChannels();
+      return channels || [];
+    } catch (error) {
+      console.error('Error fetching channels:', error);
+      return [];
+    }
+  }, []);
+
   useEffect(() => {
     // Add this inside your existing useEffect that loads data
     const loadQueues = async () => {
@@ -221,6 +279,22 @@ const RecentEvaluations = () => {
     loadQueues();
   }, [filters, fetchQueues]);
   
+  useEffect(() => {
+    const loadChannels = async () => {
+      if (!filters?.channels || filters.channels.length === 0) {
+        const channelsData = await fetchChannels();
+        if (channelsData.length > 0) {
+          setFilters(prev => ({
+            ...prev,
+            channels: channelsData
+          }));
+        }
+      }
+    };
+    
+    loadChannels();
+  }, [filters, fetchChannels]);
+
   const getChannelBadgeColor = (channel) => {
     if (TEXT_CHANNELS.includes(channel)) {
       return 'bg-info';
@@ -434,6 +508,22 @@ const RecentEvaluations = () => {
             </div>
 
             <div className="col-md-3">
+              <select
+                className="form-select"
+                name="channelId"
+                value={selectedFilters.channelId}
+                onChange={handleFilterChange}
+              >
+                <option value="">All Channels</option>
+                {filters?.channels?.map(channel => (
+                  <option key={channel.id} value={channel.id}>
+                    {channel.name} ({channel.type})
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="col-md-3">
               <input
                 type="date"
                 className="form-control"
@@ -476,6 +566,7 @@ const RecentEvaluations = () => {
                 <th>Queue</th>
                 <th>Duration</th>
                 <th>Caller ID</th>
+                <th>Scoring</th>
                 <th>Score</th>
                 <th>Evaluator</th>
                 <th>Actions</th>
@@ -525,6 +616,9 @@ const RecentEvaluations = () => {
                           )}
                           <span>{evaluation.caller?.id || 'Unknown'}</span>
                         </div>
+                      </td>
+                      <td>
+                        <ScoreDisplay evaluation={evaluation} />
                       </td>
                       <td>
                         <div className={`badge bg-${

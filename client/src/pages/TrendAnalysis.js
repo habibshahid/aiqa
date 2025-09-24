@@ -9,6 +9,7 @@ import { api } from '../services/api';
 const TrendAnalysis = () => {
   const [agents, setAgents] = useState([]);
   const [queues, setQueues] = useState([]);
+  const [channels, setChannels] = useState([]);
   const [trends, setTrends] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -22,6 +23,7 @@ const TrendAnalysis = () => {
     endDate: format(new Date(), 'yyyy-MM-dd'),
     selectedAgent: null,
     selectedQueue: null,
+    selectedChannel: null, 
     interval: { value: 'day', label: 'Daily' },
     selectedForm: null
   });
@@ -105,6 +107,14 @@ const TrendAnalysis = () => {
         setAgents(agentsData);
         setQueues(queuesData);
         
+        try {
+          const channelsData = await api.getChannels();
+          setChannels(channelsData || []);
+        } catch (error) {
+          console.error('Error fetching channels:', error);
+          setChannels([]);
+        }
+
         // If in restricted view and user is not admin, filter agents and auto-select
         if (isRestrictedView && userInfo?.agentId) {
           // Find the agent object for the current user
@@ -175,6 +185,10 @@ const TrendAnalysis = () => {
         params.append('queueId', filters.selectedQueue.value);
       }
       
+      if (filters.selectedChannel) {
+        params.append('channelId', filters.selectedChannel.value);
+      }
+
       const response = await fetch(`/api/analytics/trends?${params}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
@@ -331,6 +345,20 @@ const TrendAnalysis = () => {
                 onChange={(selected) => handleFilterChange('selectedQueue', selected)}
                 isClearable
                 placeholder="All Queues"
+              />
+            </div>
+            
+            <div className="col-md-3">
+              <label className="form-label">Channel</label>
+              <Select
+                options={channels.map(channel => ({
+                  value: channel.id,
+                  label: `${channel.name} (${channel.type})`
+                }))}
+                value={filters.selectedChannel}
+                onChange={(selected) => handleFilterChange('selectedChannel', selected)}
+                isClearable
+                placeholder="All Channels"
               />
             </div>
             

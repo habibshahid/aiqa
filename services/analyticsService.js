@@ -28,6 +28,10 @@ const getEvaluationMetrics = async (filters = {}, user) => {
     if (filters.queueId) {
       query['interactionData.queue.id'] = filters.queueId;
     }
+
+    if (filters.channelId) {
+      query['interactionData.channel'] = filters.channelId;
+    }
     
     if (filters.dateRange) {
       const startDate = new Date(filters.dateRange.start);
@@ -148,6 +152,8 @@ const getEvaluationMetrics = async (filters = {}, user) => {
         maxScore: maxScore,
         scorePerc: scorePerc,
         createdAt: eval.createdAt,
+        scoringMechanism: eval.evaluationData?.evaluation?.scoringMechanism || 'award',
+        sectionScores: eval?.sectionScores,
         summary: eval.evaluationData?.evaluation?.summary || '',
         areasOfImprovement: eval.evaluationData?.evaluation?.areasOfImprovements || [],
         customerSentiment: eval.evaluationData?.evaluation?.customerSentiment || [],

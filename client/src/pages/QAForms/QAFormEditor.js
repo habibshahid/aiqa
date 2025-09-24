@@ -11,6 +11,7 @@ import {
 } from '../../components/classification/ModalComponents';
 import ClassificationSettings from '../../components/classification/ClassificationSettings';
 import AIContextGenerator from '../../components/AIContextGenerator';
+import ScoringPreview from '../../components/ScoringPreview';
 
 const initialParameterState = {
   name: '',
@@ -56,6 +57,8 @@ const QAFormEditor = () => {
     description: '',
     isActive: true,
     moderationRequired: true,
+    scoringMechanism: 'award',  // NEW - default to award
+    totalScore: 100, 
     parameters: [{ ...initialParameterState }],
     groups: [{ id: 'default', name: 'Default Group' }],
     classifications: [
@@ -126,6 +129,14 @@ const QAFormEditor = () => {
           }));
         }
         
+        data.scoringMechanism = data.scoringMechanism || 'award';
+        data.totalScore = data.totalScore || 100;
+
+        // If award mode, calculate total score from parameters
+        if (data.scoringMechanism === 'award' && data.parameters) {
+          data.totalScore = data.parameters.reduce((sum, param) => sum + (param.maxScore || 5), 0);
+        }
+
         setFormData(data);
         
         // Update classification options
@@ -166,6 +177,10 @@ const QAFormEditor = () => {
         throw new Error('At least one parameter is required');
       }
   
+      if (formData.scoringMechanism === 'deduct' && (!formData.totalScore || formData.totalScore <= 0)) {
+        throw new Error('Total score must be greater than 0 for deduct scoring mechanism');
+      }
+      
       // Add order to parameters based on their current position
       const orderedParameters = formData.parameters.map((param, index) => ({
         ...param,
@@ -178,11 +193,13 @@ const QAFormEditor = () => {
         description: formData.description,
         isActive: formData.isActive,
         moderationRequired: formData.moderationRequired,
+        scoringMechanism: formData.scoringMechanism,  // NEW
+        totalScore: formData.totalScore, 
         parameters: orderedParameters,
         groups: formData.groups,
         classifications: formData.classifications
       };
-  
+
       // Submit the form
       const response = await fetch(`/api/qa-forms${id ? `/${id}` : ''}`, {
         method: id ? 'PUT' : 'POST',
@@ -206,6 +223,27 @@ const QAFormEditor = () => {
     }
   };
 
+  const handleScoringMechanismChange = (mechanism) => {
+    setFormData(prev => {
+      let totalScore = prev.totalScore;
+      
+      // If switching to award mode, calculate total from parameters
+      if (mechanism === 'award') {
+        totalScore = prev.parameters.reduce((sum, param) => sum + (param.maxScore || 5), 0);
+      }
+      // If switching to deduct mode and total is 0, set a default
+      else if (mechanism === 'deduct' && totalScore === 0) {
+        totalScore = 100;
+      }
+      
+      return {
+        ...prev,
+        scoringMechanism: mechanism,
+        totalScore: totalScore
+      };
+    });
+  };
+  
   // Add Group Handler
   const handleAddGroup = () => {
     if (!newGroupName.trim()) return;
@@ -313,23 +351,45 @@ const QAFormEditor = () => {
 
   // Parameter change handler
   const handleParameterChange = (index, field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      parameters: prev.parameters.map((param, i) => 
+    setFormData(prev => {
+      const updatedParameters = prev.parameters.map((param, i) => 
         i === index ? { ...param, [field]: value } : param
-      )
-    }));
+      );
+      
+      // If in award mode and maxScore changed, recalculate total
+      let newTotalScore = prev.totalScore;
+      if (prev.scoringMechanism === 'award' && field === 'maxScore') {
+        newTotalScore = updatedParameters.reduce((sum, param) => sum + (param.maxScore || 5), 0);
+      }
+      
+      return {
+        ...prev,
+        parameters: updatedParameters,
+        totalScore: newTotalScore
+      };
+    });
   };
 
   // Add parameter to a specific group
   const addParameter = (groupId = 'default') => {
-    setFormData(prev => ({
-      ...prev,
-      parameters: [
+    setFormData(prev => {
+      const updatedParameters = [
         ...prev.parameters,
         { ...initialParameterState, group: groupId }
-      ]
-    }));
+      ];
+      
+      // Recalculate total score if in award mode
+      let newTotalScore = prev.totalScore;
+      if (prev.scoringMechanism === 'award') {
+        newTotalScore = updatedParameters.reduce((sum, param) => sum + (param.maxScore || 5), 0);
+      }
+      
+      return {
+        ...prev,
+        parameters: updatedParameters,
+        totalScore: newTotalScore
+      };
+    });
   };
 
   // Remove parameter
@@ -338,10 +398,22 @@ const QAFormEditor = () => {
       setError('At least one parameter is required');
       return;
     }
-    setFormData(prev => ({
-      ...prev,
-      parameters: prev.parameters.filter((_, i) => i !== index)
-    }));
+    
+    setFormData(prev => {
+      const updatedParameters = prev.parameters.filter((_, i) => i !== index);
+      
+      // Recalculate total score if in award mode
+      let newTotalScore = prev.totalScore;
+      if (prev.scoringMechanism === 'award') {
+        newTotalScore = updatedParameters.reduce((sum, param) => sum + (param.maxScore || 5), 0);
+      }
+      
+      return {
+        ...prev,
+        parameters: updatedParameters,
+        totalScore: newTotalScore
+      };
+    });
   };
 
   // Classification change handler
@@ -480,6 +552,84 @@ const QAFormEditor = () => {
           </div>
         </div>
           
+        {/* Scoring Mechanism Section - Add after Basic Information and before Classification Settings */}
+        <div className="card mb-4">
+          <div className="card-header bg-light">
+            <h5 className="card-title mb-0">Scoring Configuration</h5>
+          </div>
+          <div className="card-body">
+            <div className="row g-3">
+              <div className="col-md-6">
+                <label className="form-label">Scoring Mechanism</label>
+                <select
+                  className="form-select"
+                  value={formData.scoringMechanism}
+                  onChange={(e) => handleScoringMechanismChange(e.target.value)}
+                >
+                  <option value="award">Award Points (Traditional)</option>
+                  <option value="deduct">Deduct Points (Negative Marking)</option>
+                </select>
+                <div className="form-text">
+                  {formData.scoringMechanism === 'award' 
+                    ? 'Points are awarded for correct answers. Total score is the sum of all earned points.'
+                    : 'Start with a total score and deduct points for incorrect answers.'}
+                </div>
+              </div>
+              
+              <div className="col-md-6">
+                <label className="form-label">
+                  {formData.scoringMechanism === 'award' ? 'Total Possible Score' : 'Starting Total Score'}
+                </label>
+                <input
+                  type="number"
+                  className="form-control"
+                  value={formData.totalScore}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value) || 0;
+                    setFormData(prev => ({ ...prev, totalScore: Math.max(0, Math.min(1000, value)) }));
+                  }}
+                  min="0"
+                  max="1000"
+                  disabled={formData.scoringMechanism === 'award'} // Disable for award mode as it's calculated
+                />
+                <div className="form-text">
+                  {formData.scoringMechanism === 'award' 
+                    ? 'Automatically calculated from the sum of all parameter max scores.'
+                    : 'The initial score from which deductions will be made (1-1000).'}
+                </div>
+              </div>
+            </div>
+
+            {/* Visual Example */}
+            <div className="alert alert-info mt-3 mb-0">
+              <h6 className="mb-2">
+                <i className="bi bi-info-circle me-2"></i>
+                How {formData.scoringMechanism === 'award' ? 'Award' : 'Deduct'} Scoring Works:
+              </h6>
+              {formData.scoringMechanism === 'award' ? (
+                <div>
+                  <p className="mb-1">• Each question can earn 0 to its maximum score</p>
+                  <p className="mb-1">• Final score = Sum of all earned points</p>
+                  <p className="mb-1">• Example: 3 questions worth 5 points each</p>
+                  <p className="mb-0 ms-3">
+                    - Agent scores: 5 + 3 + 4 = <strong>12 out of 15 points (80%)</strong>
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p className="mb-1">• Start with {formData.totalScore} points</p>
+                  <p className="mb-1">• Deduct points for each incorrect answer</p>
+                  <p className="mb-1">• Example: Starting with 100 points, 3 questions worth 5 points each</p>
+                  <p className="mb-0 ms-3">
+                    - Agent scores: 5 + 3 + 4 = 12/15, so deduct 3 points
+                    <br />- Final score: <strong>97 out of 100 points (97%)</strong>
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Classification Settings */}
         <ClassificationSettings 
           classifications={formData.classifications} 
@@ -687,6 +837,13 @@ const QAFormEditor = () => {
             );
           })}
         </DragDropContext>
+
+        {/* Add this after all the group/parameter sections and before the submit button */}
+        {formData.parameters.length > 0 && (
+          <div className="mb-4">
+            <ScoringPreview formData={formData} />
+          </div>
+        )}
 
         {/* Form Actions */}
         <div className="d-flex justify-content-end gap-2 mt-4">

@@ -12,6 +12,7 @@ const AgentComparison = (props) => {
   const navigate = useNavigate();
   const [agents, setAgents] = useState([]);
   const [parameters, setParameters] = useState([]);
+  const [channels, setChannels] = useState([]);
   const [comparison, setComparison] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -24,6 +25,7 @@ const AgentComparison = (props) => {
     endDate: format(new Date(), 'yyyy-MM-dd'),
     selectedAgents: [],
     selectedParameters: [],
+    selectedChannels: [],
     selectedForm: null
   });
 
@@ -109,6 +111,26 @@ const AgentComparison = (props) => {
       console.error('Error fetching forms:', error);
     } finally {
       setFormsLoading(false);
+    }
+  }, []);
+
+  const fetchChannels = useCallback(async () => {
+    try {
+      const response = await fetch('/api/interactions/channels', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch channels');
+      }
+      
+      const data = await response.json();
+      setChannels(data);
+      console.log('Available channels:', data);
+    } catch (error) {
+      console.error('Error fetching channels:', error);
     }
   }, []);
 
@@ -233,6 +255,7 @@ const AgentComparison = (props) => {
     };
     
     fetchOptions();
+    fetchChannels();
   }, [userInfo]);
 
   useEffect(() => {
@@ -270,6 +293,10 @@ const AgentComparison = (props) => {
         params.append('parameters', filters.selectedParameters.map(p => p.value).join(','));
       }
       
+      if (filters.selectedChannels.length > 0) {
+        params.append('channels', filters.selectedChannels.map(c => c.value).join(','));
+      }
+
       const response = await fetch(`/api/analytics/agent-comparison?${params}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
@@ -368,7 +395,7 @@ const AgentComparison = (props) => {
       <div className="card mb-4">
         <div className="card-body">
           <div className="row g-3">
-          <div className="col-md-6">
+          <div className="col-md-3">
             <label className="form-label">QA Form</label>
             <Select
               options={forms.map(form => ({
@@ -400,7 +427,19 @@ const AgentComparison = (props) => {
                 onChange={(e) => handleFilterChange('endDate', e.target.value)}
               />
             </div>
-            
+            <div className="col-md-3">
+              <label className="form-label">Channels</label>
+              <Select
+                isMulti
+                options={channels.map(channel => ({
+                  value: channel.id,
+                  label: `${channel.name} (${channel.type})`
+                }))}
+                value={filters.selectedChannels}
+                onChange={(selected) => handleFilterChange('selectedChannels', selected)}
+                placeholder="All channels"
+              />
+            </div>
             <div className="col-md-6">
               <label className="form-label">Select Agents to Compare</label>
               <Select

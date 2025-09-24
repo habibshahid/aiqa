@@ -10,7 +10,7 @@ router.use(authenticateToken);
 // Get agent comparison data
 router.get('/agent-comparison', async (req, res) => {
   try {
-    const { startDate, endDate, agentsData, parameters, formId } = req.query;
+    const { startDate, endDate, agentsData, parameters, formId, channels } = req.query;
 
     let agents = agentsData;
 
@@ -65,6 +65,12 @@ router.get('/agent-comparison', async (req, res) => {
       };
     }
     
+    if (channels) {
+      const channelList = channels.split(',');
+      query["interactionData.channel"] = { $in: channelList };
+      console.log('Filtering by channels:', channelList);
+    }
+
     console.log('MongoDB Query:', JSON.stringify(query));
     
     // First check if we have any evaluations at all
@@ -196,7 +202,7 @@ router.get('/agent-comparison', async (req, res) => {
 // Get trend analysis data
 router.get('/trends', async (req, res) => {
   try {
-    const { startDate, endDate, agentIdentification, queueId, interval = 'day', formId } = req.query;
+    const { startDate, endDate, agentIdentification, queueId, interval = 'day', formId, channelId } = req.query;
     
     let agentId = agentIdentification;
 
@@ -207,7 +213,7 @@ router.get('/trends', async (req, res) => {
       res.set('X-Restricted-View', 'agent-only');
     }
 
-    console.log('Trend Analysis Request:', { startDate, endDate, agentId, queueId, interval: 'day', formId });
+    console.log('Trend Analysis Request:', { startDate, endDate, agentId, queueId, interval: 'day', formId, channelId });
     
     const query = {};
     
@@ -251,6 +257,12 @@ router.get('/trends', async (req, res) => {
       query["interactionData.queue.id"] = { $in: [queueId, parseInt(queueId)] };
     }
     
+    if (channelId) {
+      const channelList = [channelId];
+      query["interactionData.channel"] = { $in: channelList };
+      console.log('Filtering by channels:', channelList);
+    }
+
     console.log('MongoDB Query:', JSON.stringify(query));
     
     // Check if we have any evaluations
@@ -298,13 +310,22 @@ router.get('/trends', async (req, res) => {
             neutral: 0,
             negative: 0
           },
-          parameters: {}
+          parameters: {},
+          channels: {}
         };
       }
       
       trends[key].count++;
       trends[key].totalScore += eval.evaluationData?.evaluation?.totalScore || 0;
       
+      if (eval.interactionData) {
+        const channel = eval.interactionData.channel || 'call';
+        if (!trends[key].channels[channel]) {
+          trends[key].channels[channel] = 0;
+        }
+        trends[key].channels[channel]++;
+      }
+
       // Track sentiments
       const sentiment = Array.isArray(eval.evaluationData?.evaluation?.customerSentiment)
         ? eval.evaluationData?.evaluation?.customerSentiment[0]

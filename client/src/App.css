@@ -36,3 +36,70 @@
     transform: rotate(360deg);
   }
 }
+
+
+/* Scoring Configuration Card */
+.scoring-config-card {
+  border-left: 4px solid #0d6efd;
+}
+
+/* Scoring Preview Component */
+.scoring-preview {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.scoring-preview .card-header {
+  background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+}
+
+.scoring-preview table {
+  margin-bottom: 0;
+}
+
+.scoring-preview .table td,
+.scoring-preview .table th {
+  vertical-align: middle;
+}
+
+/* Scoring Mode Badges */
+.badge-scoring-award {
+  background-color: #28a745;
+  color: white;
+}
+
+.badge-scoring-deduct {
+  background-color: #ffc107;
+  color: #212529;
+}
+
+/* Animated Score Changes */
+.score-value {
+  transition: all 0.3s ease;
+}
+
+.score-value.changing {
+  transform: scale(1.1);
+  color: #0d6efd;
+}
+
+/* Visual Indicators */
+.deduction-indicator {
+  color: #dc3545;
+  font-weight: bold;
+}
+
+.award-indicator {
+  color: #28a745;
+  font-weight: bold;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .scoring-config-card .row > div {
+    margin-bottom: 1rem;
+  }
+  
+  .scoring-preview .table {
+    font-size: 0.875rem;
+  }
+}

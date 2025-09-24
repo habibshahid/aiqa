@@ -63,6 +63,97 @@ const ScoreCard = ({ title, value, maxValue, percentage, bgColor = 'bg-primary',
   </div>
 );
 
+const EnhancedScoreCard = ({ evaluation, scores }) => {
+  const scoringMechanism = evaluation.scoringMechanism || 'award';
+  const isDeductMode = scoringMechanism === 'deduct';
+  const formTotalScore = evaluation.formTotalScore || scores.overall.maxScore;
+  const totalDeductions = evaluation.evaluationData?.evaluation?.totalDeductions || 0;
+  
+  if (isDeductMode) {
+    return (
+      <div className="row mb-4">
+        <div className="col-md-3">
+          <div className="card mb-3">
+            <div className="card-body bg-primary text-white">
+              <h6 className="card-subtitle mb-2">Starting Score</h6>
+              <h2 className="card-title mb-0">{formTotalScore}</h2>
+              <small>Total available points</small>
+            </div>
+          </div>
+        </div>
+        
+        <div className="col-md-3">
+          <div className="card mb-3">
+            <div className="card-body bg-danger text-white">
+              <h6 className="card-subtitle mb-2">Total Deductions</h6>
+              <h2 className="card-title mb-0">-{totalDeductions}</h2>
+              <small>Points deducted</small>
+            </div>
+          </div>
+        </div>
+        
+        <div className="col-md-3">
+          <div className="card mb-3">
+            <div className="card-body bg-warning text-dark">
+              <h6 className="card-subtitle mb-2">Classification Impact</h6>
+              <h2 className="card-title mb-0">
+                -{(scores.overall.rawScore - scores.overall.adjustedScore).toFixed(1)}
+              </h2>
+              <small>Additional deductions</small>
+            </div>
+          </div>
+        </div>
+        
+        <div className="col-md-3">
+          <div className="card mb-3">
+            <div className={`card-body ${
+              scores.overall.percentage >= 80 ? 'bg-success' :
+              scores.overall.percentage >= 60 ? 'bg-warning' : 'bg-danger'
+            } text-white`}>
+              <h6 className="card-subtitle mb-2">Final Score</h6>
+              <h2 className="card-title mb-0">
+                {scores.overall.adjustedScore.toFixed(1)} / {formTotalScore}
+              </h2>
+              <small>{scores.overall.percentage}%</small>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Award mode - existing display
+  return (
+    <div className="row mb-4">
+      <ScoreCard 
+        title="Raw Score" 
+        value={scores.overall.rawScore.toFixed(1)} 
+        maxValue={scores.overall.maxScore} 
+        percentage={Math.round((scores.overall.rawScore / scores.overall.maxScore) * 100)}
+        bgColor="bg-info"
+        subtitle="Before classification impacts"
+      />
+      <ScoreCard 
+        title="Classification Impact" 
+        value={`-${(scores.overall.rawScore - scores.overall.adjustedScore).toFixed(1)}`} 
+        maxValue="" 
+        percentage=""
+        bgColor="bg-warning"
+        subtitle="Points deducted"
+      />
+      <ScoreCard 
+        title="Final Score" 
+        value={scores.overall.adjustedScore.toFixed(1)} 
+        maxValue={scores.overall.maxScore} 
+        percentage={scores.overall.percentage}
+        bgColor={scores.overall.percentage >= 80 ? 'bg-success' : 
+                scores.overall.percentage >= 60 ? 'bg-warning' : 'bg-danger'}
+        subtitle="After all adjustments"
+      />
+    </div>
+  );
+};
+
 // NEW: Channel Info Component
 const ChannelInfoSection = ({ evaluation, messageData }) => {
   const channel = evaluation.interactionData?.channel || evaluation.interaction?.channel || 'call';
@@ -1368,6 +1459,36 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
     );
   };
 
+  const getEvaluationScores = () => {
+    // If in edit mode and we have calculated scores, use those
+    if (isEditMode && calculatedScores) {
+      return calculatedScores;
+    }
+    
+    // Otherwise, use the evaluation's section scores if available
+    if (evaluation?.sectionScores) {
+      return evaluation.sectionScores;
+    }
+    
+    // Fallback to constructing scores from evaluation data
+    const totalScore = evaluation?.evaluation?.totalScore || 
+                      evaluation?.evaluationData?.evaluation?.totalScore || 0;
+    const maxScore = evaluation?.evaluation?.maxScore || 
+                    evaluation?.evaluationData?.evaluation?.maxScore || 
+                    evaluation?.formTotalScore || 100;
+    const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+    
+    return {
+      overall: {
+        rawScore: totalScore,
+        adjustedScore: totalScore,
+        maxScore: maxScore,
+        percentage: percentage
+      },
+      sections: {}
+    };
+  };
+
   // Render method for save/publish messages
   const renderSaveMessages = () => {
     return (
@@ -2225,32 +2346,69 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
       {/* Save/Publish Messages */}
       {renderSaveMessages()}
 
-      {/* Overall Score Summary */}
-      <div className="row mb-4">
-        <ScoreCard 
-          title="Overall Score" 
-          value={isEditMode && calculatedScores ? 
-            calculatedScores.overall.adjustedScore.toFixed(1) : 
-            evaluation.evaluation?.totalScore || evaluation.evaluation?.scores?.overall?.average || 0}
-          maxValue={isEditMode && calculatedScores ? 
-            calculatedScores.overall.maxScore : 
-            evaluation.evaluation?.maxScore || evaluation.evaluation?.scores?.overall?.maxScore || 100}
-          percentage={isEditMode && calculatedScores ? 
-            calculatedScores.overall.percentage : 
-            Math.round(((evaluation.evaluation?.totalScore || evaluation.evaluation?.scores?.overall?.average || 0) / 
-              (evaluation.evaluation?.maxScore || evaluation.evaluation?.scores?.overall?.maxScore || 100)) * 100) || 0}
-          bgColor={
-            (isEditMode && calculatedScores ? calculatedScores.overall.percentage : 
-            Math.round(((evaluation.evaluation?.totalScore || evaluation.evaluation?.scores?.overall?.average || 0) / 
-              (evaluation.evaluation?.maxScore || evaluation.evaluation?.scores?.overall?.maxScore || 100)) * 100) || 0) >= 80 ? 
-            'bg-success' : 
-            (isEditMode && calculatedScores ? calculatedScores.overall.percentage : 
-            Math.round(((evaluation.evaluation?.totalScore || evaluation.evaluation?.scores?.overall?.average || 0) / 
-              (evaluation.evaluation?.maxScore || evaluation.evaluation?.scores?.overall?.maxScore || 100)) * 100) || 0) >= 60 ? 
-            'bg-warning' : 'bg-danger'
-          }
-        />
-      </div>
+      {/* Enhanced Score Display based on scoring mechanism */}
+      {evaluation && (() => {
+        const displayScores = getEvaluationScores();
+        const hasNewScoringMechanism = evaluation.scoringMechanism === 'award' || evaluation.scoringMechanism === 'deduct';
+        
+        if (hasNewScoringMechanism) {
+          return (
+            <>
+              <EnhancedScoreCard evaluation={evaluation} scores={displayScores} />
+              
+              {/* Scoring mechanism indicator */}
+              <div className="alert alert-info mb-4">
+                <div className="d-flex align-items-center">
+                  <i className="bi bi-info-circle me-2"></i>
+                  <div>
+                    <strong>Scoring Method: </strong>
+                    {evaluation.scoringMechanism === 'deduct' ? (
+                      <>
+                        <span className="badge bg-warning text-dark me-2">Deduct Mode</span>
+                        Points are deducted from a starting total of {evaluation.formTotalScore || 100} for incorrect answers.
+                      </>
+                    ) : (
+                      <>
+                        <span className="badge bg-success me-2">Award Mode</span>
+                        Points are awarded for correct answers, with a maximum possible score of {displayScores.overall.maxScore}.
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          );
+        } else {
+          // Fallback to traditional score display for backward compatibility
+          return (
+            <div className="row mb-4">
+              <ScoreCard 
+                title="Overall Score" 
+                value={isEditMode && calculatedScores ? 
+                  calculatedScores.overall.adjustedScore.toFixed(1) : 
+                  evaluation.evaluation?.totalScore || evaluation.evaluation?.scores?.overall?.average || 0}
+                maxValue={isEditMode && calculatedScores ? 
+                  calculatedScores.overall.maxScore : 
+                  evaluation.evaluation?.maxScore || evaluation.evaluation?.scores?.overall?.maxScore || 100}
+                percentage={isEditMode && calculatedScores ? 
+                  calculatedScores.overall.percentage : 
+                  Math.round(((evaluation.evaluation?.totalScore || evaluation.evaluation?.scores?.overall?.average || 0) / 
+                    (evaluation.evaluation?.maxScore || evaluation.evaluation?.scores?.overall?.maxScore || 100)) * 100) || 0}
+                bgColor={
+                  (isEditMode && calculatedScores ? calculatedScores.overall.percentage : 
+                  Math.round(((evaluation.evaluation?.totalScore || evaluation.evaluation?.scores?.overall?.average || 0) / 
+                    (evaluation.evaluation?.maxScore || evaluation.evaluation?.scores?.overall?.maxScore || 100)) * 100) || 0) >= 80 ? 
+                  'bg-success' : 
+                  (isEditMode && calculatedScores ? calculatedScores.overall.percentage : 
+                  Math.round(((evaluation.evaluation?.totalScore || evaluation.evaluation?.scores?.overall?.average || 0) / 
+                    (evaluation.evaluation?.maxScore || evaluation.evaluation?.scores?.overall?.maxScore || 100)) * 100) || 0) >= 60 ? 
+                  'bg-warning' : 'bg-danger'
+                }
+              />
+            </div>
+          );
+        }
+      })()}
 
       {/* Evaluation Criteria */}
       {renderEvaluationCriteria()}

@@ -122,6 +122,19 @@ const QAFormSchema = new mongoose.Schema({
       }
     ]
   },
+  scoringMechanism: {
+    type: String,
+    enum: ['award', 'deduct'],
+    default: 'award',
+    description: 'Determines whether points are awarded for correct answers or deducted for incorrect answers'
+  },
+  totalScore: {
+    type: Number,
+    default: 100,
+    min: 0,
+    max: 1000,
+    description: 'Total starting score when using deduct mechanism'
+  },
   moderationRequired: {
     type: Boolean,
     default: true,
@@ -151,6 +164,18 @@ QAFormSchema.pre('validate', function(next) {
   
   if (!allValid) {
     this.invalidate('parameters', 'All parameters must reference a valid group');
+  }
+  
+  // Validate scoring mechanism and total score
+  if (this.scoringMechanism === 'deduct' && (!this.totalScore || this.totalScore <= 0)) {
+    this.invalidate('totalScore', 'Total score must be greater than 0 when using deduct mechanism');
+  }
+  
+  // Calculate expected total score based on parameters when using award mechanism
+  if (this.scoringMechanism === 'award' && this.parameters && this.parameters.length > 0) {
+    const calculatedTotal = this.parameters.reduce((sum, param) => sum + (param.maxScore || 5), 0);
+    // Optionally set totalScore to match the sum of all parameters
+    this.totalScore = calculatedTotal;
   }
   
   next();

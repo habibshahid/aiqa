@@ -11,6 +11,7 @@ const ReportsExport = () => {
   const navigate = useNavigate();
   const [agents, setAgents] = useState([]);
   const [queues, setQueues] = useState([]);
+  const [channels, setChannels] = useState([]);
   const [forms, setForms] = useState([]);
   const [formParameters, setFormParameters] = useState([]);
   const [formsLoading, setFormsLoading] = useState(true);
@@ -24,8 +25,10 @@ const ReportsExport = () => {
     endDate: format(new Date(), 'yyyy-MM-dd'),
     selectedAgent: null,
     selectedQueue: null,
+    selectedChannel: null,
     selectedForm: null,
-    reportType: { value: 'evaluations', label: 'Evaluations' }
+    reportType: { value: 'evaluations', label: 'Evaluations' },
+    agentId: '' // Add this for the regular select element
   });
 
   useEffect(() => {
@@ -80,14 +83,13 @@ const ReportsExport = () => {
         setQueues(queuesData);
         setForms(formsData);
         
-        {isRestrictedView && (
-          <div className="alert alert-info d-flex align-items-center mb-4">
-            <Lock size={18} className="me-2" />
-            <div>
-              <strong>Agent View:</strong> You can only export reports for your own evaluations.
-            </div>
-          </div>
-        )}
+        try {
+          const channelsData = await api.getChannels();
+          setChannels(channelsData || []);
+        } catch (error) {
+          console.error('Error fetching channels:', error);
+          setChannels([]);
+        }
 
         // If there's only one form, select it automatically
         if (formsData.length === 1) {
@@ -115,34 +117,10 @@ const ReportsExport = () => {
 
   // Fetch form parameters when a form is selected
   useEffect(() => {
-    const fetchFormParameters = async () => {
-      if (filters.selectedForm) {
-        try {
-          const response = await fetch(`/api/qa-forms/${filters.selectedForm.value}`, {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-          });
-          
-          if (!response.ok) {
-            throw new Error('Failed to fetch form details');
-          }
-          
-          const formData = await response.json();
-          if (formData.parameters) {
-            setFormParameters(formData.parameters);
-          }
-        } catch (error) {
-          console.error('Error fetching form details:', error);
-          setFormParameters([]);
-        }
-      } else {
-        setFormParameters([]);
-      }
-    };
-    
     if (filters.selectedForm) {
-      fetchFormParameters();
+      fetchFormParameters(filters.selectedForm.value);
+    } else {
+      setFormParameters([]);
     }
   }, [filters.selectedForm]);
 
@@ -168,8 +146,19 @@ const ReportsExport = () => {
     }
   };
 
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
+  // Updated handleFilterChange to handle both event objects and direct value passing
+  const handleFilterChange = (nameOrEvent, value) => {
+    let name, newValue;
+    
+    // Check if first parameter is an event object
+    if (nameOrEvent && nameOrEvent.target) {
+      name = nameOrEvent.target.name;
+      newValue = nameOrEvent.target.value;
+    } else {
+      // Direct parameters from Select components
+      name = nameOrEvent;
+      newValue = value;
+    }
     
     // If in restricted view, don't allow changing the agent
     if (isRestrictedView && name === 'agentId') {
@@ -178,7 +167,7 @@ const ReportsExport = () => {
     
     setFilters(prev => ({
       ...prev,
-      [name]: value
+      [name]: newValue
     }));
   };
 
@@ -209,14 +198,21 @@ const ReportsExport = () => {
         }
       }
       
+      // For agent filter, use either selectedAgent or agentId
       if (filters.selectedAgent) {
         params.append('agentId', filters.selectedAgent.value);
+      } else if (filters.agentId) {
+        params.append('agentId', filters.agentId);
       }
       
       if (filters.selectedQueue) {
         params.append('queueId', filters.selectedQueue.value);
       }
       
+      if (filters.selectedChannel) {
+        params.append('channel', filters.selectedChannel.value);
+      }
+
       // Determine endpoint based on report type
       const endpoint = `/api/exports/${filters.reportType.value}`;
       
@@ -254,7 +250,16 @@ const ReportsExport = () => {
   };
 
   return (
-    <div className="container-fluid py-4">      
+    <div className="container-fluid py-4">
+      {isRestrictedView && (
+        <div className="alert alert-info d-flex align-items-center mb-4">
+          <Lock size={18} className="me-2" />
+          <div>
+            <strong>Agent View:</strong> You can only export reports for your own evaluations.
+          </div>
+        </div>
+      )}
+      
       <div className="row">
         <div className="col-md-8">
           {/* Filters */}
@@ -296,8 +301,9 @@ const ReportsExport = () => {
                   <input
                     type="date"
                     className="form-control"
+                    name="startDate"
                     value={filters.startDate}
-                    onChange={(e) => handleFilterChange('startDate', e.target.value)}
+                    onChange={handleFilterChange}
                   />
                 </div>
                 
@@ -306,8 +312,9 @@ const ReportsExport = () => {
                   <input
                     type="date"
                     className="form-control"
+                    name="endDate"
                     value={filters.endDate}
-                    onChange={(e) => handleFilterChange('endDate', e.target.value)}
+                    onChange={handleFilterChange}
                   />
                 </div>
                 
@@ -348,6 +355,20 @@ const ReportsExport = () => {
                         onChange={(selected) => handleFilterChange('selectedQueue', selected)}
                         isClearable
                         placeholder="All Queues"
+                      />
+                    </div>
+
+                    <div className="col-md-4">
+                      <label className="form-label">Channel (Optional)</label>
+                      <Select
+                        options={channels.map(channel => ({
+                          value: channel.id,
+                          label: `${channel.name} (${channel.type})`
+                        }))}
+                        value={filters.selectedChannel}
+                        onChange={(selected) => handleFilterChange('selectedChannel', selected)}
+                        isClearable
+                        placeholder="All Channels"
                       />
                     </div>
                   </>

@@ -10,7 +10,7 @@ router.use(authenticateToken);
 // Export evaluations to CSV
 router.get('/evaluations', async (req, res) => {
   try {
-    const { startDate, endDate, agentId, queueId, format: formatType = 'csv', formId, includeParameters } = req.query;
+    const { startDate, endDate, agentId, queueId, channel, format: formatType = 'csv', formId, includeParameters } = req.query;
     
     const query = {};
     
@@ -52,9 +52,19 @@ router.get('/evaluations', async (req, res) => {
       query['interactionData.queue.id'] = queueId;
     }
     
+    // ADD: Channel filter
+    if (channel) {
+      query['interactionData.channel'] = channel;
+      console.log(`Filtering by channel: ${channel}`);
+    }
+    
+    console.log('Export query:', JSON.stringify(query, null, 2));
+    
     const evaluations = await InteractionAIQA.find(query)
       .sort({ createdAt: -1 })
       .lean();
+
+    console.log(`Found ${evaluations.length} evaluations to export`);
 
     // Parse the includeParameters string if provided
     const parametersToInclude = includeParameters ? includeParameters.split(',') : [];
@@ -67,6 +77,7 @@ router.get('/evaluations', async (req, res) => {
         'Date',
         'Agent',
         'Queue',
+        'Channel',
         'Duration',
         'Overall Score',
         'Max Score',
@@ -89,6 +100,7 @@ router.get('/evaluations', async (req, res) => {
           format(new Date(eval.createdAt), 'yyyy-MM-dd HH:mm:ss'),
           eval.interactionData?.agent?.name || 'Unknown',
           eval.interactionData?.queue?.name || 'Unknown',
+          eval.interactionData?.channel || 'voice',
           eval.interactionData?.duration || 0,
           eval.evaluationData?.evaluation?.totalScore || 0,
           eval.evaluationData?.evaluation?.maxScore || 0,
@@ -158,7 +170,7 @@ router.get('/evaluations', async (req, res) => {
 // Export agent performance report
 router.get('/agent-performance', async (req, res) => {
   try {
-    const { startDate, endDate, format: formatType = 'csv', formId, includeParameters } = req.query;
+    const { startDate, endDate, channel, format: formatType = 'csv', formId, includeParameters } = req.query;
     
     const query = {};
     
@@ -192,9 +204,19 @@ router.get('/agent-performance', async (req, res) => {
       }
     }
     
+    // ADD: Channel filter
+    if (channel) {
+      query['interactionData.channel'] = channel;
+      console.log(`Filtering by channel: ${channel}`);
+    }
+    
+    console.log('Export query:', JSON.stringify(query, null, 2));
+    
     const evaluations = await InteractionAIQA.find(query)
       .sort({ createdAt: -1 })
       .lean();
+      
+    console.log(`Found ${evaluations.length} evaluations for agent performance`);
       
     // Group by agent
     const agentData = {};
@@ -202,6 +224,7 @@ router.get('/agent-performance', async (req, res) => {
     evaluations.forEach(eval => {
       const agentId = eval.interactionData?.agent?.id;
       const agentName = eval.interactionData?.agent?.name;
+      const evalChannel = eval.interactionData?.channel || 'voice';
       
       if (!agentId) return;
       
@@ -217,6 +240,7 @@ router.get('/agent-performance', async (req, res) => {
             neutral: 0,
             negative: 0
           },
+          channels: {}, // Track channel breakdown
           parameters: {},
           areasOfImprovement: {}
         };
@@ -225,12 +249,18 @@ router.get('/agent-performance', async (req, res) => {
       agentData[agentId].evaluationCount++;
       agentData[agentId].totalScore += eval.evaluationData?.evaluation?.totalScore || 0;
       
+      // Track channel breakdown
+      if (!agentData[agentId].channels[evalChannel]) {
+        agentData[agentId].channels[evalChannel] = 0;
+      }
+      agentData[agentId].channels[evalChannel]++;
+      
       // Track sentiments
       const sentiment = Array.isArray(eval.evaluationData?.evaluation?.customerSentiment)
         ? eval.evaluationData?.evaluation?.customerSentiment[0]
         : eval.evaluationData?.evaluation?.customerSentiment;
         
-      if (sentiment) {
+      if (sentiment && agentData[agentId].sentiments.hasOwnProperty(sentiment)) {
         agentData[agentId].sentiments[sentiment]++;
       }
       
@@ -245,7 +275,7 @@ router.get('/agent-performance', async (req, res) => {
       // Track parameter scores
       if (eval.evaluationData?.evaluation?.parameters) {
         Object.entries(eval.evaluationData.evaluation.parameters).forEach(([param, data]) => {
-          if (data.score === -1) return; // Skip irrelevant parameters
+          if (!data || data.score === -1) return; // Skip irrelevant parameters
           
           if (!agentData[agentId].parameters[param]) {
             agentData[agentId].parameters[param] = {
@@ -291,7 +321,8 @@ router.get('/agent-performance', async (req, res) => {
         'Positive Sentiment %',
         'Neutral Sentiment %',
         'Negative Sentiment %',
-        'Top Issues'
+        'Top Issues',
+        'Channels' // Add channels summary
       ];
       
       // Add parameters as columns if requested
@@ -321,6 +352,11 @@ router.get('/agent-performance', async (req, res) => {
           .map(([issue, count]) => `${issue} (${count})`)
           .join('; ');
           
+        // Format channels breakdown
+        const channelsBreakdown = Object.entries(agent.channels)
+          .map(([channel, count]) => `${channel}: ${count}`)
+          .join(', ');
+          
         // Base row data
         const row = [
           agent.id,
@@ -330,13 +366,14 @@ router.get('/agent-performance', async (req, res) => {
           positivePct,
           neutralPct,
           negativePct,
-          topIssues
+          topIssues,
+          channelsBreakdown
         ];
         
         // Add parameter scores
         const parameters = parametersToInclude.length > 0 
           ? parametersToInclude 
-          : csvHeader.slice(8);
+          : csvHeader.slice(9); // Skip first 9 headers which are not parameters
           
         parameters.forEach(param => {
           row.push(agent.parameters[param]?.avgScore || 0);

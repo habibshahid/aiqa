@@ -10,7 +10,7 @@ router.use(authenticateToken);
 // Get dashboard metrics and QA data
 router.get('/metrics', async (req, res) => {
   try {
-    let { agentId, queueId, startDate, endDate, formId } = req.query;
+    let { agentId, queueId, channelId, startDate, endDate, formId } = req.query;
     
     // If user is not admin, restrict to their agent data only
     if (!req.user.isAdmin && req.user.agentId) {
@@ -23,6 +23,7 @@ router.get('/metrics', async (req, res) => {
     const filters = {
       ...(agentId && { agentId }),
       ...(queueId && { queueId }),
+      ...(channelId && { channelId }), 
       ...(formId && { formId }),
       ...(startDate && endDate && {
         dateRange: { start: startDate, end: endDate }
@@ -80,7 +81,8 @@ router.get('/filters', async (req, res) => {
     res.status(500).json({ 
       message: 'Error fetching filter options',
       agents: [],
-      queues: [] 
+      queues: [],
+      channels: []
     });
   }
 });

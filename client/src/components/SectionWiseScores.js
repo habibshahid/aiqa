@@ -11,6 +11,10 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
     overall: { rawScore: 0, adjustedScore: 0, maxScore: 0, percentage: 0 }
   };
 
+  const scoringMechanism = evaluation.scoringMechanism || 'award';
+  const isDeductMode = scoringMechanism === 'deduct';
+  const formTotalScore = evaluation.formTotalScore || 100;
+
   // Map all group IDs to names
   const groupMap = {};
   qaForm.groups.forEach(group => {
@@ -115,172 +119,223 @@ const SectionWiseScores = ({ evaluation, qaForm }) => {
   return (
     <div className="card mb-4">
       <div className="card-header">
-        <h5 className="card-title mb-0">Group-wise Scoring</h5>
+        <h5 className="card-title mb-0">
+          {isDeductMode ? 'Section-wise Deductions' : 'Section-level Scores'}
+        </h5>
       </div>
       <div className="card-body">
-        {/* Overall Score Summary */}
-        <div className="row mb-4">
-          <div className="col-12">
-            <div className="d-flex justify-content-between align-items-center mb-2">
-              <h5 className="mb-0">Overall Score</h5>
-              <div className="d-flex align-items-center">
-                <h5 className="mb-0 me-2">{overallAdjustedScore.toFixed(2)}/{overallMaxScore}</h5>
-                <span className={`badge bg-${
-                  overallPercentage >= 80 ? 'success' :
-                  overallPercentage >= 60 ? 'warning' : 'danger'
-                }`}>
-                  {overallPercentage}%
-                </span>
-              </div>
-            </div>
-            <div className="progress" style={{ height: '12px' }}>
-              <div 
-                className={`progress-bar bg-${
-                  overallPercentage >= 80 ? 'success' :
-                  overallPercentage >= 60 ? 'warning' : 'danger'
-                }`} 
-                role="progressbar" 
-                style={{ width: `${overallPercentage}%` }} 
-                aria-valuenow={overallPercentage} 
-                aria-valuemin="0" 
-                aria-valuemax="100"
-              ></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Classification Impact Legend */}
-        <div className="row mb-4">
-          <div className="col-12">
-            <h6 className="mb-2">Classification Impact</h6>
-            <div className="d-flex flex-wrap gap-3">
-              {Object.entries(classificationMap).map(([key, value]) => (
-                <div key={key} className="d-flex align-items-center">
-                  <span className={`badge bg-${value.color} me-2`}>{value.label}</span>
-                  <span className="small text-muted">-{value.impact}% impact</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Group-wise Scores */}
-        <div className="row">
-          {Object.entries(groupScores).map(([groupId, groupScore]) => {
-            const rawScore = groupScore.rawScore || 0;
-            const maxScore = groupScore.maxScore || 0;
-            const adjustedScore = groupScore.adjustedScore || 0;
-            const percentage = groupScore.percentage || 0;
-
-            // Determine classification badge
-            const classification = groupScore.highestClassification || null;
-            const classificationData = classification ? classificationMap[classification] : null;
-            
-            return (
-              <div key={groupId} className="col-md-6 mb-4">
-                <div className="card h-100 border">
-                  <div className="card-header bg-light d-flex justify-content-between align-items-center">
-                    <h6 className="card-title mb-0">{groupScore.name || groupMap[groupId] || 'Unknown Group'}</h6>
-                    {classification && (
-                      <span className={`badge bg-${classificationData?.color || 'secondary'}`}>
-                        {classificationData?.label || classification}
-                      </span>
-                    )}
-                  </div>
-                  <div className="card-body">
-                    <div className="d-flex justify-content-between align-items-center mb-2">
-                      <div>Score</div>
-                      <div className="d-flex align-items-center">
-                        <div className="me-2">{adjustedScore.toFixed(2)}/{maxScore}</div>
-                        <span className={`badge bg-${
-                          percentage >= 80 ? 'success' :
-                          percentage >= 60 ? 'warning' : 'danger'
+        <p className="text-muted mb-3">
+          {isDeductMode ? (
+            <>
+              Starting with {formTotalScore} points, deductions are applied for each incorrect answer. 
+              Classification impacts further reduce the remaining score.
+            </>
+          ) : (
+            <>
+              Section scores reflect the impact of classifications. When a section contains a question 
+              with a classification, the section's actual earned points are reduced by the defined percentage.
+            </>
+          )}
+        </p>
+        
+        <div className="table-responsive">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Section</th>
+                {isDeductMode ? (
+                  <>
+                    <th>Base Score</th>
+                    <th>Answer Deductions</th>
+                    <th>Classification Impact</th>
+                    <th>Total Deductions</th>
+                    <th>Final Score</th>
+                    <th>Percentage</th>
+                  </>
+                ) : (
+                  <>
+                    <th>Raw Score</th>
+                    <th>Classification Impact</th>
+                    <th>Deduction</th>
+                    <th>Final Score</th>
+                    <th>Percentage</th>
+                  </>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {qaForm.groups.map(group => {
+                const sectionId = group.id;
+                const sectionName = group.name;
+                
+                // Get section data if it exists, or create placeholder data
+                const section = mergedScores.sections[sectionId] || {
+                  name: sectionName,
+                  rawScore: 0,
+                  maxScore: 0,
+                  adjustedScore: 0,
+                  percentage: 0,
+                  deductions: 0,
+                  classifications: { minor: false, moderate: false, major: false },
+                  highestClassification: null,
+                  highestClassificationImpact: 0
+                };
+                
+                if (isDeductMode) {
+                  const baseScore = section.maxScore || 0;
+                  const answerDeductions = section.deductions || 0;
+                  const classificationDeduction = section.rawScore - section.adjustedScore;
+                  const totalDeductions = answerDeductions + classificationDeduction;
+                  
+                  return (
+                    <tr key={sectionId}>
+                      <td>{section.name}</td>
+                      <td>{baseScore.toFixed(1)}</td>
+                      <td>
+                        <span className="text-danger">-{answerDeductions.toFixed(1)}</span>
+                      </td>
+                      <td>
+                        {section.highestClassification ? (
+                          <span className="d-flex align-items-center">
+                            <span className={`badge bg-${
+                              section.highestClassification === 'major' ? 'danger' :
+                              section.highestClassification === 'moderate' ? 'warning' : 'info'
+                            } me-2`}>
+                              {section.highestClassification}
+                            </span>
+                            <span className="text-danger">
+                              -{classificationDeduction.toFixed(1)} ({section.highestClassificationImpact}%)
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="badge bg-secondary">None</span>
+                        )}
+                      </td>
+                      <td>
+                        <span className="text-danger fw-bold">-{totalDeductions.toFixed(1)}</span>
+                      </td>
+                      <td>{section.adjustedScore.toFixed(1)} / {baseScore.toFixed(1)}</td>
+                      <td>
+                        <div className={`badge bg-${
+                          section.percentage >= 80 ? 'success' :
+                          section.percentage >= 60 ? 'warning' : 'danger'
                         }`}>
-                          {percentage}%
+                          {section.percentage}%
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                } else {
+                  // Award mode - existing display
+                  const deduction = section.rawScore - section.adjustedScore;
+                  
+                  return (
+                    <tr key={sectionId}>
+                      <td>{section.name}</td>
+                      <td>{section.rawScore.toFixed(1)} / {section.maxScore}</td>
+                      <td>
+                        {section.classifications?.major ? (
+                          <span className="badge bg-danger">Major ({section.highestClassificationImpact}%)</span>
+                        ) : section.classifications?.moderate ? (
+                          <span className="badge bg-warning">Moderate ({section.highestClassificationImpact}%)</span>
+                        ) : section.classifications?.minor ? (
+                          <span className="badge bg-info">Minor ({section.highestClassificationImpact}%)</span>
+                        ) : (
+                          <span className="badge bg-secondary">None</span>
+                        )}
+                      </td>
+                      <td>
+                        {deduction > 0 ? (
+                          <span className="text-danger">-{deduction.toFixed(1)}</span>
+                        ) : (
+                          <span>0</span>
+                        )}
+                      </td>
+                      <td>{section.adjustedScore.toFixed(1)} / {section.maxScore}</td>
+                      <td>
+                        <div className={`badge bg-${
+                          section.percentage >= 80 ? 'success' :
+                          section.percentage >= 60 ? 'warning' : 'danger'
+                        }`}>
+                          {section.percentage}%
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+              })}
+              
+              {/* Overall Summary Row */}
+              <tr className="table-active fw-bold">
+                <td>Overall</td>
+                {isDeductMode ? (
+                  <>
+                    <td>{formTotalScore}</td>
+                    <td>
+                      <span className="text-danger">
+                        -{mergedScores.overall.totalDeductions || (formTotalScore - mergedScores.overall.rawScore)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="text-danger">
+                        -{(mergedScores.overall.rawScore - mergedScores.overall.adjustedScore).toFixed(1)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="text-danger fw-bold">
+                        -{((formTotalScore - mergedScores.overall.adjustedScore).toFixed(1))}
+                      </span>
+                    </td>
+                    <td>{mergedScores.overall.adjustedScore.toFixed(1)} / {formTotalScore}</td>
+                  </>
+                ) : (
+                  <>
+                    <td>{mergedScores.overall.rawScore.toFixed(1)} / {mergedScores.overall.maxScore}</td>
+                    <td>-</td>
+                    <td>
+                      {(mergedScores.overall.rawScore - mergedScores.overall.adjustedScore) > 0 ? (
+                        <span className="text-danger">
+                          -{(mergedScores.overall.rawScore - mergedScores.overall.adjustedScore).toFixed(1)}
                         </span>
-                      </div>
-                    </div>
-                    <div className="progress mb-3" style={{ height: '8px' }}>
-                      <div 
-                        className={`progress-bar bg-${
-                          percentage >= 80 ? 'success' :
-                          percentage >= 60 ? 'warning' : 'danger'
-                        }`} 
-                        role="progressbar" 
-                        style={{ width: `${percentage}%` }} 
-                        aria-valuenow={percentage} 
-                        aria-valuemin="0" 
-                        aria-valuemax="100"
-                      ></div>
-                    </div>
-                    
-                    {/* Detailed Parameter Breakdown */}
-                    <ul className="list-group list-group-flush">
-                      {qaForm.parameters
-                        .filter(param => param.group === groupId)
-                        .map((param, index) => {
-                          // Find the corresponding parameter data in evaluation
-                          const paramData = evaluation.evaluation?.scores?.categories?.[param.name] || {};
-                          
-                          // Check if the parameter is N/A
-                          const isNA = paramData.score === -1;
-                          
-                          return (
-                            <li 
-                              key={index} 
-                              className={`list-group-item px-0 py-2 border-0 border-bottom ${isNA ? 'text-muted' : ''}`}
-                            >
-                              <div className="d-flex justify-content-between align-items-center">
-                                <div className="d-flex align-items-center">
-                                  <span>{param.name}</span>
-                                  {isNA && (
-                                    <span className="badge bg-secondary ms-2">N/A</span>
-                                  )}
-                                  {!isNA && param.classification && (
-                                    <span className={`badge bg-${
-                                      classificationMap[param.classification]?.color || 'secondary'
-                                    } ms-2`}>
-                                      {classificationMap[param.classification]?.label || param.classification}
-                                    </span>
-                                  )}
-                                </div>
-                                <div>
-                                  {isNA ? (
-                                    <span className="badge bg-secondary">N/A</span>
-                                  ) : (
-                                    <span className={`badge ${
-                                      (paramData.score / param.maxScore) >= 0.8 ? 'bg-success' :
-                                      (paramData.score / param.maxScore) >= 0.6 ? 'bg-warning' : 'bg-danger'
-                                    }`}>
-                                      {paramData.score}/{param.maxScore}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              {!isNA && paramData.explanation && (
-                                <div className="text-muted small mt-1">
-                                  {paramData.explanation}
-                                </div>
-                              )}
-                            </li>
-                          );
-                        })}
-                    </ul>
+                      ) : (
+                        <span>0</span>
+                      )}
+                    </td>
+                    <td>{mergedScores.overall.adjustedScore.toFixed(1)} / {mergedScores.overall.maxScore}</td>
+                  </>
+                )}
+                <td>
+                  <div className={`badge bg-${
+                    mergedScores.overall.percentage >= 80 ? 'success' :
+                    mergedScores.overall.percentage >= 60 ? 'warning' : 'danger'
+                  }`}>
+                    {mergedScores.overall.percentage}%
                   </div>
-                </div>
-              </div>
-            );
-          })}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-
-        {/* Classification Impact Explanation */}
+        
         <div className="alert alert-info mt-3">
-          <h6 className="mb-2">How Classification Impacts Are Applied:</h6>
+          <h6 className="mb-2">
+            {isDeductMode ? 'How Deduct Scoring Works:' : 'How Classification Impacts Are Applied:'}
+          </h6>
           <ul className="mb-0">
-            <li>Each group has its highest classification impact applied to its total score.</li>
-            <li>The impact is calculated as a percentage deduction from the group's raw score.</li>
-            <li>For example, a "Major" classification with a 50% impact will reduce the group's score by half if severe issues are found.</li>
-            <li>The final overall score reflects these group-level adjustments.</li>
+            {isDeductMode ? (
+              <>
+                <li>Each section starts with an equal portion of the total score ({formTotalScore} points).</li>
+                <li>Points are deducted for each incorrect answer in that section.</li>
+                <li>Classification impacts (minor/moderate/major) apply additional percentage-based deductions.</li>
+                <li>The final score shows what remains after all deductions.</li>
+              </>
+            ) : (
+              <>
+                <li>When a section contains questions with different classifications, the highest classification is applied.</li>
+                <li>The deduction is calculated based on the actual earned points in that section, not the maximum possible.</li>
+                <li>For example, if a section has earned 20 points and contains a "moderate" question with a 25% impact, 5 points (25% of 20) will be deducted.</li>
+              </>
+            )}
           </ul>
         </div>
       </div>

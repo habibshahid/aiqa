@@ -6,6 +6,7 @@ import { PhoneIncoming, PhoneOutgoing } from 'lucide-react';
 import Select from 'react-select';
 import WelcomeTourDialog from '../components/tour/WelcomeTourDialog';
 import LowBalanceNotification from '../components/LowBalanceNotification';
+import { api } from '../services/api';
 
 const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
 
@@ -330,7 +331,8 @@ const Dashboard = () => {
   const [filters, setFilters] = useState({
     selectedForm: null,
     agents: [],
-    queues: []
+    queues: [],
+    channels: []
   });
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -339,6 +341,7 @@ const Dashboard = () => {
   const [selectedFilters, setSelectedFilters] = useState({
     agentId: '',
     queueId: '',
+    channelId: '',
     startDate: format(new Date(), 'yyyy-MM-dd'),
     endDate: format(new Date(), 'yyyy-MM-dd'),
     selectedForm: null
@@ -505,6 +508,7 @@ const Dashboard = () => {
       // Add filters to query params - ENSURE NO DUPLICATES
       if (selectedFilters.agentId) queryParams.append('agentId', selectedFilters.agentId);
       if (selectedFilters.queueId) queryParams.append('queueId', selectedFilters.queueId);
+      if (selectedFilters.channelId) queryParams.append('channelId', selectedFilters.channelId); // NEW: Add channel filter
       if (selectedFilters.startDate) queryParams.append('startDate', selectedFilters.startDate);
       if (selectedFilters.endDate) queryParams.append('endDate', selectedFilters.endDate);
       if (selectedFilters.formId) queryParams.append('formId', selectedFilters.formId);
@@ -555,6 +559,11 @@ const Dashboard = () => {
       if (!filtersData.queues || filtersData.queues.length === 0) {
         console.log('No queues in filters data, fetching queues separately');
         await fetchQueues();
+      }
+
+      if (!filtersData.channels || filtersData.channels.length === 0) {
+        console.log('No channels in filters data, fetching channels separately');
+        await fetchChannels();
       }
 
       // Log raw metrics for debugging
@@ -628,6 +637,23 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error fetching queues:', error);
       return false;
+    }
+  }, []);
+
+  const fetchChannels = useCallback(async () => {
+    try {
+      console.log('Fetching channels...');
+      const channels = await api.getChannels();
+      
+      if (channels && channels.length > 0) {
+        console.log(`Got ${channels.length} channels`);
+        setFilters(prev => ({
+          ...prev,
+          channels: channels
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching channels:', error);
     }
   }, []);
 
@@ -719,6 +745,7 @@ const Dashboard = () => {
     const currentFilters = JSON.stringify({
       agentId: selectedFilters.agentId,
       queueId: selectedFilters.queueId,
+      channelId: selectedFilters.channelId,
       startDate: selectedFilters.startDate,
       endDate: selectedFilters.endDate,
       formId: selectedFilters.formId
@@ -746,6 +773,7 @@ const Dashboard = () => {
   }, [
     selectedFilters.agentId, 
     selectedFilters.queueId, 
+    selectedFilters.channelId,
     selectedFilters.startDate, 
     selectedFilters.endDate, 
     selectedFilters.formId,
@@ -804,7 +832,7 @@ const Dashboard = () => {
             </div>
           )}
           <div className="row g-3">
-            <div className="col-md-3">
+            <div className="col-md-4">
               <select 
                 className="form-select"
                 name="agentId"
@@ -820,7 +848,7 @@ const Dashboard = () => {
               </select>
             </div>
 
-            <div className="col-md-3">
+            <div className="col-md-4">
               <select
                 className="form-select"
                 name="queueId"
@@ -837,6 +865,23 @@ const Dashboard = () => {
               </select>
             </div>
             
+            <div className="col-md-4">
+              <select
+                className="form-select"
+                name="channelId"
+                value={selectedFilters.channelId}
+                onChange={(e) => handleFilterChange('channelId', e)}
+              >
+                <option value="">All Channels</option>
+                {filters?.channels?.map(channel => (
+                  <option key={channel.id} value={channel.id}>
+                    {channel.name} ({channel.type})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="row g-3">
             <div className="col-md-3">
               <input
                 type="date"
@@ -974,7 +1019,16 @@ const Dashboard = () => {
                 <div>
                   <h3 className="text-success">{metrics.qa.highestScore.percentage}%</h3>
                   <p className="mb-1">Agent: {metrics.qa.highestScore.agent}</p>
-                  <p className="mb-1">Score: {metrics.qa.highestScore.score} / {metrics.qa.highestScore.maxScore}</p>
+                  <p className="mb-1">
+                    Score: {metrics.qa.highestScore.score} / {metrics.qa.highestScore.maxScore}
+                    {metrics.qa.highestScore.scoringMechanism && (
+                      <span className={`badge ms-2 bg-${
+                        metrics.qa.highestScore.scoringMechanism === 'deduct' ? 'warning text-dark' : 'success'
+                      }`}>
+                        {metrics.qa.highestScore.scoringMechanism === 'deduct' ? 'Deduct' : 'Award'}
+                      </span>
+                    )}
+                  </p>
                   <small className="text-muted">
                     {new Date(metrics.qa.highestScore.date).toLocaleDateString()}
                   </small>
@@ -1083,6 +1137,7 @@ const Dashboard = () => {
                   <th>Queue</th>
                   <th>Duration</th>
                   <th>Caller ID</th>
+                  <th>Scoring</th>
                   <th>Score</th>
                   <th>Evaluator</th>
                   <th>Actions</th>
@@ -1122,6 +1177,13 @@ const Dashboard = () => {
                           )}
                           <span>{evaluation.caller?.id || 'Unknown'}</span>
                         </div>
+                      </td>
+                      <td>  {/* NEW CELL */}
+                        <span className={`badge bg-${
+                          evaluation.scoringMechanism === 'deduct' ? 'warning text-dark' : 'success'
+                        }`}>
+                          {evaluation.scoringMechanism === 'deduct' ? 'Deduct' : 'Award'}
+                        </span>
                       </td>
                       <td>
                         <div className={`badge bg-${

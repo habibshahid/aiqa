@@ -28,6 +28,11 @@ const calculateEvaluationScores = async (evaluation, formId) => {
       throw new Error(`QA Form not found: ${formId}`);
     }
     
+    const scoringMechanism = qaForm.scoringMechanism || 'award';
+    const formTotalScore = qaForm.totalScore || 100;
+
+    console.log(`Scoring mechanism: ${scoringMechanism}, Form total score: ${formTotalScore}`);
+
     // Classification impact definitions from QA form
     const classificationImpacts = {};
     if (qaForm.classifications && Array.isArray(qaForm.classifications)) {
@@ -48,6 +53,7 @@ const calculateEvaluationScores = async (evaluation, formId) => {
     
     // Initialize section scores for each group
     const sectionScores = {};
+    let totalDeductions = 0;
     
     if (qaForm.groups && Array.isArray(qaForm.groups)) {
       qaForm.groups.forEach(group => {
@@ -64,7 +70,8 @@ const calculateEvaluationScores = async (evaluation, formId) => {
             major: false
           },
           highestClassification: null,
-          highestClassificationImpact: 0
+          highestClassificationImpact: 0,
+          deductions: 0
         };
       });
     } else {
@@ -82,7 +89,8 @@ const calculateEvaluationScores = async (evaluation, formId) => {
           major: false
         },
         highestClassification: null,
-        highestClassificationImpact: 0
+        highestClassificationImpact: 0,
+        deductions: 0
       };
     }
     
@@ -181,13 +189,30 @@ const calculateEvaluationScores = async (evaluation, formId) => {
       if (!section) return;
       
       // Add parameter to section
-      section.parameters.push({
-        name: paramData.name,
-        score: paramData.score || 0,
-        maxScore: paramData.maxScore,
-        classification: paramData.classification || 'none',
-        scoringType: paramData.scoringType
-      });
+      if (scoringMechanism === 'award') {
+        section.parameters.push({
+          name: paramData.name,
+          score: paramData.score || 0,
+          maxScore: paramData.maxScore,
+          classification: paramData.classification || 'none',
+          scoringType: paramData.scoringType
+        });
+      } else if (scoringMechanism === 'deduct') {
+        // Negative marking - calculate deductions
+        const deduction = paramData.maxScore - paramData.score;
+        
+        section.parameters.push({
+          name: paramData.name,
+          score: paramData.score || 0,
+          maxScore: paramData.maxScore,
+          deduction: deduction,
+          classification: paramData.classification || 'none',
+          scoringType: paramData.scoringType
+        });
+        
+        section.deductions += deduction;
+        totalDeductions += deduction;
+      }
       
       // Update raw scores
       section.rawScore += paramData.score || 0;
@@ -213,34 +238,78 @@ const calculateEvaluationScores = async (evaluation, formId) => {
     let totalMaxScore = 0;
     let totalAdjustedScore = 0;
     
-    Object.values(sectionScores).forEach(section => {
-      if (section.maxScore === 0) return; // Skip empty sections
-      
-      // Apply classification impact to calculate adjusted score
-      const impact = section.highestClassification ? 
-        (classificationImpacts[section.highestClassification] || 0) : 0;
+    if (scoringMechanism === 'award') {
+      Object.values(sectionScores).forEach(section => {
+        if (section.maxScore === 0) return; // Skip empty sections
         
-      // Calculate deduction
-      const deduction = section.rawScore * impact;
-      section.adjustedScore = Math.max(0, section.rawScore - deduction);
+        // Apply classification impact to calculate adjusted score
+        const impact = section.highestClassification ? 
+          (classificationImpacts[section.highestClassification] || 0) : 0;
+          
+        // Calculate deduction
+        const deduction = section.rawScore * impact;
+        section.adjustedScore = Math.max(0, section.rawScore - deduction);
+        
+        console.log(`Section ${section.name}: ${section.highestClassification || 'none'} classification (${impact * 100}% impact)`);
+        console.log(`  Raw score: ${section.rawScore}, Deduction: ${deduction}, Adjusted: ${section.adjustedScore}`);
+        
+        // Calculate percentage
+        section.percentage = Math.round((section.adjustedScore / section.maxScore) * 100);
+        
+        // Add to overall totals
+        totalRawScore += section.rawScore;
+        totalMaxScore += section.maxScore;
+        totalAdjustedScore += section.adjustedScore;
+      });
+    } else if (scoringMechanism === 'deduct') {
+      // Negative marking - start with total and deduct
+      const sectionsCount = Object.keys(sectionScores).length;
+      const sectionBaseScore = formTotalScore / sectionsCount; // Distribute total score evenly
       
-      console.log(`Section ${section.name}: ${section.highestClassification || 'none'} classification (${impact * 100}% impact)`);
-      console.log(`  Raw score: ${section.rawScore}, Deduction: ${deduction}, Adjusted: ${section.adjustedScore}`);
+      Object.values(sectionScores).forEach(section => {
+        // Start with section's portion of total score
+        section.maxScore = sectionBaseScore;
+        section.rawScore = Math.max(0, sectionBaseScore - section.deductions);
+        
+        // Apply classification impact on the remaining score
+        const impact = section.highestClassification ?
+          (classificationImpacts[section.highestClassification] || 0) : 0;
+        
+        const additionalDeduction = section.rawScore * impact;
+        section.adjustedScore = Math.max(0, section.rawScore - additionalDeduction);
+        
+        console.log(`Section ${section.name} (Deduct mode):`);
+        console.log(`  Base score: ${sectionBaseScore}, Deductions: ${section.deductions}`);
+        console.log(`  Raw score: ${section.rawScore}, Classification impact: ${additionalDeduction}`);
+        console.log(`  Adjusted score: ${section.adjustedScore}`);
+        
+        section.percentage = Math.round((section.adjustedScore / section.maxScore) * 100);
+        
+        totalMaxScore = formTotalScore;
+      });
       
-      // Calculate percentage
-      section.percentage = Math.round((section.adjustedScore / section.maxScore) * 100);
+      // For deduct mode, calculate totals differently
+      totalRawScore = Math.max(0, formTotalScore - totalDeductions);
       
-      // Add to overall totals
-      totalRawScore += section.rawScore;
-      totalMaxScore += section.maxScore;
-      totalAdjustedScore += section.adjustedScore;
-    });
-    
+      // Apply overall classification impact
+      let overallHighestImpact = 0;
+      Object.values(sectionScores).forEach(section => {
+        if (section.highestClassification) {
+          const impact = classificationImpacts[section.highestClassification] || 0;
+          overallHighestImpact = Math.max(overallHighestImpact, impact);
+        }
+      });
+      
+      const overallClassificationDeduction = totalRawScore * overallHighestImpact;
+      totalAdjustedScore = Math.max(0, totalRawScore - overallClassificationDeduction);
+    }
+      
     // Overall score calculations
     const overallPercentage = totalMaxScore > 0 ? 
       Math.round((totalAdjustedScore / totalMaxScore) * 100) : 0;
     
     console.log('Overall scores:');
+    console.log(`  Mechanism: ${scoringMechanism}`);
     console.log(`  Raw score: ${totalRawScore}, Adjusted: ${totalAdjustedScore}, Max: ${totalMaxScore}`);
     console.log(`  Percentage: ${overallPercentage}%`);
     
@@ -250,7 +319,9 @@ const calculateEvaluationScores = async (evaluation, formId) => {
         rawScore: totalRawScore,
         adjustedScore: totalAdjustedScore,
         maxScore: totalMaxScore,
-        percentage: overallPercentage
+        percentage: overallPercentage,
+        scoringMechanism: scoringMechanism,
+        totalDeductions: scoringMechanism === 'deduct' ? totalDeductions : undefined
       }
     };
   } catch (error) {

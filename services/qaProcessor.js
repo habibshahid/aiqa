@@ -1236,7 +1236,14 @@ const processEvaluationResponse = async (apiResponse, interactionId, qaFormId, q
     const parameters = apiResponse.evaluation.parameters || {};
 
     // Calculate scores with proper scoring type handling
-    const { rawScore, maxScore, percentage } = calculateScoresWithTypes(parameters, qaForm);
+    const { 
+      rawScore, 
+      maxScore, 
+      percentage, 
+      scoringMechanism, 
+      totalDeductions,
+      deductionDetails 
+    } = calculateScoresWithTypes(parameters, qaForm);
 
     // Prepare the QA document
     const qaDocument = {
@@ -1244,6 +1251,8 @@ const processEvaluationResponse = async (apiResponse, interactionId, qaFormId, q
       qaFormName,
       qaFormId, 
       evaluator: evaluator || { id: 'system', name: 'AI System' },
+      scoringMechanism: qaForm.scoringMechanism || 'award',
+      formTotalScore: qaForm.totalScore || maxScore,
       evaluationData: {
         usage: apiResponse.usage || {},
         evaluation: {
@@ -1251,7 +1260,9 @@ const processEvaluationResponse = async (apiResponse, interactionId, qaFormId, q
           // Set scores correctly
           totalScore: rawScore,
           maxScore: maxScore,
-          
+          scoringMechanism: qaForm.scoringMechanism || 'award',
+          totalDeductions: totalDeductions,
+          deductionDetails: deductionDetails,
           // Include other evaluation details
           silencePeriods: Array.isArray(apiResponse.evaluation.silencePeriods) 
             ? apiResponse.evaluation.silencePeriods.map(period => ({
@@ -1298,7 +1309,9 @@ const processEvaluationResponse = async (apiResponse, interactionId, qaFormId, q
         rawScore: rawScore,
         adjustedScore: rawScore,
         maxScore: maxScore,
-        percentage: percentage
+        percentage: percentage,
+        scoringMechanism: scoringMechanism,
+        totalDeductions: totalDeductions
       }
     };
     

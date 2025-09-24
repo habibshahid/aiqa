@@ -4,7 +4,7 @@ const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const { Interactions } = require('../config/mongodb');
 const mongoose = require('mongoose');
-const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
+const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'instagram_dm', 'chat', 'email'];
 const messageService = require('../services/messageService');
 const emailService = require('../services/emailService');
 

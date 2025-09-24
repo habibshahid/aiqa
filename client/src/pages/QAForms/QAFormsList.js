@@ -253,6 +253,7 @@ const QAFormsList = () => {
                   <th>Form Name</th>
                   <th>Description</th>
                   <th>Parameters</th>
+                  <th>Scoring</th>
                   <th>Created At</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -278,6 +279,14 @@ const QAFormsList = () => {
                       </span>
                     </td>
                     <td>{form.parameters?.length || 0} parameters</td>
+                    <td>  {/* NEW CELL */}
+                      <span className={`badge bg-${form.scoringMechanism === 'deduct' ? 'warning' : 'success'}`}>
+                        {form.scoringMechanism === 'deduct' ? 'Deduct' : 'Award'}
+                      </span>
+                      {form.scoringMechanism === 'deduct' && (
+                        <small className="text-muted ms-1">({form.totalScore}pts)</small>
+                      )}
+                    </td>
                     <td>{new Date(form.createdAt).toLocaleDateString()}</td>
                     <td>
                       <span className={`badge bg-${form.isActive ? 'success' : 'danger'}`}>
@@ -320,6 +329,14 @@ const QAFormsList = () => {
                 )))}
               </tbody>
             </table>
+          </div>
+          <div className="mt-3">
+            <small className="text-muted">
+              <i className="bi bi-info-circle me-1"></i>
+              <strong>Scoring Mechanisms:</strong> 
+              <span className="badge bg-success ms-2">Award</span> - Points are earned for correct answers. 
+              <span className="badge bg-warning ms-2">Deduct</span> - Points are deducted from a starting total for incorrect answers.
+            </small>
           </div>
         </div>
       )}

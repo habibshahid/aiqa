@@ -42,7 +42,9 @@ router.post('/', authenticateToken, async (req, res) => {
       parameters, 
       groups, 
       classifications,
-      moderationRequired
+      moderationRequired,
+      scoringMechanism,
+      totalScore
     } = req.body;
     
     // Ensure we have at least one parameter
@@ -55,6 +57,26 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'At least one group is required' });
     }
     
+    if (scoringMechanism && !['award', 'deduct'].includes(scoringMechanism)) {
+      return res.status(400).json({ 
+        message: 'Invalid scoring mechanism. Must be either "award" or "deduct"' 
+      });
+    }
+
+    if (scoringMechanism === 'deduct') {
+      if (!totalScore || totalScore <= 0 || totalScore > 1000) {
+        return res.status(400).json({ 
+          message: 'Total score must be between 1 and 1000 when using deduct mechanism' 
+        });
+      }
+    }
+
+    let finalTotalScore = totalScore;
+    if (!scoringMechanism || scoringMechanism === 'award') {
+      // Calculate sum of all parameter max scores
+      finalTotalScore = parameters.reduce((sum, param) => sum + (param.maxScore || 5), 0);
+    }
+
     // Validate classifications
     const requiredClassificationTypes = ['minor', 'moderate', 'major'];
     if (classifications) {
@@ -90,6 +112,8 @@ router.post('/', authenticateToken, async (req, res) => {
       groups,
       classifications: classifications || undefined, // Use default if not provided
       moderationRequired: moderationRequired !== undefined ? moderationRequired : true,
+      scoringMechanism: scoringMechanism || 'award',  // NEW
+      totalScore: finalTotalScore, 
       createdBy: req.user.id,
       updatedBy: req.user.id
     });
@@ -113,7 +137,9 @@ router.put('/:id', authenticateToken, async (req, res) => {
       parameters, 
       groups, 
       classifications,
-      moderationRequired
+      moderationRequired,
+      scoringMechanism,  // NEW
+      totalScore  
     } = req.body;
     
     // Ensure we have at least one parameter
@@ -126,6 +152,28 @@ router.put('/:id', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'At least one group is required' });
     }
     
+    if (scoringMechanism && !['award', 'deduct'].includes(scoringMechanism)) {
+      return res.status(400).json({ 
+        message: 'Invalid scoring mechanism. Must be either "award" or "deduct"' 
+      });
+    }
+    
+    // NEW: Validate total score for deduct mechanism
+    if (scoringMechanism === 'deduct') {
+      if (!totalScore || totalScore <= 0 || totalScore > 1000) {
+        return res.status(400).json({ 
+          message: 'Total score must be between 1 and 1000 when using deduct mechanism' 
+        });
+      }
+    }
+    
+    // NEW: Calculate default total score for award mechanism
+    let finalTotalScore = totalScore;
+    if (scoringMechanism === 'award') {
+      // Calculate sum of all parameter max scores
+      finalTotalScore = parameters.reduce((sum, param) => sum + (param.maxScore || 5), 0);
+    }
+
     // Validate classifications
     const requiredClassificationTypes = ['minor', 'moderate', 'major'];
     if (classifications) {
@@ -163,6 +211,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
         groups,
         classifications: classifications || undefined,
         moderationRequired: moderationRequired !== undefined ? moderationRequired : true,
+        scoringMechanism: scoringMechanism || 'award',  // NEW
+        totalScore: finalTotalScore,
         updatedBy: req.user.id
       },
       { new: true }
@@ -326,6 +376,8 @@ router.post('/:id/clone', authenticateToken, async (req, res) => {
       parameters: originalForm.parameters,
       groups: originalForm.groups,
       classifications: originalForm.classifications,
+      scoringMechanism: originalForm.scoringMechanism || 'award',  // NEW
+      totalScore: originalForm.totalScore || 100, 
       createdBy: req.user.id,
       updatedBy: req.user.id
     });
@@ -357,7 +409,9 @@ router.get('/:id/export', authenticateToken, async (req, res) => {
       moderationRequired: form.moderationRequired,
       parameters: form.parameters,
       groups: form.groups,
-      classifications: form.classifications
+      classifications: form.classifications,
+      scoringMechanism: form.scoringMechanism || 'award',  // NEW
+      totalScore: form.totalScore || 100  
     };
     
     // Return the exported form
@@ -384,6 +438,11 @@ router.post('/import', authenticateToken, async (req, res) => {
       return res.status(409).json({ message: 'A form with this name already exists' });
     }
     
+    let totalScore = formData.totalScore;
+    if (!totalScore || (formData.scoringMechanism === 'award')) {
+      totalScore = formData.parameters.reduce((sum, param) => sum + (param.maxScore || 5), 0);
+    }
+
     // Create the new form
     const newForm = new QAForm({
       name: formData.name,
@@ -398,6 +457,8 @@ router.post('/import', authenticateToken, async (req, res) => {
         { type: 'moderate', impactPercentage: 25, description: 'Moderate impact (25%)' },
         { type: 'major', impactPercentage: 50, description: 'Major impact (50%)' }
       ],
+      scoringMechanism: formData.scoringMechanism || 'award',  // NEW
+      totalScore: totalScore,  
       createdBy: req.user.id,
       updatedBy: req.user.id
     });
