@@ -323,4 +323,152 @@ router.get('/:interactionId/details', async (req, res) => {
   }
 });
 
+router.get('/:interactionId/recording', async (req, res) => {
+  try {
+    const { interactionId } = req.params;
+    
+    console.log(`Fetching recording details for interaction: ${interactionId}`);
+    
+    // Get interaction
+    const interaction = await Interactions.findById(interactionId).lean();
+    
+    if (!interaction) {
+      return res.status(404).json({ message: 'Interaction not found' });
+    }
+    
+    // Check if this is an audio channel
+    const isTextChannel = TEXT_CHANNELS.includes(interaction.channel);
+    if (isTextChannel) {
+      return res.status(400).json({ message: 'This interaction is not an audio channel' });
+    }
+    
+    // Extract recording information
+    const recordingData = {
+      interactionId: interaction._id,
+      hasRecording: false,
+      recordingUrl: null,
+      recordingType: null,
+      duration: null,
+      agent: {
+        id: interaction.agent?.id,
+        name: interaction.agent?.name
+      },
+      caller: {
+        id: interaction.caller?.id
+      },
+      timestamps: {
+        createdAt: interaction.createdAt,
+        queueDuration: interaction.timestamps?.queueDuration,
+        talkDuration: interaction.timestamps?.talkDuration,
+        wrapUpDuration: interaction.timestamps?.wrapUpDuration
+      },
+      channel: interaction.channel,
+      direction: interaction.direction
+    };
+    
+    // Check for recording in different locations
+    if (interaction.extraPayload?.callRecording?.webPathQA) {
+      recordingData.hasRecording = true;
+      recordingData.recordingUrl = interaction.extraPayload.callRecording.webPathQA;
+      recordingData.recordingType = 'QA';
+    } else if (interaction.extraPayload?.callRecording?.webPath) {
+      recordingData.hasRecording = true;
+      recordingData.recordingUrl = interaction.extraPayload.callRecording.webPath;
+      recordingData.recordingType = 'standard';
+    } else if (interaction.recording?.webPath) {
+      recordingData.hasRecording = true;
+      recordingData.recordingUrl = interaction.recording.webPath;
+      recordingData.recordingType = 'legacy';
+    }
+    
+    // Add duration information
+    if (interaction.connect?.duration) {
+      recordingData.duration = interaction.connect.duration;
+    } else if (interaction.timestamps?.talkDuration) {
+      recordingData.duration = interaction.timestamps.talkDuration;
+    }
+    
+    res.json({
+      success: true,
+      recording: recordingData
+    });
+    
+  } catch (error) {
+    console.error('Error fetching recording details:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error fetching recording details', 
+      error: error.message 
+    });
+  }
+});
+
+router.get('/:interactionId/summary', async (req, res) => {
+  try {
+    const { interactionId } = req.params;
+    
+    console.log(`Fetching interaction summary: ${interactionId}`);
+    
+    // Get interaction
+    const interaction = await Interactions.findById(interactionId).lean();
+    
+    if (!interaction) {
+      return res.status(404).json({ message: 'Interaction not found' });
+    }
+    
+    const isTextChannel = TEXT_CHANNELS.includes(interaction.channel);
+    
+    // Build summary object
+    const summary = {
+      _id: interaction._id,
+      channel: interaction.channel,
+      isTextChannel,
+      agent: interaction.agent,
+      caller: interaction.caller,
+      queue: interaction.queue,
+      createdAt: interaction.createdAt,
+      direction: interaction.direction,
+      workCodes: interaction.workCodes
+    };
+    
+    // Add channel-specific data
+    if (isTextChannel) {
+      // Get message/email count
+      if (interaction.channel === 'email') {
+        const emailCount = await emailService.countEmailsForInteraction(interactionId);
+        summary.messageCount = emailCount;
+        summary.contentType = 'emails';
+      } else {
+        const messageCount = await messageService.getMessageCountForInteraction(interactionId);
+        summary.messageCount = messageCount;
+        summary.contentType = 'messages';
+      }
+    } else {
+      // Add recording info for audio channels
+      summary.hasRecording = !!(
+        interaction.extraPayload?.callRecording?.webPathQA || 
+        interaction.extraPayload?.callRecording?.webPath ||
+        interaction.recording?.webPath
+      );
+      summary.duration = interaction.connect?.duration || interaction.timestamps?.talkDuration;
+      summary.timestamps = interaction.timestamps;
+      summary.extraPayload = interaction.extraPayload;
+      summary.recording = interaction.recording;
+    }
+    
+    res.json({
+      success: true,
+      interaction: summary
+    });
+    
+  } catch (error) {
+    console.error('Error fetching interaction summary:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error fetching interaction summary', 
+      error: error.message 
+    });
+  }
+});
+
 module.exports = router;

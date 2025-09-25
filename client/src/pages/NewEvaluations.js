@@ -5,6 +5,9 @@ import { format } from 'date-fns';
 import Select from 'react-select';
 import { api } from '../services/api';
 import { PhoneIncoming, PhoneOutgoing } from 'lucide-react';
+import AudioPlaybackModal from '../components/AudioPlaybackModal';
+import MessagesEmailModal from '../components/MessagesEmailModal';
+import InlineAudioPlayer from '../components/InlineAudioPlayer';
 
 // NEW: Multi-channel support constants
 const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
@@ -29,7 +32,11 @@ const NewEvaluations = () => {
   const [showQueueConfirmation, setShowQueueConfirmation] = useState(false);
   const [queuedJobsCount, setQueuedJobsCount] = useState(0);
   const [userInfo, setUserInfo] = useState(null);
-  
+  const [audioModalOpen, setAudioModalOpen] = useState(false);
+  const [messagesModalOpen, setMessagesModalOpen] = useState(false);
+  const [selectedInteractionForModal, setSelectedInteractionForModal] = useState(null);
+
+
   // Filters state - ENHANCED with channels
   const [filters, setFilters] = useState({
     startDate: format(new Date(new Date().setHours(0, 0, 0, 0)), 'yyyy-MM-dd\'T\'HH:mm'),
@@ -60,6 +67,28 @@ const NewEvaluations = () => {
   const [interactions, setInteractions] = useState([]);
   const [selectedInteractions, setSelectedInteractions] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
+
+  const handleAudioPlayClick = (interaction, e) => {
+    e.stopPropagation(); // Prevent row click
+    setSelectedInteractionForModal(interaction);
+    setAudioModalOpen(true);
+  };
+
+  const handleMessagesClick = (interaction, e) => {
+    e.stopPropagation(); // Prevent row click
+    setSelectedInteractionForModal(interaction);
+    setMessagesModalOpen(true);
+  };
+
+  const closeAudioModal = () => {
+    setAudioModalOpen(false);
+    setSelectedInteractionForModal(null);
+  };
+
+  const closeMessagesModal = () => {
+    setMessagesModalOpen(false);
+    setSelectedInteractionForModal(null);
+  };
 
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -849,23 +878,63 @@ const NewEvaluations = () => {
                       {/* ENHANCED: Recording/Messages column */}
                       <td>
                         {isTextChannel ? (
-                          interaction.messageCount > 0 ? (
-                            <span className="badge bg-success">
-                              {interaction.messageCount} Messages
-                            </span>
-                          ) : (
-                            <span className="badge bg-warning">No Messages</span>
-                          )
-                        ) : (
-                          <>
-                            {interaction.extraPayload?.callRecording?.webPathQA ? (
-                              <span className="badge bg-success">Available</span>
-                            ) : interaction.extraPayload?.callRecording?.webPath ? (
-                              <span className="badge bg-warning">Available</span>
+                          // Text channels (Messages/Emails)
+                          <div className="d-flex align-items-center">
+                            {interaction.messageCount > 0 ? (
+                              <div className="d-flex align-items-center">
+                                <button
+                                  className="btn btn-outline-primary btn-sm me-2"
+                                  onClick={(e) => handleMessagesClick(interaction, e)}
+                                  title={`View ${interaction.channel === 'email' ? 'emails' : 'messages'}`}
+                                >
+                                  <i className={`fas ${interaction.channel === 'email' ? 'fa-envelope' : 'fa-comments'} me-1`}></i>
+                                  {interaction.messageCount}
+                                </button>
+                                <small className="text-muted">
+                                  {interaction.channel === 'email' ? 'emails' : 'messages'}
+                                </small>
+                              </div>
                             ) : (
-                              <span className="badge bg-danger">Missing</span>
+                              <span className="badge bg-warning">
+                                No {interaction.channel === 'email' ? 'Emails' : 'Messages'}
+                              </span>
                             )}
-                          </>
+                          </div>
+                        ) : (
+                          // Audio channels (Call Recordings)
+                          <div>
+                            {hasRecording ? (
+                              <div>
+                                {/* Inline audio player for small spaces */}
+                                <div className="d-none d-lg-block">
+                                  <InlineAudioPlayer interaction={interaction} />
+                                </div>
+                                
+                                {/* Button for smaller screens or when inline player doesn't fit */}
+                                <div className="d-lg-none">
+                                  <button
+                                    className="btn btn-outline-success btn-sm"
+                                    onClick={(e) => handleAudioPlayClick(interaction, e)}
+                                    title="Play recording"
+                                  >
+                                    <i className="fas fa-play me-1"></i>
+                                    Recording
+                                  </button>
+                                </div>
+                                
+                                {/* Modal button for larger view */}
+                                <button
+                                  className="btn btn-link btn-sm p-0 ms-2 d-none d-lg-inline"
+                                  onClick={(e) => handleAudioPlayClick(interaction, e)}
+                                  title="Open recording in modal"
+                                >
+                                  <i className="fas fa-external-link-alt"></i>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="badge bg-warning">No Recording</span>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td>
@@ -889,6 +958,21 @@ const NewEvaluations = () => {
           </div>
         </div>
       )}
+      {/* Audio Playback Modal */}
+      <AudioPlaybackModal
+        isOpen={audioModalOpen}
+        onClose={closeAudioModal}
+        interaction={selectedInteractionForModal}
+        title="Call Recording"
+      />
+
+      {/* Messages/Email Modal */}
+      <MessagesEmailModal
+        isOpen={messagesModalOpen}
+        onClose={closeMessagesModal}
+        interaction={selectedInteractionForModal}
+        title={selectedInteractionForModal?.channel === 'email' ? 'Email Thread' : 'Message Conversation'}
+      />
       <QueueConfirmationModal />
     </div>
   );

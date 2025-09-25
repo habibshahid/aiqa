@@ -3,7 +3,7 @@ require('dotenv').config();
 const https = require('https');
 const fs = require('fs');
 const express = require('express');
-const rateLimit = require('express-rate-limit');
+//const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 const path = require('path');
 const helmet = require('helmet');
@@ -42,13 +42,13 @@ app.use(sanitize());
 app.set('trust proxy', true);
 
 // Rate limiting
-const limiter = rateLimit({
+/*const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100 // limit each IP to 100 requests per windowMs
-});
+});*/
 
 // Apply rate limiter to API routes
-app.use('/api/', limiter);
+//app.use('/api/', limiter);
 
 // CORS configuration
 app.use(cors({
@@ -80,24 +80,79 @@ app.get('/api/audio-proxy', async (req, res) => {
       return res.status(400).json({ message: 'URL parameter is required' });
     }
 
-    const response = await fetch(audioUrl);
-    
-    if (!response.ok) {
-      throw new Error(`Audio file not found: ${response.status}`);
+    console.log('Proxying audio from:', audioUrl);
+
+    // Validate URL format
+    if (!audioUrl.startsWith('http://') && !audioUrl.startsWith('https://')) {
+      return res.status(400).json({ message: 'Invalid URL format' });
     }
 
-    // Forward headers
-    res.set('Content-Type', response.headers.get('content-type'));
-    res.set('Content-Length', response.headers.get('content-length'));
-    res.set('Accept-Ranges', 'bytes');
+    const response = await fetch(audioUrl, {
+      method: 'GET',
+      timeout: 30000, // 30 second timeout
+    });
+    
+    if (!response.ok) {
+      console.error('Audio fetch failed:', response.status, response.statusText);
+      return res.status(response.status).json({ 
+        message: `Audio file not available: ${response.statusText}` 
+      });
+    }
 
-    // Get the response as buffer and send it
-    const buffer = await response.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    // Get content type from the original response
+    const contentType = response.headers.get('content-type') || 'audio/mpeg';
+    const contentLength = response.headers.get('content-length');
+
+    // Set appropriate headers for audio streaming
+    res.set({
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET',
+      'Access-Control-Allow-Headers': 'Range'
+    });
+
+    if (contentLength) {
+      res.set('Content-Length', contentLength);
+    }
+
+    // Handle range requests for audio seeking
+    const range = req.headers.range;
+    if (range && contentLength) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : parseInt(contentLength) - 1;
+      const chunksize = (end - start) + 1;
+
+      res.status(206);
+      res.set({
+        'Content-Range': `bytes ${start}-${end}/${contentLength}`,
+        'Content-Length': chunksize.toString()
+      });
+    }
+
+    // Stream the audio data
+    response.body.pipe(res);
+
+    // Handle stream errors
+    response.body.on('error', (error) => {
+      console.error('Audio stream error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'Error streaming audio file' });
+      }
+    });
 
   } catch (error) {
-    console.error('Error proxying audio:', error);
-    res.status(500).json({ message: 'Error fetching audio file' });
+    console.error('Audio proxy error:', error);
+    
+    if (!res.headersSent) {
+      if (error.name === 'AbortError' || error.message.includes('timeout')) {
+        res.status(408).json({ message: 'Request timeout - audio file may be too large' });
+      } else {
+        res.status(500).json({ message: 'Error proxying audio file', error: error.message });
+      }
+    }
   }
 });
 
