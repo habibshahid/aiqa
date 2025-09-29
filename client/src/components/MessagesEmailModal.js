@@ -1,4 +1,4 @@
-// client/src/components/MessagesEmailModal.js
+// client/src/components/MessagesEmailModal.js - IMPROVED VERSION
 import React, { useState, useEffect } from 'react';
 
 const MessagesEmailModal = ({ 
@@ -62,8 +62,146 @@ const MessagesEmailModal = ({
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const formatFullDateTime = (timestamp) => {
+    const date = new Date(parseInt(timestamp));
+    return date.toLocaleString([], { 
+      weekday: 'short',
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
   const getSpeakerBadgeColor = (speakerRole) => {
     return speakerRole === 'customer' ? 'bg-info' : 'bg-success';
+  };
+
+  // Enhanced text processing for emails
+  const processEmailText = (text) => {
+    if (!text) return { parts: [], hasThreads: false };
+    
+    // Convert various newline formats to standard \n
+    let processedText = text
+      .replace(/\\r\\n/g, '\n')  // Handle escaped newlines from JSON
+      .replace(/\\n/g, '\n')     // Handle escaped \n
+      .replace(/\r\n/g, '\n')    // Handle Windows line endings
+      .replace(/\r/g, '\n');     // Handle old Mac line endings
+    
+    // Detect email thread separators
+    const separatorPatterns = [
+      /_{5,}/,                    // Underscores (_____)
+      /^From:.*?Sent:.*?To:/ms,  // Email header pattern
+      /^On .+? wrote:/m,          // "On [date] [person] wrote:"
+      /-{5,}/,                    // Dashes (-----)
+    ];
+    
+    // Split by separator patterns
+    let parts = [];
+    let currentPart = '';
+    let inThread = false;
+    
+    const lines = processedText.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Check if this line is a separator
+      const isSeparator = separatorPatterns.some(pattern => pattern.test(line));
+      
+      if (isSeparator && currentPart.trim()) {
+        // Save the current part
+        parts.push({ text: currentPart.trim(), isThread: inThread });
+        currentPart = line + '\n';
+        inThread = true;
+      } else {
+        currentPart += line + '\n';
+      }
+    }
+    
+    // Add the last part
+    if (currentPart.trim()) {
+      parts.push({ text: currentPart.trim(), isThread: inThread });
+    }
+    
+    // If no parts were created, return the whole text
+    if (parts.length === 0) {
+      parts.push({ text: processedText, isThread: false });
+    }
+    
+    return { 
+      parts, 
+      hasThreads: parts.length > 1 || parts.some(p => p.isThread) 
+    };
+  };
+
+  // Extract metadata from email text
+  const extractEmailMetadata = (text) => {
+    const lines = text.split('\n');
+    const metadata = {
+      from: null,
+      sent: null,
+      to: null,
+      cc: null,
+      subject: null
+    };
+    
+    for (let line of lines) {
+      if (line.match(/^From:/i)) {
+        metadata.from = line.replace(/^From:\s*/i, '').trim();
+      } else if (line.match(/^Sent:/i)) {
+        metadata.sent = line.replace(/^Sent:\s*/i, '').trim();
+      } else if (line.match(/^To:/i)) {
+        metadata.to = line.replace(/^To:\s*/i, '').trim();
+      } else if (line.match(/^Cc:/i)) {
+        metadata.cc = line.replace(/^Cc:\s*/i, '').trim();
+      } else if (line.match(/^Subject:/i)) {
+        metadata.subject = line.replace(/^Subject:\s*/i, '').trim();
+      }
+    }
+    
+    return metadata;
+  };
+
+  // Convert text to clickable links
+  const linkifyText = (text) => {
+    // Simple URL detection and conversion
+    const urlRegex = /(https?:\/\/[^\s<]+)/g;
+    const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/g;
+    
+    let result = text;
+    
+    // Replace URLs with links
+    result = result.replace(urlRegex, (url) => {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+    });
+    
+    // Replace email addresses with mailto links
+    result = result.replace(emailRegex, (email) => {
+      return `<a href="mailto:${email}">${email}</a>`;
+    });
+    
+    return result;
+  };
+
+  // Render email content with proper formatting
+  const renderEmailContent = (text) => {
+    if (!text) return null;
+    
+    // Process the text to add line breaks and links
+    const processedText = linkifyText(text);
+    
+    // Split into lines and render
+    const lines = processedText.split('\n');
+    
+    return (
+      <div>
+        {lines.map((line, index) => (
+          <div key={index} dangerouslySetInnerHTML={{ __html: line || '&nbsp;' }} />
+        ))}
+      </div>
+    );
   };
 
   if (!isOpen) return null;
@@ -81,7 +219,7 @@ const MessagesEmailModal = ({
         tabIndex="-1"
         onKeyDown={handleKeyDown}
       >
-        <div className="modal-dialog modal-lg">
+        <div className="modal-dialog modal-xl">
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">{title || displayTitle}</h5>
@@ -164,69 +302,131 @@ const MessagesEmailModal = ({
 
                   <hr />
 
-                  {/* Message Thread */}
-                  <div className="conversation-container" style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                  {/* Message/Email Thread */}
+                  <div className="conversation-container" style={{ maxHeight: '600px', overflowY: 'auto' }}>
                     {messagesData.conversation?.transcription?.map((entry, index) => {
                       const timestamp = Object.keys(entry)[0];
                       const messageData = entry[timestamp];
-                      const time = formatMessageTime(timestamp);
+                      const fullDateTime = formatFullDateTime(timestamp);
                       const isCustomer = messageData.speaker_role === 'customer';
                       
+                      // Process email content
+                      const emailContent = processEmailText(messageData.original_text);
+                      
                       return (
-                        <div key={index} className={`d-flex mb-3 ${isCustomer ? '' : 'flex-row-reverse'}`}>
-                          <div className={`message-bubble p-3 rounded-3 ${isCustomer ? 'bg-light me-3' : 'bg-primary text-white ms-3'}`} 
-                               style={{ maxWidth: '70%', minWidth: '200px' }}>
+                        <div key={index} className="mb-4">
+                          {/* Email Card */}
+                          <div className={`email-card border rounded shadow-sm ${isCustomer ? 'border-info' : 'border-success'}`}>
                             
-                            {/* Message Header */}
-                            <div className="d-flex align-items-center mb-2">
-                              <span className={`badge ${getSpeakerBadgeColor(messageData.speaker_role)} me-2`}>
-                                {messageData.speaker_role === 'customer' ? 'Customer' : 'Agent'}
-                              </span>
-                              <small className={isCustomer ? 'text-muted' : 'text-white-50'}>
-                                {time}
-                              </small>
-                            </div>
-                            
-                            {/* Show subject for emails */}
-                            {isEmail && messageData.subject && (
-                              <div className="mb-2">
-                                <small className={isCustomer ? 'text-dark fw-bold' : 'text-white fw-bold'}>
-                                  <i className="fas fa-envelope me-1"></i>
-                                  Subject: {messageData.subject}
-                                </small>
-                              </div>
-                            )}
-                            
-                            {/* Message Content */}
-                            <div className="message-text" style={{ lineHeight: '1.4', wordBreak: 'break-word' }}>
-                              {messageData.original_text}
-                            </div>
-                            
-                            {/* Show attachment indicators */}
-                            {messageData.attachments && messageData.attachments.length > 0 && (
-                              <div className="mt-2">
-                                <small className={isCustomer ? 'text-muted' : 'text-white-50'}>
-                                  <i className="fas fa-paperclip me-1"></i>
-                                  {messageData.attachments.length} attachment{messageData.attachments.length > 1 ? 's' : ''}:
-                                </small>
-                                <div className="mt-1">
-                                  {messageData.attachments.map((attachment, i) => (
-                                    <span key={i} className={`badge ${isCustomer ? 'bg-secondary' : 'bg-light text-dark'} me-1 mb-1`}>
-                                      {attachment.type || attachment.data?.extension || 'file'}
-                                    </span>
-                                  ))}
+                            {/* Email Header */}
+                            <div className={`email-header p-3 ${isCustomer ? 'bg-light' : 'bg-primary bg-opacity-10'}`}>
+                              <div className="d-flex justify-content-between align-items-start mb-2">
+                                <div className="d-flex align-items-center flex-wrap">
+                                  <span className={`badge ${getSpeakerBadgeColor(messageData.speaker_role)} me-2 mb-1`}>
+                                    {messageData.speaker_role === 'customer' ? 'Customer' : 'Agent'}
+                                  </span>
+                                  <strong className="me-2">{messageData.speaker_id || 'Unknown'}</strong>
+                                  {messageData.direction && (
+                                    <small className={`badge ${messageData.direction === 'inbound' ? 'bg-info' : 'bg-success'} mb-1`}>
+                                      <i className={`fas fa-arrow-${messageData.direction === 'inbound' ? 'down' : 'up'} me-1`}></i>
+                                      {messageData.direction}
+                                    </small>
+                                  )}
                                 </div>
+                                <small className="text-muted text-nowrap">{fullDateTime}</small>
                               </div>
-                            )}
+                              
+                              {/* Subject */}
+                              {isEmail && messageData.subject && (
+                                <div className="mb-0">
+                                  <small className="text-muted">
+                                    <i className="fas fa-envelope me-1"></i>
+                                    Subject:
+                                  </small>
+                                  <div className="fw-bold">{messageData.subject}</div>
+                                </div>
+                              )}
+                            </div>
                             
-                            {/* Show forwarded indicator */}
-                            {messageData.forwarded && (
-                              <div className="mt-1">
-                                <small className={isCustomer ? 'text-muted' : 'text-white-50'}>
-                                  <i className="fas fa-share me-1"></i>Forwarded
-                                </small>
-                              </div>
-                            )}
+                            {/* Email Body */}
+                            <div className="email-body p-3">
+                              {emailContent.parts.map((part, partIndex) => {
+                                const metadata = extractEmailMetadata(part.text);
+                                const hasMetadata = metadata.from || metadata.sent || metadata.to;
+                                
+                                return (
+                                  <div key={partIndex} className={partIndex > 0 ? 'mt-4 pt-3 border-top' : ''}>
+                                    {/* Thread metadata */}
+                                    {part.isThread && hasMetadata && partIndex > 0 && (
+                                      <div className="email-metadata bg-light p-3 rounded mb-3 border-start border-4 border-secondary">
+                                        <div className="text-muted mb-2">
+                                          <i className="fas fa-reply me-2"></i>
+                                          <strong>Previous Email in Thread</strong>
+                                        </div>
+                                        {metadata.from && (
+                                          <div className="mb-1"><strong>From:</strong> {metadata.from}</div>
+                                        )}
+                                        {metadata.sent && (
+                                          <div className="mb-1"><strong>Sent:</strong> {metadata.sent}</div>
+                                        )}
+                                        {metadata.to && (
+                                          <div className="mb-1"><strong>To:</strong> {metadata.to}</div>
+                                        )}
+                                        {metadata.cc && (
+                                          <div className="mb-1"><strong>Cc:</strong> {metadata.cc}</div>
+                                        )}
+                                        {metadata.subject && (
+                                          <div className="mb-1"><strong>Subject:</strong> {metadata.subject}</div>
+                                        )}
+                                      </div>
+                                    )}
+                                    
+                                    {/* Email content with proper line breaks */}
+                                    <div 
+                                      className="email-content-text"
+                                      style={{
+                                        lineHeight: '1.6',
+                                        fontFamily: 'Arial, sans-serif',
+                                        fontSize: '14px',
+                                        color: '#333',
+                                        wordBreak: 'break-word'
+                                      }}
+                                    >
+                                      {renderEmailContent(part.text)}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              
+                              {/* Attachments */}
+                              {messageData.attachments && messageData.attachments.length > 0 && (
+                                <div className="mt-3 pt-3 border-top">
+                                  <div className="d-flex align-items-center mb-2">
+                                    <i className="fas fa-paperclip me-2 text-muted"></i>
+                                    <small className="text-muted">
+                                      {messageData.attachments.length} attachment{messageData.attachments.length > 1 ? 's' : ''}
+                                    </small>
+                                  </div>
+                                  <div className="d-flex flex-wrap gap-2">
+                                    {messageData.attachments.map((attachment, i) => (
+                                      <div key={i} className="badge bg-secondary d-flex align-items-center">
+                                        <i className="fas fa-file me-1"></i>
+                                        {attachment.type || attachment.data?.extension || 'file'}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Forwarded indicator */}
+                              {messageData.forwarded && (
+                                <div className="mt-2">
+                                  <small className="badge bg-warning">
+                                    <i className="fas fa-share me-1"></i>Forwarded
+                                  </small>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
@@ -259,23 +459,49 @@ const MessagesEmailModal = ({
       </div>
 
       <style jsx>{`
-        .message-bubble {
-          word-wrap: break-word;
-          box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        .email-card {
+          transition: box-shadow 0.2s;
+        }
+
+        .email-card:hover {
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+        }
+
+        .email-header {
+          border-bottom: 2px solid #dee2e6;
+        }
+
+        .email-metadata {
+          font-size: 13px;
+        }
+
+        .email-content-text {
+          max-width: 100%;
+          overflow-x: auto;
+        }
+
+        .email-content-text a {
+          color: #0d6efd;
+          text-decoration: underline;
+          word-break: break-all;
+        }
+
+        .email-content-text a:hover {
+          color: #0a58ca;
         }
 
         .conversation-container::-webkit-scrollbar {
-          width: 8px;
+          width: 10px;
         }
 
         .conversation-container::-webkit-scrollbar-track {
           background: #f1f1f1;
-          border-radius: 4px;
+          border-radius: 5px;
         }
 
         .conversation-container::-webkit-scrollbar-thumb {
           background: #c1c1c1;
-          border-radius: 4px;
+          border-radius: 5px;
         }
 
         .conversation-container::-webkit-scrollbar-thumb:hover {
