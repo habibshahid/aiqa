@@ -224,6 +224,438 @@ const ChannelInfoSection = ({ evaluation, messageData }) => {
   );
 };
 
+const TicketInformationSection = ({ interactionId }) => {
+  const [ticketData, setTicketData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [hasTicket, setHasTicket] = useState(null); // null = unknown, true = has ticket, false = no ticket
+  const [showFull, setShowFull] = useState(false);
+
+  useEffect(() => {
+    if (interactionId && isExpanded && hasTicket === null) {
+      fetchTicketData();
+    }
+  }, [interactionId, isExpanded]);
+
+  const fetchTicketData = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`/api/tickets/by-interaction/${interactionId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (data.hasTicket === false) {
+          // Interaction has no ticket
+          setHasTicket(false);
+          setError('No ticket associated with this interaction');
+        } else {
+          // Error fetching ticket
+          throw new Error(data.message || 'Failed to fetch ticket information');
+        }
+      } else {
+        // Successfully fetched ticket
+        setHasTicket(true);
+        setTicketData(data.ticket);
+      }
+    } catch (err) {
+      console.error('Error fetching ticket:', err);
+      setError(err.message);
+      setHasTicket(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Don't render if we know there's no ticket
+  if (hasTicket === false) {
+    return null;
+  }
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleString();
+  };
+
+  const getStatusBadgeColor = (status) => {
+    return status === 'Open' ? 'bg-success' : 'bg-secondary';
+  };
+
+  const getPriorityBadgeColor = (priority) => {
+    if (!priority) return 'bg-secondary';
+    const lowerPriority = priority.toLowerCase();
+    if (lowerPriority.includes('high') || lowerPriority.includes('urgent')) return 'bg-danger';
+    if (lowerPriority.includes('medium')) return 'bg-warning';
+    return 'bg-info';
+  };
+
+  return (
+    <div className="card mb-4">
+      <div 
+        className="card-header d-flex justify-content-between align-items-center"
+        style={{ cursor: 'pointer' }}
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <h5 className="card-title mb-0">
+          <i className="fas fa-ticket-alt me-2"></i>
+          Support Ticket Information
+        </h5>
+        <div className="d-flex align-items-center">
+          {ticketData && (
+            <span className={`badge ${getStatusBadgeColor(ticketData.status)} me-2`}>
+              {ticketData.status}
+            </span>
+          )}
+          <button 
+            className="btn btn-sm btn-link text-decoration-none p-0"
+            type="button"
+          >
+            <i className={`fas fa-chevron-${isExpanded ? 'up' : 'down'}`}></i>
+          </button>
+        </div>
+      </div>
+      
+      {isExpanded && (
+        <div className="card-body">
+          {loading ? (
+            <div className="text-center py-4">
+              <div className="spinner-border spinner-border-sm me-2" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              Loading ticket information...
+            </div>
+          ) : error ? (
+            <div className="alert alert-warning">
+              <i className="fas fa-info-circle me-2"></i>
+              {error}
+            </div>
+          ) : ticketData ? (
+            <>
+              {/* Ticket Header Info */}
+              <div className="row mb-3">
+                <div className="col-md-6">
+                  <h6 className="text-muted mb-2">Ticket Number</h6>
+                  <h5 className="mb-0">#{ticketData.ticketNumber}</h5>
+                </div>
+                <div className="col-md-6">
+                  <h6 className="text-muted mb-2">Subject</h6>
+                  <h5 className="mb-0">{ticketData.subject || 'No Subject'}</h5>
+                </div>
+              </div>
+
+              <hr />
+
+              {/* Ticket Details Grid */}
+              <div className="row mb-3">
+                <div className="col-md-3 mb-3">
+                  <small className="text-muted">Status</small>
+                  <div className="fw-bold">
+                    <span className={`badge ${getStatusBadgeColor(ticketData.status)}`}>
+                      {ticketData.status}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="col-md-3 mb-3">
+                  <small className="text-muted">Priority</small>
+                  <div className="fw-bold">
+                    <span className={`badge ${getPriorityBadgeColor(ticketData.priority)}`}>
+                      {ticketData.priority || 'Not Set'}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="col-md-3 mb-3">
+                  <small className="text-muted">Pipeline</small>
+                  <div className="fw-bold">{ticketData.pipeline || 'N/A'}</div>
+                </div>
+                
+                <div className="col-md-3 mb-3">
+                  <small className="text-muted">Stage</small>
+                  <div className="fw-bold">{ticketData.pipelineStage || 'N/A'}</div>
+                </div>
+              </div>
+
+              {/* Assignment Information */}
+              <div className="row mb-3">
+                <div className="col-md-4 mb-3">
+                  <small className="text-muted">Team</small>
+                  <div className="fw-bold">{ticketData.team || 'Not Assigned'}</div>
+                </div>
+                
+                <div className="col-md-4 mb-3">
+                  <small className="text-muted">Team Member</small>
+                  <div className="fw-bold">{ticketData.teamMember || 'Not Assigned'}</div>
+                </div>
+                
+                <div className="col-md-4 mb-3">
+                  <small className="text-muted">Channel</small>
+                  <div className="fw-bold text-capitalize">{ticketData.channel || 'N/A'}</div>
+                </div>
+
+                <div className="col-md-4 mb-3">
+                  <small className="text-muted">SLA</small>
+                  <div className="fw-bold text-capitalize">{ticketData.slaName || 'N/A'}</div>
+                </div>
+              </div>
+
+              {/* Customer Information */}
+              <div className="row mb-3">
+                <div className="col-md-6 mb-3">
+                  <small className="text-muted">Customer</small>
+                  <div className="fw-bold">{ticketData.customer || 'N/A'}</div>
+                </div>
+                
+                <div className="col-md-6 mb-3">
+                  <small className="text-muted">Company</small>
+                  <div className="fw-bold">{ticketData.company || 'N/A'}</div>
+                </div>
+              </div>
+
+              {/* Description */}
+              {ticketData.description && (
+                <div className="mb-3">
+                  <small className="text-muted">Description</small>
+                  <div 
+                    className="p-3 bg-light rounded"
+                    style={{ 
+                      whiteSpace: 'pre-wrap', 
+                      wordBreak: 'break-word',
+                      maxHeight: '200px',
+                      overflowY: 'auto'
+                    }}
+                  >
+                    {ticketData.description}
+                  </div>
+                </div>
+              )}
+
+              {/* Tags and Workflow */}
+              <div className="row mb-3">
+                {ticketData.tags && ticketData.tags.length > 0 && (
+                  <div className="col-md-6 mb-3">
+                    <small className="text-muted">Tags</small>
+                    <div className="mt-1">
+                      {ticketData.tags.map((tag, index) => (
+                        <span key={index} className="badge bg-secondary me-1 mb-1">
+                          <i className="fas fa-tag me-1"></i>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {ticketData.workflow && ticketData.workflow.length > 0 && (
+                  <div className="col-md-6 mb-3">
+                    <small className="text-muted">Workflow</small>
+                    <div className="mt-1">
+                      {ticketData.workflow.map((flow, index) => (
+                        <span key={index} className="badge bg-info me-1 mb-1">
+                          <i className="fas fa-project-diagram me-1"></i>
+                          {flow}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Metrics */}
+              <div className="row mb-3">
+                <div className="col-md-3 mb-2">
+                  <small className="text-muted">Activities</small>
+                  <div className="fw-bold">{ticketData.noOfActivities}</div>
+                </div>
+                
+                <div className="col-md-3 mb-2">
+                  <small className="text-muted">Ticket Life</small>
+                  <div className="fw-bold">{ticketData.ticketLife}</div>
+                </div>
+                
+                <div className="col-md-3 mb-2">
+                  <small className="text-muted">SLA Breach</small>
+                  <div className="fw-bold">
+                    <span className={`badge ${ticketData.slaBreach === 'Yes' ? 'bg-danger' : 'bg-success'}`}>
+                      {ticketData.slaBreach}
+                    </span>
+                  </div>
+                </div>
+                
+                {ticketData.dueDate && (
+                  <div className="col-md-3 mb-2">
+                    <small className="text-muted">Due Date</small>
+                    <div className="fw-bold">{formatDate(ticketData.dueDate)}</div>
+                  </div>
+                )}
+              </div>
+
+              <hr />
+
+              {/* Timestamps */}
+              <div className="row">
+                <div className="col-md-4 mb-2">
+                  <small className="text-muted">Created</small>
+                  <div className="small">
+                    {formatDate(ticketData.timestamps.createdAt)}
+                    {ticketData.timestamps.createdBy && (
+                      <div className="text-muted">by {ticketData.timestamps.createdBy}</div>
+                    )}
+                  </div>
+                </div>
+                
+                {ticketData.timestamps.updatedAt && (
+                  <div className="col-md-4 mb-2">
+                    <small className="text-muted">Last Updated</small>
+                    <div className="small">
+                      {formatDate(ticketData.timestamps.updatedAt)}
+                      {ticketData.timestamps.updatedBy && (
+                        <div className="text-muted">by {ticketData.timestamps.updatedBy}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {ticketData.timestamps.closedAt && (
+                  <div className="col-md-4 mb-2">
+                    <small className="text-muted">Closed</small>
+                    <div className="small">
+                      {formatDate(ticketData.timestamps.closedAt)}
+                      {ticketData.timestamps.closedBy && (
+                        <div className="text-muted">by {ticketData.timestamps.closedBy}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Custom/Dynamic Fields Section */}
+              {ticketData.customFields && Object.keys(ticketData.customFields).length > 0 && (
+                <>
+                  <hr />
+                  <div className="custom-fields-section">
+                    <h6 className="text-muted mb-3">
+                      <i className="fas fa-plus-circle me-2"></i>
+                      Additional Custom Fields
+                    </h6>
+                    <div className="row">
+                      {Object.entries(ticketData.customFields).map(([key, value], index) => {
+                        // Skip null or undefined values
+                        if (value === null || value === undefined) return null;
+                        
+                        // Format the field name (convert camelCase or snake_case to Title Case)
+                        const fieldName = key
+                          .replace(/([A-Z])/g, ' $1') // camelCase to spaces
+                          .replace(/_/g, ' ') // snake_case to spaces
+                          .replace(/\b\w/g, l => l.toUpperCase()) // capitalize first letters
+                          .trim();
+                        
+                        // Format the value based on its type
+                        let displayValue = value;
+                        
+                        // Check if it's a date (ISO string or timestamp)
+                        if (typeof value === 'string' && 
+                            (value.match(/^\d{4}-\d{2}-\d{2}/) || !isNaN(Date.parse(value)))) {
+                          const date = new Date(value);
+                          if (!isNaN(date.getTime())) {
+                            displayValue = date.toLocaleString();
+                          }
+                        }
+                        
+                        // Check if it's a boolean
+                        if (typeof value === 'boolean') {
+                          displayValue = (
+                            <span className={`badge ${value ? 'bg-success' : 'bg-secondary'}`}>
+                              {value ? 'Yes' : 'No'}
+                            </span>
+                          );
+                        }
+                        
+                        // Check if it's a number
+                        if (typeof value === 'number') {
+                          displayValue = value.toLocaleString();
+                        }
+                        
+                        // Check if it's JSON (try to parse)
+                        if (typeof value === 'string' && 
+                            (value.startsWith('{') || value.startsWith('['))) {
+                          try {
+                            const parsed = JSON.parse(value);
+                            displayValue = (
+                              <pre className="mb-0" style={{ 
+                                fontSize: '12px', 
+                                backgroundColor: '#f8f9fa',
+                                padding: '8px',
+                                borderRadius: '4px',
+                                maxHeight: '150px',
+                                overflowY: 'auto'
+                              }}>
+                                {JSON.stringify(parsed, null, 2)}
+                              </pre>
+                            );
+                          } catch (e) {
+                            // Not valid JSON, display as-is
+                          }
+                        }
+                        
+                        // Check if it's a very long string (truncate with "show more")
+                        if (typeof displayValue === 'string' && displayValue.length > 200) {
+                          displayValue = (
+                            <div>
+                              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                {showFull ? displayValue : displayValue.substring(0, 200) + '...'}
+                              </div>
+                              <button 
+                                className="btn btn-sm btn-link p-0 mt-1"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowFull(!showFull);
+                                }}
+                              >
+                                {showFull ? 'Show less' : 'Show more'}
+                              </button>
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <div key={key} className="col-md-6 col-lg-4 mb-3">
+                            <div className="custom-field-item p-2 border rounded bg-light">
+                              <small className="text-muted d-block mb-1">
+                                <i className="fas fa-tag me-1" style={{ fontSize: '10px' }}></i>
+                                {fieldName}
+                              </small>
+                              <div className="fw-bold">
+                                {displayValue || 'N/A'}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <div className="alert alert-info">
+              <i className="fas fa-info-circle me-2"></i>
+              Click to load ticket information.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // NEW: Message Conversation Component
 const MessageConversationSection = ({ messageData, evaluation }) => {
   if (!messageData || !messageData.conversation) {
@@ -243,19 +675,142 @@ const MessageConversationSection = ({ messageData, evaluation }) => {
   const channel = evaluation.interactionData?.channel || evaluation.interaction?.channel || 'call';
   const isEmail = channel === 'email';
 
-  // Helper function to format timestamp for messages
+  // Format timestamp for messages
   const formatMessageTime = (timestamp) => {
     const date = new Date(parseInt(timestamp));
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Helper function to get speaker badge color
+  // Format full date and time
+  const formatFullDateTime = (timestamp) => {
+    const date = new Date(parseInt(timestamp));
+    return date.toLocaleString([], { 
+      weekday: 'short',
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
+  // Get speaker badge color
   const getSpeakerBadgeColor = (speakerRole) => {
     return speakerRole === 'customer' ? 'bg-info' : 'bg-success';
   };
 
+  // Enhanced text processing for emails/messages
+  const processText = (text) => {
+    if (!text) return { parts: [], hasThreads: false };
+    
+    // Convert various newline formats to standard \n
+    let processedText = text
+      .replace(/\\r\\n/g, '\n')  // Handle escaped newlines from JSON
+      .replace(/\\n/g, '\n')     // Handle escaped \n
+      .replace(/\r\n/g, '\n')    // Handle Windows line endings
+      .replace(/\r/g, '\n');     // Handle old Mac line endings
+    
+    // Detect email thread separators
+    const separatorPatterns = [
+      /_{5,}/,                    // Underscores
+      /^From:.*?Sent:.*?To:/ms,  // Email header pattern
+      /^On .+? wrote:/m,          // "On [date] [person] wrote:"
+      /-{5,}/,                    // Dashes
+    ];
+    
+    // Split by separator patterns
+    let parts = [];
+    let currentPart = '';
+    let inThread = false;
+    
+    const lines = processedText.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const isSeparator = separatorPatterns.some(pattern => pattern.test(line));
+      
+      if (isSeparator && currentPart.trim()) {
+        parts.push({ text: currentPart.trim(), isThread: inThread });
+        currentPart = line + '\n';
+        inThread = true;
+      } else {
+        currentPart += line + '\n';
+      }
+    }
+    
+    if (currentPart.trim()) {
+      parts.push({ text: currentPart.trim(), isThread: inThread });
+    }
+    
+    if (parts.length === 0) {
+      parts.push({ text: processedText, isThread: false });
+    }
+    
+    return { parts, hasThreads: parts.length > 1 };
+  };
+
+  // Extract metadata from email text
+  const extractEmailMetadata = (text) => {
+    const lines = text.split('\n');
+    const metadata = {
+      from: null,
+      sent: null,
+      to: null,
+      cc: null,
+      subject: null
+    };
+    
+    for (let line of lines) {
+      if (line.match(/^From:/i)) {
+        metadata.from = line.replace(/^From:\s*/i, '').trim();
+      } else if (line.match(/^Sent:/i)) {
+        metadata.sent = line.replace(/^Sent:\s*/i, '').trim();
+      } else if (line.match(/^To:/i)) {
+        metadata.to = line.replace(/^To:\s*/i, '').trim();
+      } else if (line.match(/^Cc:/i)) {
+        metadata.cc = line.replace(/^Cc:\s*/i, '').trim();
+      } else if (line.match(/^Subject:/i)) {
+        metadata.subject = line.replace(/^Subject:\s*/i, '').trim();
+      }
+    }
+    
+    return metadata;
+  };
+
+  // Convert text to clickable links
+  const linkifyText = (text) => {
+    const urlRegex = /(https?:\/\/[^\s<]+)/g;
+    const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/g;
+    
+    let result = text;
+    result = result.replace(urlRegex, (url) => {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+    });
+    result = result.replace(emailRegex, (email) => {
+      return `<a href="mailto:${email}">${email}</a>`;
+    });
+    
+    return result;
+  };
+
+  // Render content with proper line breaks
+  const renderContent = (text) => {
+    if (!text) return null;
+    
+    const processedText = linkifyText(text);
+    const lines = processedText.split('\n');
+    
+    return (
+      <div>
+        {lines.map((line, index) => (
+          <div key={index} dangerouslySetInnerHTML={{ __html: line || '&nbsp;' }} />
+        ))}
+      </div>
+    );
+  };
+
   return (
-    <div className="card">
+    <div className="card mb-4">
       <div className="card-header d-flex justify-content-between align-items-center">
         <h5 className="mb-0">{isEmail ? 'Email Thread' : 'Message Conversation'}</h5>
         <div className="d-flex gap-2">
@@ -286,65 +841,176 @@ const MessageConversationSection = ({ messageData, evaluation }) => {
           </div>
         </div>
 
-        {/* Message Thread */}
-        <div className="conversation-thread" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+        <hr />
+
+        {/* Message/Email Thread */}
+        <div className="conversation-container" style={{ maxHeight: '600px', overflowY: 'auto' }}>
           {conversation.transcription.map((entry, index) => {
             const timestamp = Object.keys(entry)[0];
             const messageData = entry[timestamp];
-            const time = formatMessageTime(timestamp);
+            const fullDateTime = formatFullDateTime(timestamp);
             const isCustomer = messageData.speaker_role === 'customer';
             
+            // Process content for better display
+            const content = processText(messageData.original_text);
+            
             return (
-              <div key={index} className={`d-flex mb-3 ${isCustomer ? '' : 'flex-row-reverse'}`}>
-                <div className={`message-bubble p-3 rounded-3 ${isCustomer ? 'bg-light me-2' : 'bg-primary text-white ms-2'}`} 
-                     style={{ maxWidth: '70%' }}>
-                  <div className="d-flex align-items-center mb-1">
-                    <span className={`badge ${getSpeakerBadgeColor(messageData.speaker_role)} me-2`}>
-                      {messageData.speaker_role === 'customer' ? 'Customer' : 'Agent'}
-                    </span>
-                    <small className={isCustomer ? 'text-muted' : 'text-white-50'}>
-                      {time}
-                    </small>
-                  </div>
+              <div key={index} className="mb-4">
+                {/* Email/Message Card */}
+                <div className={`message-card border rounded shadow-sm ${isCustomer ? 'border-info' : 'border-success'}`}>
                   
-                  {/* Show subject for emails */}
-                  {isEmail && messageData.subject && (
-                    <div className="mb-2">
-                      <small className={isCustomer ? 'text-dark fw-bold' : 'text-white fw-bold'}>
-                        Subject: {messageData.subject}
-                      </small>
-                    </div>
-                  )}
-                  
-                  <div className="message-text">
-                    {messageData.original_text}
-                  </div>
-                  
-                  {/* Show attachment indicators */}
-                  {messageData.attachments && messageData.attachments.length > 0 && (
-                    <div className="mt-2">
-                      {messageData.attachments.map((attachment, i) => (
-                        <span key={i} className={`badge ${isCustomer ? 'bg-secondary' : 'bg-light text-dark'} me-1`}>
-                          {attachment.type || attachment.data?.extension || 'attachment'}
+                  {/* Header */}
+                  <div className={`message-header p-3 ${isCustomer ? 'bg-light' : 'bg-primary bg-opacity-10'}`}>
+                    <div className="d-flex justify-content-between align-items-start mb-2">
+                      <div className="d-flex align-items-center flex-wrap">
+                        <span className={`badge ${getSpeakerBadgeColor(messageData.speaker_role)} me-2 mb-1`}>
+                          {messageData.speaker_role === 'customer' ? 'Customer' : 'Agent'}
                         </span>
-                      ))}
+                        <strong className="me-2">{messageData.speaker_id || 'Unknown'}</strong>
+                        {messageData.direction && (
+                          <small className={`badge ${messageData.direction === 'inbound' ? 'bg-info' : 'bg-success'} mb-1`}>
+                            <i className={`fas fa-arrow-${messageData.direction === 'inbound' ? 'down' : 'up'} me-1`}></i>
+                            {messageData.direction}
+                          </small>
+                        )}
+                      </div>
+                      <small className="text-muted text-nowrap">{fullDateTime}</small>
                     </div>
-                  )}
+                    
+                    {/* Subject for emails */}
+                    {isEmail && messageData.subject && (
+                      <div className="mb-0">
+                        <small className="text-muted">
+                          <i className="fas fa-envelope me-1"></i>
+                          Subject:
+                        </small>
+                        <div className="fw-bold">{messageData.subject}</div>
+                      </div>
+                    )}
+                  </div>
                   
-                  {/* Show forwarded indicator */}
-                  {messageData.forwarded && (
-                    <div className="mt-1">
-                      <small className={isCustomer ? 'text-muted' : 'text-white-50'}>
-                        <i className="fas fa-share me-1"></i>Forwarded
-                      </small>
-                    </div>
-                  )}
+                  {/* Body */}
+                  <div className="message-body p-3">
+                    {content.parts.map((part, partIndex) => {
+                      const metadata = extractEmailMetadata(part.text);
+                      const hasMetadata = metadata.from || metadata.sent || metadata.to;
+                      
+                      return (
+                        <div key={partIndex} className={partIndex > 0 ? 'mt-4 pt-3 border-top' : ''}>
+                          {/* Thread metadata */}
+                          {part.isThread && hasMetadata && partIndex > 0 && (
+                            <div className="thread-metadata bg-light p-3 rounded mb-3 border-start border-4 border-secondary">
+                              <div className="text-muted mb-2">
+                                <i className="fas fa-reply me-2"></i>
+                                <strong>Previous {isEmail ? 'Email' : 'Message'} in Thread</strong>
+                              </div>
+                              {metadata.from && <div className="mb-1"><strong>From:</strong> {metadata.from}</div>}
+                              {metadata.sent && <div className="mb-1"><strong>Sent:</strong> {metadata.sent}</div>}
+                              {metadata.to && <div className="mb-1"><strong>To:</strong> {metadata.to}</div>}
+                              {metadata.cc && <div className="mb-1"><strong>Cc:</strong> {metadata.cc}</div>}
+                              {metadata.subject && <div className="mb-1"><strong>Subject:</strong> {metadata.subject}</div>}
+                            </div>
+                          )}
+                          
+                          {/* Content with proper line breaks */}
+                          <div 
+                            className="message-content"
+                            style={{
+                              lineHeight: '1.6',
+                              fontFamily: 'Arial, sans-serif',
+                              fontSize: '14px',
+                              color: '#333',
+                              wordBreak: 'break-word'
+                            }}
+                          >
+                            {renderContent(part.text)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    
+                    {/* Attachments */}
+                    {messageData.attachments && messageData.attachments.length > 0 && (
+                      <div className="mt-3 pt-3 border-top">
+                        <div className="d-flex align-items-center mb-2">
+                          <i className="fas fa-paperclip me-2 text-muted"></i>
+                          <small className="text-muted">
+                            {messageData.attachments.length} attachment{messageData.attachments.length > 1 ? 's' : ''}
+                          </small>
+                        </div>
+                        <div className="d-flex flex-wrap gap-2">
+                          {messageData.attachments.map((attachment, i) => (
+                            <div key={i} className="badge bg-secondary d-flex align-items-center">
+                              <i className="fas fa-file me-1"></i>
+                              {attachment.type || attachment.data?.extension || 'file'}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Forwarded indicator */}
+                    {messageData.forwarded && (
+                      <div className="mt-2">
+                        <small className="badge bg-warning">
+                          <i className="fas fa-share me-1"></i>Forwarded
+                        </small>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
       </div>
+      
+      {/* Add styles */}
+      <style jsx>{`
+        .message-card {
+          transition: box-shadow 0.2s;
+        }
+
+        .message-card:hover {
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+        }
+
+        .message-header {
+          border-bottom: 2px solid #dee2e6;
+        }
+
+        .thread-metadata {
+          font-size: 13px;
+        }
+
+        .message-content a {
+          color: #0d6efd;
+          text-decoration: underline;
+          word-break: break-all;
+        }
+
+        .message-content a:hover {
+          color: #0a58ca;
+        }
+
+        .conversation-container::-webkit-scrollbar {
+          width: 10px;
+        }
+
+        .conversation-container::-webkit-scrollbar-track {
+          background: #f1f1f1;
+          border-radius: 5px;
+        }
+
+        .conversation-container::-webkit-scrollbar-thumb {
+          background: #c1c1c1;
+          border-radius: 5px;
+        }
+
+        .conversation-container::-webkit-scrollbar-thumb:hover {
+          background: #a8a8a8;
+        }
+      `}</style>
     </div>
   );
 };
@@ -702,6 +1368,10 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
   // NEW: Multi-channel support states
   const [messageData, setMessageData] = useState(null);
   const [isTextChannel, setIsTextChannel] = useState(false);
+
+  console.log(evaluation)
+  const interactionId = evaluation?.interactionId || 
+                       evaluation?.interaction?._id;
 
   const handleResolveDispute = async (resolution) => {
     try {
@@ -2422,6 +3092,10 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
         />
       )}
 
+      {interactionId && (
+        <TicketInformationSection interactionId={interactionId} />
+      )}
+      
       {/* QA Evaluator Comments */}
       {renderQAEvaluatorComments()}
 
