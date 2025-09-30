@@ -1,6 +1,6 @@
-// src/pages/RecentEvaluations.js - Fixed to prevent infinite fetch loops
+// src/pages/RecentEvaluations.js
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
 import { PhoneIncoming, PhoneOutgoing, Lock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { api } from '../services/api';
@@ -16,6 +16,51 @@ const CHANNEL_DISPLAY_NAMES = {
   'email': 'Email',
   'chat': 'Live Chat',
   'sms': 'SMS'
+};
+
+// Storage keys
+const FILTERS_STORAGE_KEY = 'recentEvaluations_filters';
+const METRICS_STORAGE_KEY = 'recentEvaluations_metrics';
+
+// Helper functions for storage
+const saveFiltersToStorage = (filters) => {
+  try {
+    localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
+  } catch (error) {
+    console.error('Error saving filters to localStorage:', error);
+  }
+};
+
+const loadFiltersFromStorage = () => {
+  try {
+    const stored = localStorage.getItem(FILTERS_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading filters from localStorage:', error);
+  }
+  return null;
+};
+
+const saveMetricsToStorage = (metrics) => {
+  try {
+    sessionStorage.setItem(METRICS_STORAGE_KEY, JSON.stringify(metrics));
+  } catch (error) {
+    console.error('Error saving metrics to sessionStorage:', error);
+  }
+};
+
+const loadMetricsFromStorage = () => {
+  try {
+    const stored = sessionStorage.getItem(METRICS_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading metrics from sessionStorage:', error);
+  }
+  return null;
 };
 
 const ScoreDisplay = ({ evaluation }) => {
@@ -110,6 +155,8 @@ const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => 
 
 const RecentEvaluations = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  
   const [metrics, setMetrics] = useState(null);
   const [filters, setFilters] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -117,24 +164,66 @@ const RecentEvaluations = () => {
   const [forms, setForms] = useState([]);
   const [formsLoading, setFormsLoading] = useState(true);
   const [isRestrictedView, setIsRestrictedView] = useState(false);
-  const [selectedFilters, setSelectedFilters] = useState({
-    agentId: '',
-    queueId: '',
-    channelId: '',
-    startDate: format(new Date(), 'yyyy-MM-dd'),
-    endDate: format(new Date(), 'yyyy-MM-dd'),
-    formId: ''
-  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [userInfo, setUserInfo] = useState(null);
+  const [isReturningFromDetail, setIsReturningFromDetail] = useState(false);
+  
+  // Get initial filters with storage
+  const getInitialFilters = () => {
+    // Check if returning from detail page
+    if (location.state?.fromEvaluationDetail) {
+      setIsReturningFromDetail(true);
+    }
+
+    // Try to load saved filters
+    const savedFilters = loadFiltersFromStorage();
+    
+    if (savedFilters) {
+      return savedFilters;
+    }
+
+    // Default filters
+    return {
+      agentId: '',
+      queueId: '',
+      channelId: '',
+      startDate: format(new Date(), 'yyyy-MM-dd'),
+      endDate: format(new Date(), 'yyyy-MM-dd'),
+      formId: ''
+    };
+  };
+
+  const [selectedFilters, setSelectedFilters] = useState(getInitialFilters);
   
   // Track if an API fetch is in progress to prevent duplicate calls
   const isFetchingRef = useRef(false);
-  // Add a ref to track previous filter selections to avoid unnecessary requests
   const prevFiltersRef = useRef(null);
-  // Add a ref to track if we've already applied the agent ID filter for restricted view
   const hasAppliedRestrictedFilterRef = useRef(false);
+
+  // Save filters when they change
+  useEffect(() => {
+    saveFiltersToStorage(selectedFilters);
+  }, [selectedFilters]);
+
+  // Save metrics when they change
+  useEffect(() => {
+    if (metrics) {
+      saveMetricsToStorage(metrics);
+    }
+  }, [metrics]);
+
+  // Auto-load when returning from detail page
+  useEffect(() => {
+    if (isReturningFromDetail) {
+      const cachedMetrics = loadMetricsFromStorage();
+      if (cachedMetrics) {
+        setMetrics(cachedMetrics);
+        setLoading(false);
+      }
+      setIsReturningFromDetail(false);
+    }
+  }, [isReturningFromDetail]);
 
   const fetchForms = useCallback(async () => {
     try {
@@ -163,7 +252,7 @@ const RecentEvaluations = () => {
     }
   }, []);
 
-  // Get user profile to determine if agent or admin - ONLY ONCE
+  // Get user profile - ONLY ONCE
   useEffect(() => {
     const fetchUserInfo = async () => {
       try {
@@ -171,7 +260,6 @@ const RecentEvaluations = () => {
         setUserInfo(userInfo);
         
         // If user is an agent, pre-select their ID in the filters
-        // This is now moved here so it only happens once on component mount
         if (userInfo.isAgent && !userInfo.isAdmin && userInfo.agentId) {
           setSelectedFilters(prev => ({
             ...prev,
@@ -213,7 +301,6 @@ const RecentEvaluations = () => {
 
   const fetchQueues = useCallback(async () => {
     try {
-      // Try the dashboard filters endpoint first
       let response = await fetch('/api/dashboard/filters', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -223,15 +310,11 @@ const RecentEvaluations = () => {
       if (response.ok) {
         const data = await response.json();
         
-        // If we got queues from this endpoint, use them
         if (data.queues && data.queues.length > 0) {
-          console.log(`Got ${data.queues.length} queues from dashboard filters`);
           return data.queues;
         }
       }
       
-      // If no queues from dashboard filters, try the dedicated queues endpoint
-      console.log('Trying dedicated queues endpoint...');
       response = await fetch('/api/queues/all', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -240,11 +323,9 @@ const RecentEvaluations = () => {
       
       if (response.ok) {
         const queues = await response.json();
-        console.log(`Got ${queues.length} queues from dedicated endpoint`);
         return queues;
       }
       
-      // If both fail, return empty array
       return [];
     } catch (error) {
       console.error('Error fetching queues:', error);
@@ -263,7 +344,6 @@ const RecentEvaluations = () => {
   }, []);
 
   useEffect(() => {
-    // Add this inside your existing useEffect that loads data
     const loadQueues = async () => {
       if (!filters?.queues || filters.queues.length === 0) {
         const queuesData = await fetchQueues();
@@ -307,29 +387,24 @@ const RecentEvaluations = () => {
   };
 
   const fetchData = useCallback(async () => {
-    // Check if we're already fetching - prevents duplicate calls
     if (isFetchingRef.current) return;
     
-    // Compare with previous filters to avoid unnecessary fetches
     if (prevFiltersRef.current && 
         JSON.stringify(prevFiltersRef.current) === JSON.stringify(selectedFilters)) {
       return;
     }
     
     try {
-      // Only fetch data if a form is selected or we're showing all forms
       if (!selectedFilters.formId && forms.length > 1) {
         setMetrics(null);
         setLoading(false);
         return;
       }
       
-      // Set fetching flag to true to prevent duplicate requests
       isFetchingRef.current = true;
       setLoading(true);
       setError(null);
 
-      // Store current filters to compare against future changes
       prevFiltersRef.current = {...selectedFilters};
 
       const [filtersResponse, metricsResponse] = await Promise.all([
@@ -345,7 +420,6 @@ const RecentEvaluations = () => {
         })
       ]);
 
-      // Check if we're in a restricted view
       const isRestricted = metricsResponse.headers.get('X-Restricted-View') === 'agent-only';
       setIsRestrictedView(isRestricted);
 
@@ -361,25 +435,20 @@ const RecentEvaluations = () => {
       setFilters(filtersData);
       setMetrics(metricsData);
       
-      // REMOVED: The code that was setting the agent filter here and causing the loop
     } catch (err) {
       console.error('Evaluations error:', err);
       setError(err.message);
     } finally {
       setLoading(false);
-      // Reset fetching flag when done
       isFetchingRef.current = false;
     }
   }, [selectedFilters, forms.length]);
 
-  // Fetch forms on mount
   useEffect(() => {
     fetchForms();
   }, [fetchForms]);
 
-  // Fetch data when filters change
   useEffect(() => {
-    // Debounce the fetch to prevent hammering the API with rapid changes
     const timer = setTimeout(() => {
       fetchData();
     }, 300);
@@ -390,15 +459,34 @@ const RecentEvaluations = () => {
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     
-    // If in restricted view, don't allow changing the agent
     if (isRestrictedView && name === 'agentId' && userInfo && userInfo.agentId) {
       return;
     }
     
-    setSelectedFilters(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setSelectedFilters(prev => {
+      const newFilters = {
+        ...prev,
+        [name]: value
+      };
+      saveFiltersToStorage(newFilters);
+      return newFilters;
+    });
+    setCurrentPage(1);
+  };
+
+  const handleClearFilters = () => {
+    const defaultFilters = {
+      agentId: userInfo?.isAgent && !userInfo?.isAdmin ? userInfo.agentId : '',
+      queueId: '',
+      channelId: '',
+      startDate: format(new Date(), 'yyyy-MM-dd'),
+      endDate: format(new Date(), 'yyyy-MM-dd'),
+      formId: ''
+    };
+    setSelectedFilters(defaultFilters);
+    saveFiltersToStorage(defaultFilters);
+    sessionStorage.removeItem(METRICS_STORAGE_KEY);
+    setCurrentPage(1);
   };
 
   if (loading) {
@@ -430,7 +518,6 @@ const RecentEvaluations = () => {
 
   return (
     <div className="container-fluid py-4">
-      {/* Restricted View Notice */}
       {isRestrictedView && (
         <div className="alert alert-info d-flex align-items-center mb-4">
           <Lock size={18} className="me-2" />
@@ -440,7 +527,6 @@ const RecentEvaluations = () => {
         </div>
       )}
       
-      {/* Filters */}
       {!selectedFilters.formId && forms.length > 1 && !loading && (
         <div className="alert alert-info">
           <div className="d-flex align-items-center">
@@ -449,29 +535,33 @@ const RecentEvaluations = () => {
           </div>
         </div>
       )}
+
       <div className="card mb-4">
         <div className="card-body">
           <h5 className="card-title mb-3">Filters</h5>
           <div className="row g-3">
-          <div className="col-md-3">
-            <select 
-              className="form-select"
-              name="formId"
-              value={selectedFilters.formId}
-              onChange={handleFilterChange}
-              disabled={formsLoading}
-            >
-              <option value="">
-                {formsLoading ? 'Loading forms...' : forms.length > 1 ? 'Select QA Form' : 'All Forms'}
-              </option>
-              {forms.map(form => (
-                <option key={form._id} value={form._id}>
-                  {form.name}
-                </option>
-              ))}
-            </select>
-          </div>
             <div className="col-md-3">
+              <label className="form-label">QA Form</label>
+              <select 
+                className="form-select"
+                name="formId"
+                value={selectedFilters.formId}
+                onChange={handleFilterChange}
+                disabled={formsLoading}
+              >
+                <option value="">
+                  {formsLoading ? 'Loading forms...' : forms.length > 1 ? 'Select QA Form' : 'All Forms'}
+                </option>
+                {forms.map(form => (
+                  <option key={form._id} value={form._id}>
+                    {form.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-md-3">
+              <label className="form-label">Agent</label>
               <select 
                 className="form-select"
                 name="agentId"
@@ -492,6 +582,7 @@ const RecentEvaluations = () => {
             </div>
 
             <div className="col-md-3">
+              <label className="form-label">Queue</label>
               <select
                 className="form-select"
                 name="queueId"
@@ -508,6 +599,7 @@ const RecentEvaluations = () => {
             </div>
 
             <div className="col-md-3">
+              <label className="form-label">Channel</label>
               <select
                 className="form-select"
                 name="channelId"
@@ -524,6 +616,7 @@ const RecentEvaluations = () => {
             </div>
             
             <div className="col-md-3">
+              <label className="form-label">Start Date</label>
               <input
                 type="date"
                 className="form-control"
@@ -534,6 +627,7 @@ const RecentEvaluations = () => {
             </div>
 
             <div className="col-md-3">
+              <label className="form-label">End Date</label>
               <input
                 type="date"
                 className="form-control"
@@ -542,11 +636,20 @@ const RecentEvaluations = () => {
                 onChange={handleFilterChange}
               />
             </div>
+
+            <div className="col-md-6 d-flex align-items-end">
+              <button
+                className="btn btn-outline-secondary"
+                onClick={handleClearFilters}
+              >
+                <i className="bi bi-arrow-counterclockwise me-1"></i>
+                Clear Filters
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Recent Evaluations */}
       <div className="card">
         <div className="card-header bg-white d-flex justify-content-between align-items-center">
           <h5 className="card-title mb-0">Recent Evaluations</h5>
@@ -575,7 +678,7 @@ const RecentEvaluations = () => {
             <tbody>
               {!metrics?.qa?.recentEvaluations || metrics.qa.recentEvaluations.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center py-4">
+                  <td colSpan="10" className="text-center py-4">
                     <div className="text-muted">
                       <p className="mb-0">No Evaluations found.</p>
                       <small>Adjust your filters to find more evaluations</small>
@@ -631,23 +734,25 @@ const RecentEvaluations = () => {
                       </td>
                       <td>
                         <small className="text-muted">
-                          Evaluated by: {evaluation.evaluator?.name || 'AI System'}
+                          {evaluation.evaluator?.name || 'AI System'}
                         </small>
                       </td>
                       <td>
                         {evaluation.status === 'disputed' ? (
-                          <div className="d-flex align-items-center">
-                            <button
-                              onClick={() => navigate(`/evaluation/${evaluation.id}`)}
-                              className="btn btn-sm btn-outline-danger"
-                            >
-                              <AlertTriangle size={14} className="me-1" />
-                              Disputed
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => navigate(`/evaluation/${evaluation.id}`, {
+                              state: { fromRecentEvaluations: true }
+                            })}
+                            className="btn btn-sm btn-outline-danger"
+                          >
+                            <AlertTriangle size={14} className="me-1" />
+                            Disputed
+                          </button>
                         ) : evaluation.status === 'published' ? (
                           <button
-                            onClick={() => navigate(`/evaluation/${evaluation.id}`)}
+                            onClick={() => navigate(`/evaluation/${evaluation.id}`, {
+                              state: { fromRecentEvaluations: true }
+                            })}
                             className="btn btn-sm btn-outline-success"
                           >
                             <CheckCircle size={14} className="me-1" />
@@ -655,7 +760,9 @@ const RecentEvaluations = () => {
                           </button>
                         ) : (
                           <button
-                            onClick={() => navigate(`/evaluation/${evaluation.id}`)}
+                            onClick={() => navigate(`/evaluation/${evaluation.id}`, {
+                              state: { fromRecentEvaluations: true }
+                            })}
                             className="btn btn-sm btn-outline-primary"
                           >
                             <i className="bi bi-eye me-1"></i>

@@ -1,300 +1,324 @@
-// client/src/components/InlineAudioPlayer.js - ENHANCED VERSION
+// client/src/components/InlineAudioPlayer.js
 import React, { useState, useRef, useEffect } from 'react';
+import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 
-const InlineAudioPlayer = ({ interaction, className = '' }) => {
+const InlineAudioPlayer = ({ interaction }) => {
   const audioRef = useRef(null);
-  const progressRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isPlayerActive, setIsPlayerActive] = useState(false); // NEW: Track if player is activated
   const [error, setError] = useState(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [volume, setVolume] = useState(1);
-
-  // Get recording URL from interaction
-  const recordingUrl = interaction?.extraPayload?.callRecording?.webPathQA || 
-                      interaction?.extraPayload?.callRecording?.webPath ||
-                      interaction?.recording?.webPath;
-
-  const audioProxyUrl = recordingUrl ? 
-    `/api/audio-proxy?url=${encodeURIComponent(recordingUrl)}` : null;
 
   useEffect(() => {
-    if (audioProxyUrl && audioRef.current) {
-      const audio = audioRef.current;
-      
-      const handleLoadStart = () => setIsLoading(true);
-      const handleLoadedMetadata = () => {
-        setDuration(audio.duration || 0);
-        setIsLoading(false);
-      };
-      const handleLoadError = () => {
-        setError('Failed to load audio');
-        setIsLoading(false);
-      };
-      const handleTimeUpdate = () => {
-        if (!isDragging) {
-          setCurrentTime(audio.currentTime || 0);
-        }
-      };
-      const handlePlay = () => setIsPlaying(true);
-      const handlePause = () => setIsPlaying(false);
-      const handleEnded = () => setIsPlaying(false);
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, []);
 
-      audio.addEventListener('loadstart', handleLoadStart);
-      audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.addEventListener('error', handleLoadError);
-      audio.addEventListener('timeupdate', handleTimeUpdate);
-      audio.addEventListener('play', handlePlay);
-      audio.addEventListener('pause', handlePause);
-      audio.addEventListener('ended', handleEnded);
+  const audioUrl = interaction?.extraPayload?.callRecording?.webPathQA || 
+	  interaction?.extraPayload?.callRecording?.webPath ||
+	  interaction?.recording?.webPath;
 
-      return () => {
-        audio.removeEventListener('loadstart', handleLoadStart);
-        audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        audio.removeEventListener('error', handleLoadError);
-        audio.removeEventListener('timeupdate', handleTimeUpdate);
-        audio.removeEventListener('play', handlePlay);
-        audio.removeEventListener('pause', handlePause);
-        audio.removeEventListener('ended', handleEnded);
-      };
-    }
-  }, [audioProxyUrl, isDragging]);
-
-  const handlePlayPause = (e) => {
-    e.stopPropagation(); // Prevent row click
-    
-    if (!audioRef.current) return;
-    
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      // Pause any other playing audio first
-      document.querySelectorAll('audio').forEach(audio => {
-        if (audio !== audioRef.current && !audio.paused) {
-          audio.pause();
-        }
-      });
-      
-      audioRef.current.play();
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      setDuration(audioRef.current.duration);
+      setIsLoading(false);
     }
   };
 
-  const seekToTime = (newTime) => {
-    if (!audioRef.current || !duration) return;
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime);
+    }
+  };
+
+  const handleError = (e) => {
+    console.error('Audio playback error:', e);
+    setError('Failed to load audio');
+    setIsLoading(false);
+    setIsPlaying(false);
+  };
+
+  // NEW: Activate player and start loading audio
+  const activatePlayer = (e) => {
+    e.stopPropagation();
+    setIsPlayerActive(true);
+    setIsLoading(true);
     
-    const clampedTime = Math.max(0, Math.min(duration, newTime));
-    audioRef.current.currentTime = clampedTime;
-    setCurrentTime(clampedTime);
+    // Small delay to ensure audio element is ready
+    setTimeout(() => {
+      if (audioRef.current) {
+        audioRef.current.load();
+      }
+    }, 100);
+  };
+
+  const togglePlayPause = (e) => {
+    e.stopPropagation();
+    
+    if (!isPlayerActive) {
+      activatePlayer(e);
+      return;
+    }
+
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        audioRef.current.play()
+          .then(() => {
+            setIsPlaying(true);
+          })
+          .catch((err) => {
+            console.error('Playback failed:', err);
+            setError('Playback failed');
+            setIsPlaying(false);
+          });
+      }
+    }
   };
 
   const handleSeek = (e) => {
-    e.stopPropagation(); // Prevent row click
-    
-    if (!audioRef.current || !duration || !progressRef.current) return;
-    
-    const rect = progressRef.current.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    const newTime = percent * duration;
-    
-    seekToTime(newTime);
-  };
-
-  const handleMouseDown = (e) => {
     e.stopPropagation();
-    setIsDragging(true);
-    handleSeek(e);
-  };
-
-  const handleMouseMove = (e) => {
-    if (!isDragging) return;
-    e.stopPropagation();
-    handleSeek(e);
-  };
-
-  const handleMouseUp = (e) => {
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  // Add global mouse event listeners for dragging
-  useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
+    const newTime = parseFloat(e.target.value);
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
     }
-  }, [isDragging]);
+  };
 
-  const handleSkip = (seconds, e) => {
+  const skipTime = (seconds, e) => {
     e.stopPropagation();
-    const newTime = currentTime + seconds;
-    seekToTime(newTime);
+    if (audioRef.current) {
+      audioRef.current.currentTime = Math.max(0, Math.min(duration, currentTime + seconds));
+    }
   };
 
   const formatTime = (time) => {
-    if (!time || isNaN(time)) return '0:00';
+    if (isNaN(time)) return '0:00';
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
-  const formatDuration = (time) => {
-    if (!time || isNaN(time)) return '0:00';
-    if (time >= 3600) {
-      // Show hours for long recordings
-      const hours = Math.floor(time / 3600);
-      const minutes = Math.floor((time % 3600) / 60);
-      const seconds = Math.floor(time % 60);
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  const handleEnded = () => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
     }
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  if (!audioProxyUrl) {
-    return (
-      <span className="badge bg-warning">
-        No Recording
-      </span>
-    );
+  const handleCanPlay = () => {
+    // Audio is ready to play
+    setIsLoading(false);
+    // Auto-play after loading
+    if (audioRef.current && isPlayerActive) {
+      audioRef.current.play()
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch((err) => {
+          console.error('Auto-play failed:', err);
+          setIsPlaying(false);
+        });
+    }
+  };
+
+  if (!audioUrl) {
+    return <span className="badge bg-warning">No Recording</span>;
   }
 
   if (error) {
     return (
-      <span className="badge bg-danger" title={error}>
-        <i className="fas fa-exclamation-circle me-1"></i>
-        Error
-      </span>
+      <div className="inline-audio-player-error" onClick={(e) => e.stopPropagation()}>
+        <small className="text-danger">
+          <i className="fas fa-exclamation-triangle me-1"></i>
+          {error}
+        </small>
+      </div>
     );
   }
 
+  // NEW: Show simple play button before player is activated
+  if (!isPlayerActive) {
+    return (
+      <div onClick={(e) => e.stopPropagation()}>
+        <button
+          className="btn btn-sm btn-success d-flex align-items-center gap-1"
+          onClick={activatePlayer}
+          title="Play recording"
+        >
+          <Play size={16} />
+          <span>Play Recording</span>
+        </button>
+      </div>
+    );
+  }
+
+  // Show full player after activation
+  const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
+
   return (
-    <div className={`inline-audio-player ${className}`} onClick={(e) => e.stopPropagation()}>
+    <div 
+      className="inline-audio-player" 
+      onClick={(e) => e.stopPropagation()}
+      style={{ minWidth: '280px' }}
+    >
+      {/* Audio element only loads when player is activated */}
       <audio
         ref={audioRef}
-        preload="metadata"
-        style={{ display: 'none' }}
-        volume={volume}
-      >
-        <source src={audioProxyUrl} type="audio/mpeg" />
-      </audio>
+        src={audioUrl}
+        onLoadedMetadata={handleLoadedMetadata}
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={handleEnded}
+        onError={handleError}
+        onCanPlay={handleCanPlay}
+        preload="none"
+      />
 
-      <div className="d-flex align-items-center">
+      <div className="d-flex align-items-center gap-2">
+        {/* Skip Back Button */}
+        <button
+          className="btn btn-sm btn-outline-secondary p-1"
+          onClick={(e) => skipTime(-10, e)}
+          disabled={isLoading || !duration}
+          title="Rewind 10s"
+          style={{ width: '32px', height: '32px' }}
+        >
+          <SkipBack size={16} />
+        </button>
+
         {/* Play/Pause Button */}
         <button
-          className={`btn btn-sm me-2 ${isPlaying ? 'btn-danger' : 'btn-success'}`}
-          onClick={handlePlayPause}
+          className="btn btn-sm btn-success p-1"
+          onClick={togglePlayPause}
           disabled={isLoading}
-          title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
-          style={{ minWidth: '32px' }}
+          title={isPlaying ? 'Pause' : 'Play'}
+          style={{ width: '36px', height: '36px' }}
         >
           {isLoading ? (
-            <div className="spinner-border spinner-border-sm" role="status" style={{ width: '12px', height: '12px' }}>
-              <span className="visually-hidden">Loading...</span>
-            </div>
+            <span className="spinner-border spinner-border-sm" style={{ width: '16px', height: '16px' }} />
+          ) : isPlaying ? (
+            <Pause size={18} />
           ) : (
-            <i className={`fas ${isPlaying ? 'fa-pause' : 'fa-play'}`} style={{ fontSize: '10px' }}></i>
+            <Play size={18} />
           )}
         </button>
 
-        {/* Skip backward 10s */}
+        {/* Skip Forward Button */}
         <button
-          className="btn btn-sm btn-outline-secondary me-1"
-          onClick={(e) => handleSkip(-10, e)}
+          className="btn btn-sm btn-outline-secondary p-1"
+          onClick={(e) => skipTime(10, e)}
           disabled={isLoading || !duration}
-          title="Skip back 10s"
-          style={{ padding: '2px 6px', fontSize: '9px' }}
+          title="Forward 10s"
+          style={{ width: '32px', height: '32px' }}
         >
-          <i className="fas fa-backward"></i>
+          <SkipForward size={16} />
         </button>
 
-        {/* Skip forward 10s */}
-        <button
-          className="btn btn-sm btn-outline-secondary me-2"
-          onClick={(e) => handleSkip(10, e)}
-          disabled={isLoading || !duration}
-          title="Skip forward 10s"
-          style={{ padding: '2px 6px', fontSize: '9px' }}
-        >
-          <i className="fas fa-forward"></i>
-        </button>
-
-        {/* Time Display */}
-        <div className="d-flex flex-column" style={{ minWidth: '90px' }}>
-          <small className="text-muted text-center" style={{ fontSize: '11px', lineHeight: '1' }}>
-            {formatTime(currentTime)} / {formatDuration(duration)}
-          </small>
-          <small className="text-muted text-center" style={{ fontSize: '9px', lineHeight: '1.2' }}>
-            Click/drag to seek
-          </small>
-        </div>
-      </div>
-
-      {/* Enhanced progress bar with seek functionality */}
-      {duration > 0 && (
-        <div className="mt-2">
-          <div 
-            ref={progressRef}
-            className="progress" 
-            style={{ 
-              height: '8px', 
-              cursor: 'pointer',
-              borderRadius: '4px',
-              backgroundColor: '#e9ecef'
-            }}
-            onClick={handleSeek}
-            onMouseDown={handleMouseDown}
-            title={`Seek to ${formatTime((currentTime / duration) * duration)} / ${formatDuration(duration)}`}
-          >
-            <div 
-              className={`progress-bar ${isDragging ? 'bg-warning' : 'bg-primary'}`}
-              role="progressbar" 
-              style={{ 
-                width: `${(currentTime / duration) * 100}%`,
-                borderRadius: '4px',
-                position: 'relative'
+        {/* Progress Bar and Time */}
+        <div className="flex-grow-1 d-flex flex-column" style={{ minWidth: '120px' }}>
+          <div className="position-relative" style={{ height: '6px', backgroundColor: '#e9ecef', borderRadius: '3px', cursor: 'pointer' }}>
+            <input
+              type="range"
+              className="audio-progress-slider"
+              min="0"
+              max={duration || 0}
+              value={currentTime}
+              onChange={handleSeek}
+              disabled={isLoading || !duration}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                opacity: 0,
+                cursor: 'pointer',
+                zIndex: 2
               }}
-            >
-              {/* Seek handle/thumb */}
-              <div
-                style={{
-                  position: 'absolute',
-                  right: '-4px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: '8px',
-                  height: '8px',
-                  backgroundColor: isDragging ? '#ffc107' : '#0d6efd',
-                  borderRadius: '50%',
-                  cursor: 'pointer',
-                  opacity: duration > 0 ? 1 : 0
-                }}
-              />
-            </div>
+            />
+            <div 
+              className="audio-progress-bar"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                height: '100%',
+                width: `${progressPercentage}%`,
+                backgroundColor: '#198754',
+                borderRadius: '3px',
+                transition: 'width 0.1s ease'
+              }}
+            />
           </div>
-          
-          {/* Time markers for longer recordings */}
-          {duration > 300 && ( // Show markers for recordings longer than 5 minutes
-            <div className="d-flex justify-content-between mt-1" style={{ fontSize: '8px' }}>
-              <span className="text-muted">0:00</span>
-              <span className="text-muted">{formatDuration(duration / 2)}</span>
-              <span className="text-muted">{formatDuration(duration)}</span>
-            </div>
-          )}
+          <div className="d-flex justify-content-between mt-1">
+            <small className="text-muted" style={{ fontSize: '0.7rem' }}>
+              {duration > 0 ? formatTime(currentTime) : 'Loading...'}
+            </small>
+            <small className="text-muted" style={{ fontSize: '0.7rem' }}>
+              {duration > 0 ? formatTime(duration) : '--:--'}
+            </small>
+          </div>
         </div>
-      )}
-
-      {/* Keyboard shortcuts info (only show on hover) */}
-      <div className="d-none d-lg-block" style={{ fontSize: '8px', color: '#6c757d', marginTop: '2px' }}>
-        Space: Play/Pause • ←/→: Skip 10s
       </div>
+
+      <style jsx>{`
+        .inline-audio-player {
+          padding: 8px;
+          background-color: #f8f9fa;
+          border-radius: 6px;
+          border: 1px solid #dee2e6;
+        }
+
+        .inline-audio-player:hover {
+          background-color: #e9ecef;
+        }
+
+        .inline-audio-player-error {
+          padding: 4px 8px;
+          background-color: #fff3cd;
+          border-radius: 4px;
+          border: 1px solid #ffc107;
+        }
+
+        .btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 4px;
+          transition: all 0.2s;
+        }
+
+        .btn:hover:not(:disabled) {
+          transform: scale(1.05);
+        }
+
+        .btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .audio-progress-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 0;
+          height: 0;
+        }
+
+        .audio-progress-slider::-moz-range-thumb {
+          width: 0;
+          height: 0;
+          border: none;
+          background: transparent;
+        }
+      `}</style>
     </div>
   );
 };

@@ -1,6 +1,6 @@
 // src/pages/NewEvaluations.js
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
 import Select from 'react-select';
 import { api } from '../services/api';
@@ -23,8 +23,53 @@ const CHANNEL_DISPLAY_NAMES = {
   'sms': 'SMS'
 };
 
+const FILTERS_STORAGE_KEY = 'newEvaluations_filters';
+const INTERACTIONS_STORAGE_KEY = 'newEvaluations_interactions';
+
+// Helper functions MUST be defined before component
+const saveFiltersToStorage = (filters) => {
+  try {
+    localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
+  } catch (error) {
+    console.error('Error saving filters to localStorage:', error);
+  }
+};
+
+const loadFiltersFromStorage = () => {
+  try {
+    const stored = localStorage.getItem(FILTERS_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading filters from localStorage:', error);
+  }
+  return null;
+};
+
+const saveInteractionsToStorage = (interactions) => {
+  try {
+    sessionStorage.setItem(INTERACTIONS_STORAGE_KEY, JSON.stringify(interactions));
+  } catch (error) {
+    console.error('Error saving interactions to sessionStorage:', error);
+  }
+};
+
+const loadInteractionsFromStorage = () => {
+  try {
+    const stored = sessionStorage.getItem(INTERACTIONS_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading interactions from sessionStorage:', error);
+  }
+  return null;
+};
+
 const NewEvaluations = () => {
   const navigate = useNavigate();
+  const location = useLocation(); // ADD THIS LINE
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -35,10 +80,43 @@ const NewEvaluations = () => {
   const [audioModalOpen, setAudioModalOpen] = useState(false);
   const [messagesModalOpen, setMessagesModalOpen] = useState(false);
   const [selectedInteractionForModal, setSelectedInteractionForModal] = useState(null);
+  const [isReturningFromDetail, setIsReturningFromDetail] = useState(false);
 
+  const getInitialFilters = () => {
+    // Check if we're returning from a detail page
+    const state = location.state;
+    if (state && state.fromEvaluationDetail) {
+      setIsReturningFromDetail(true);
+    }
+
+    // Try to load saved filters
+    const savedFilters = loadFiltersFromStorage();
+    
+    if (savedFilters) {
+      return savedFilters;
+    }
+
+    // Default filters if nothing saved
+    return {
+      startDate: format(new Date(new Date().setHours(0, 0, 0, 0)), 'yyyy-MM-dd\'T\'HH:mm'),
+      endDate: format(new Date(new Date().setHours(23, 59, 59, 999)), 'yyyy-MM-dd\'T\'HH:mm'),
+      criteriaProfileId: '',
+      queueIds: [],
+      agentIds: [],
+      minDuration: 0,
+      durationComparison: '>',
+      workCodeIds: [],
+      qaFormId: '',
+      excludeEvaluated: true,
+      direction: 'all',
+      channels: []
+    };
+  };
+
+  const [filters, setFilters] = useState(getInitialFilters);
 
   // Filters state - ENHANCED with channels
-  const [filters, setFilters] = useState({
+  /*const [filters, setFilters] = useState({
     startDate: format(new Date(new Date().setHours(0, 0, 0, 0)), 'yyyy-MM-dd\'T\'HH:mm'),
     endDate: format(new Date(new Date().setHours(23, 59, 59, 999)), 'yyyy-MM-dd\'T\'HH:mm'),
     criteriaProfileId: '',
@@ -51,7 +129,7 @@ const NewEvaluations = () => {
     excludeEvaluated: true,
     direction: 'all',
     channels: [] // NEW: Channel filter
-  });
+  });*/
   
   // Options for dropdowns - ENHANCED with channels
   const [options, setOptions] = useState({
@@ -64,7 +142,17 @@ const NewEvaluations = () => {
   });
   
   // Interactions and selection state
-  const [interactions, setInteractions] = useState([]);
+  const [interactions, setInteractions] = useState(() => {
+    // Try to load cached interactions when returning from detail page
+    if (location.state?.fromEvaluationDetail) {
+      const cached = loadInteractionsFromStorage();
+      if (cached) {
+        return cached;
+      }
+    }
+    return [];
+  });
+
   const [selectedInteractions, setSelectedInteractions] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
 
@@ -89,6 +177,32 @@ const NewEvaluations = () => {
     setMessagesModalOpen(false);
     setSelectedInteractionForModal(null);
   };
+
+  useEffect(() => {
+    saveFiltersToStorage(filters);
+  }, [filters]);
+
+  // Save interactions to sessionStorage when they change
+  useEffect(() => {
+    if (interactions.length > 0) {
+      saveInteractionsToStorage(interactions);
+    }
+  }, [interactions]);
+
+  // Auto-search when returning from detail page
+  useEffect(() => {
+    if (isReturningFromDetail && interactions.length === 0) {
+      const savedInteractions = loadInteractionsFromStorage();
+      if (savedInteractions && savedInteractions.length > 0) {
+        setInteractions(savedInteractions);
+        setLoading(false);
+      } else {
+        // If no cached interactions, trigger search
+        searchInteractions();
+      }
+      setIsReturningFromDetail(false);
+    }
+  }, [isReturningFromDetail]);
 
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -180,12 +294,16 @@ const NewEvaluations = () => {
   }, [filters.criteriaProfileId, options.criteriaProfiles]);
 
   // Handle filter changes
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  const handleFilterChange = (name, value) => {
+    setFilters(prev => {
+      const newFilters = {
+        ...prev,
+        [name]: value
+      };
+      // Save to localStorage immediately
+      saveFiltersToStorage(newFilters);
+      return newFilters;
+    });
   };
 
   // Handle select changes
@@ -553,7 +671,7 @@ const NewEvaluations = () => {
                 className="form-control"
                 name="startDate"
                 value={filters.startDate}
-                onChange={handleFilterChange}
+                onChange={(e) => {handleFilterChange('startDate', e.target.value)}}
               />
             </div>
             <div className="col-md-6">
@@ -563,7 +681,7 @@ const NewEvaluations = () => {
                 className="form-control"
                 name="endDate"
                 value={filters.endDate}
-                onChange={handleFilterChange}
+                onChange={(e) => {handleFilterChange('endDate', e.target.value)}}
               />
             </div>
             
@@ -673,12 +791,12 @@ const NewEvaluations = () => {
               <label className="form-label">Duration (seconds)</label>
               <div className="input-group">
                 <select
-                  className="form-select"
-                  name="durationComparison"
-                  value={filters.durationComparison}
-                  onChange={handleFilterChange}
-                  style={{ maxWidth: '60px' }}
-                >
+                    className="form-select"
+                    name="durationComparison"
+                    value={filters.durationComparison}
+                    onChange={(e) => handleFilterChange('durationComparison', e.target.value)}
+                    style={{ maxWidth: '60px' }}
+                  >
                   <option value=">">{">"}</option>
                   <option value="<">{"<"}</option>
                   <option value="=">{"="}</option>
@@ -688,7 +806,7 @@ const NewEvaluations = () => {
                   className="form-control"
                   name="minDuration"
                   value={filters.minDuration}
-                  onChange={handleFilterChange}
+                  onChange={(e) => handleFilterChange('minDuration', parseInt(e.target.value) || 0)}
                   min="0"
                 />
               </div>
@@ -700,7 +818,7 @@ const NewEvaluations = () => {
                 className="form-select"
                 name="direction"
                 value={filters.direction}
-                onChange={handleFilterChange}
+                onChange={(e) => {handleFilterChange('direction', e.target.value)}}
               >
                 <option value="all">All</option>
                 <option value="0">Inbound</option>
@@ -746,22 +864,43 @@ const NewEvaluations = () => {
                 </label>
               </div>
             </div>
-            
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              onClick={() => {
+                const defaultFilters = {
+                  startDate: format(new Date(new Date().setHours(0, 0, 0, 0)), 'yyyy-MM-dd\'T\'HH:mm'),
+                  endDate: format(new Date(new Date().setHours(23, 59, 59, 999)), 'yyyy-MM-dd\'T\'HH:mm'),
+                  criteriaProfileId: '',
+                  queueIds: [],
+                  agentIds: [],
+                  minDuration: 0,
+                  durationComparison: '>',
+                  workCodeIds: [],
+                  qaFormId: '',
+                  excludeEvaluated: true,
+                  direction: 'all',
+                  channels: []
+                };
+                setFilters(defaultFilters);
+                saveFiltersToStorage(defaultFilters);
+                setInteractions([]);
+                sessionStorage.removeItem(INTERACTIONS_STORAGE_KEY);
+              }}
+            >
+              <i className="bi bi-arrow-counterclockwise me-1"></i>
+              Clear Filters
+            </button>
             <div className="col-auto">
-              <button
-                className="btn btn-primary"
-                onClick={searchInteractions}
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                    Searching...
-                  </>
-                ) : (
-                  'Search Interactions'
-                )}
-              </button>
+               <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={searchInteractions}
+                  disabled={loading || !filters.qaFormId}
+                >
+                  <i className="bi bi-search me-1"></i>
+                  {loading ? 'Searching...' : 'Search Interactions'}
+                </button>
             </div>
           </div>
         </div>
@@ -940,7 +1079,9 @@ const NewEvaluations = () => {
                       <td>
                         {interaction.extraPayload?.evaluated ? (
                           <button
-                            onClick={() => navigate(`/evaluation/${interaction.extraPayload.evaluationId}`)}
+                            onClick={() => navigate(`/evaluation/${interaction.extraPayload.evaluationId}`, {
+                              state: { fromNewEvaluations: true }
+                            })}
                             className="btn btn-sm btn-info"
                           >
                             <i className="bi bi-check-circle-fill me-1"></i>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Edit, Eye, EyeOff, MessageSquare, CheckCircle, XCircle, AlertTriangle, Save, Lock, AlertCircle, Clock, Users, Hash } from 'lucide-react';
 import Select from 'react-select';
 
@@ -1368,8 +1368,9 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
   // NEW: Multi-channel support states
   const [messageData, setMessageData] = useState(null);
   const [isTextChannel, setIsTextChannel] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  console.log(evaluation)
   const interactionId = evaluation?.interactionId || 
                        evaluation?.interaction?._id;
 
@@ -1859,11 +1860,6 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
       ...prev,
       agentComments: value
     }));
-  };
-
-  // Navigate function (to be replaced with actual navigation)
-  const navigate = (path) => {
-    window.location.href = path;
   };
 
   // Utility Functions
@@ -2943,6 +2939,17 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
     <div className="container-fluid py-4">
       {/* Status and Action Bar */}
       <div className="card mb-4">
+        {location.state?.fromRecentEvaluations && (
+          <button
+            className="btn btn-outline-secondary mb-3"
+            onClick={() => navigate('/evaluations', { 
+              state: { fromEvaluationDetail: true } 
+            })}
+          >
+            <i className="bi bi-arrow-left me-2"></i>
+            Back to Evaluations
+          </button>
+        )}
         <div className="card-body d-flex justify-content-between align-items-center">
           <div className="d-flex align-items-center">
             <h4 className="mb-0 me-3">QA Evaluation</h4>
