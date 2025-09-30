@@ -385,22 +385,22 @@ const TicketInformationSection = ({ interactionId }) => {
 
               {/* Assignment Information */}
               <div className="row mb-3">
-                <div className="col-md-4 mb-3">
+                <div className="col-md-3 mb-3">
                   <small className="text-muted">Team</small>
                   <div className="fw-bold">{ticketData.team || 'Not Assigned'}</div>
                 </div>
                 
-                <div className="col-md-4 mb-3">
+                <div className="col-md-3 mb-3">
                   <small className="text-muted">Team Member</small>
                   <div className="fw-bold">{ticketData.teamMember || 'Not Assigned'}</div>
                 </div>
                 
-                <div className="col-md-4 mb-3">
+                <div className="col-md-3 mb-3">
                   <small className="text-muted">Channel</small>
                   <div className="fw-bold text-capitalize">{ticketData.channel || 'N/A'}</div>
                 </div>
 
-                <div className="col-md-4 mb-3">
+                <div className="col-md-3 mb-3">
                   <small className="text-muted">SLA</small>
                   <div className="fw-bold text-capitalize">{ticketData.slaName || 'N/A'}</div>
                 </div>
