@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { LineChart, Line, BarChart, CartesianGrid, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { format } from 'date-fns';
 import { PhoneIncoming, PhoneOutgoing } from 'lucide-react';
@@ -19,6 +19,50 @@ const CHANNEL_DISPLAY_NAMES = {
   'email': 'Email',
   'chat': 'Live Chat',
   'sms': 'SMS'
+};
+
+const FILTERS_STORAGE_KEY = 'dashboard_filters';
+const METRICS_STORAGE_KEY = 'dashboard_metrics';
+
+// Helper functions for storage
+const saveFiltersToStorage = (filters) => {
+  try {
+    localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
+  } catch (error) {
+    console.error('Error saving filters to localStorage:', error);
+  }
+};
+
+const loadFiltersFromStorage = () => {
+  try {
+    const stored = localStorage.getItem(FILTERS_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading filters from localStorage:', error);
+  }
+  return null;
+};
+
+const saveMetricsToStorage = (metrics) => {
+  try {
+    sessionStorage.setItem(METRICS_STORAGE_KEY, JSON.stringify(metrics));
+  } catch (error) {
+    console.error('Error saving metrics to sessionStorage:', error);
+  }
+};
+
+const loadMetricsFromStorage = () => {
+  try {
+    const stored = sessionStorage.getItem(METRICS_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading metrics from sessionStorage:', error);
+  }
+  return null;
 };
 
 // Updated StatsCard Component with optional subtitle and icon color
@@ -318,6 +362,7 @@ const ParameterBarChart = ({ parameters, dateRange }) => {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [userRoles, setUserRoles] = useState(null);
   useEffect(() => {
     // Get user role information
@@ -338,19 +383,62 @@ const Dashboard = () => {
   const itemsPerPage = 10;
   const [forms, setForms] = useState([]);
   const [formsLoading, setFormsLoading] = useState(true);
-  const [selectedFilters, setSelectedFilters] = useState({
-    agentId: '',
-    queueId: '',
-    channelId: '',
-    startDate: format(new Date(), 'yyyy-MM-dd'),
-    endDate: format(new Date(), 'yyyy-MM-dd'),
-    selectedForm: null
-  });
   const [isFirstLoad, setIsFirstLoad] = useState(true);
   const fetchInProgressRef = useRef(false);
   const prevFiltersRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isReturningFromDetail, setIsReturningFromDetail] = useState(false);
+
+  const getInitialFilters = () => {
+    // Check if returning from detail page - use the correct state key
+    if (location.state?.fromEvaluationDetail) {
+      setIsReturningFromDetail(true);
+    }
+
+    // Try to load saved filters
+    const savedFilters = loadFiltersFromStorage();
+    
+    if (savedFilters) {
+      return savedFilters;
+    }
+
+    // Default filters
+    return {
+      agentId: '',
+      queueId: '',
+      channelId: '',
+      startDate: format(new Date(), 'yyyy-MM-dd'),
+      endDate: format(new Date(), 'yyyy-MM-dd'),
+      selectedForm: null,
+      formId: ''
+    };
+  };
+
+  const [selectedFilters, setSelectedFilters] = useState(getInitialFilters);
+
+  useEffect(() => {
+    saveFiltersToStorage(selectedFilters);
+  }, [selectedFilters]);
+
+  // Save metrics when they change
+  useEffect(() => {
+    if (metrics) {
+      saveMetricsToStorage(metrics);
+    }
+  }, [metrics]);
+
+  // Auto-load when returning from detail page
+  useEffect(() => {
+    if (isReturningFromDetail) {
+      const cachedMetrics = loadMetricsFromStorage();
+      if (cachedMetrics) {
+        setMetrics(cachedMetrics);
+        setLoading(false);
+      }
+      setIsReturningFromDetail(false);
+    }
+  }, [isReturningFromDetail]);
 
   const getChannelBadgeColor = (channel) => {
     if (TEXT_CHANNELS.includes(channel)) {
@@ -723,7 +811,9 @@ const Dashboard = () => {
         // Direct value assignment
         updatedFilters[name] = value;
       }
-  
+
+      // Save to localStorage immediately
+      saveFiltersToStorage(updatedFilters);
       return updatedFilters;
     });
   };
@@ -916,6 +1006,29 @@ const Dashboard = () => {
                 isClearable={forms.length > 1}
                 placeholder={formsLoading ? "Loading forms..." : "Select QA Form"}
               />
+            </div>
+            <div className="col-12">
+              <button
+                className="btn btn-outline-secondary"
+                onClick={() => {
+                  const defaultFilters = {
+                    agentId: '',
+                    queueId: '',
+                    channelId: '',
+                    startDate: format(new Date(), 'yyyy-MM-dd'),
+                    endDate: format(new Date(), 'yyyy-MM-dd'),
+                    selectedForm: null,
+                    formId: ''
+                  };
+                  setSelectedFilters(defaultFilters);
+                  saveFiltersToStorage(defaultFilters);
+                  sessionStorage.removeItem(METRICS_STORAGE_KEY);
+                  setCurrentPage(1);
+                }}
+              >
+                <i className="bi bi-arrow-counterclockwise me-1"></i>
+                Clear Filters
+              </button>
             </div>
           </div>
         </div>
@@ -1201,7 +1314,9 @@ const Dashboard = () => {
                       </td>
                       <td>
                         <button
-                          onClick={() => navigate(`/evaluation/${evaluation.id}`)}
+                          onClick={() => navigate(`/evaluation/${evaluation.id}`, {
+                            state: { fromDashboard: true }
+                          })}
                           className="btn btn-sm btn-outline-primary"
                         >
                           <i className="bi bi-eye me-1"></i>

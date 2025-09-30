@@ -2939,15 +2939,22 @@ const QADetail = ({ agentRestricted = false, agentId = null }) => {
     <div className="container-fluid py-4">
       {/* Status and Action Bar */}
       <div className="card mb-4">
-        {location.state?.fromRecentEvaluations && (
+        {(location.state?.fromDashboard || location.state?.fromRecentEvaluations || location.state?.fromNewEvaluations) && (
           <button
-            className="btn btn-outline-secondary mb-3"
-            onClick={() => navigate('/evaluations', { 
-              state: { fromEvaluationDetail: true } 
-            })}
+            className="btn btn-outline-secondary"
+            onClick={() => {
+              // Navigate based on source
+              if (location.state?.fromDashboard) {
+                navigate('/dashboard', { state: { fromEvaluationDetail: true } });
+              } else if (location.state?.fromRecentEvaluations) {
+                navigate('/evaluations', { state: { fromEvaluationDetail: true } });
+              } else if (location.state?.fromNewEvaluations) {
+                navigate('/new-evaluations', { state: { fromEvaluationDetail: true } });
+              }
+            }}
           >
             <i className="bi bi-arrow-left me-2"></i>
-            Back to Evaluations
+            Back to {location.state?.fromDashboard ? 'Dashboard' : location.state?.fromRecentEvaluations ? 'Evaluations' : 'New Evaluations'}
           </button>
         )}
         <div className="card-body d-flex justify-content-between align-items-center">
