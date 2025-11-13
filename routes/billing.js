@@ -280,30 +280,53 @@ router.post('/update-evaluation-cost/:id', authenticateToken, async (req, res) =
 });
 
 router.get('/rates', authenticateToken, async (req, res) => {
-    try {
-      // Only admins should update billing rates
-      if (!req.user.isAdmin) {
-        return res.status(403).json({ message: 'Access denied: Admin rights required' });
-      }
-  
-      // In a real implementation, this would update the .env file or a database
-      // For now, just return the current rates
-      const rates = {
-        costSttPrerecorded: parseFloat(process.env.COST_STT_PRERECORDED || 0.0052),
-        costOpenAiInput: parseFloat(process.env.COST_OPENAI_GPT4O_INPUT || 0.00005),
-        costOpenAiOutput: parseFloat(process.env.COST_OPENAI_GPT4O_OUTPUT || 0.00015),
-        costAiContextGenerator: parseFloat(process.env.COST_AI_CONTEXT_GENERATOR || 0.00025),
-        priceSttPrerecorded: parseFloat(process.env.PRICE_STT_PRERECORDED || 0.0065),
-        priceOpenAiInput: parseFloat(process.env.PRICE_OPENAI_GPT4O_INPUT || 0.0000625),
-        priceOpenAiOutput: parseFloat(process.env.PRICE_OPENAI_GPT4O_OUTPUT || 0.0001875),
-        priceAiContextGenerator: parseFloat(process.env.PRICE_AI_CONTEXT_GENERATOR || 0.0003125)
-      };
-  
-      res.json(rates);
-    } catch (error) {
-      console.error('Error updating billing rates:', error);
-      res.status(500).json({ message: 'Error updating billing rates' });
+  try {
+    // Only admins should view billing rates
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ message: 'Access denied: Admin rights required' });
     }
-  });
+
+    // Return rates for all transcription providers
+    const rates = {
+      // AssemblyAI rates
+      costSttAssemblyAIUniversal: parseFloat(process.env.COST_STT_ASSEMBLYAI_UNIVERSAL || 0.0025),
+      priceSttAssemblyAIUniversal: parseFloat(process.env.PRICE_STT_ASSEMBLYAI_UNIVERSAL || 0.003125),
+      costSttAssemblyAINano: parseFloat(process.env.COST_STT_ASSEMBLYAI_NANO || 0.0015),
+      priceSttAssemblyAINano: parseFloat(process.env.PRICE_STT_ASSEMBLYAI_NANO || 0.001875),
+      
+      // OpenAI Whisper rates
+      costSttOpenAIWhisper: parseFloat(process.env.COST_STT_OPENAI_WHISPER || 0.006),
+      priceSttOpenAIWhisper: parseFloat(process.env.PRICE_STT_OPENAI_WHISPER || 0.0075),
+      costSttOpenAIGPT4O: parseFloat(process.env.COST_STT_OPENAI_GPT4O || 0.006),
+      priceSttOpenAIGPT4O: parseFloat(process.env.PRICE_STT_OPENAI_GPT4O || 0.0075),
+      costSttOpenAIGPT4OMini: parseFloat(process.env.COST_STT_OPENAI_GPT4O_MINI || 0.003),
+      priceSttOpenAIGPT4OMini: parseFloat(process.env.PRICE_STT_OPENAI_GPT4O_MINI || 0.00375),
+      
+      // Deepgram rates (legacy)
+      costSttPrerecorded: parseFloat(process.env.COST_STT_PRERECORDED || 0.0052),
+      priceSttPrerecorded: parseFloat(process.env.PRICE_STT_PRERECORDED || 0.0065),
+      
+      // OpenAI GPT-4o rates (for evaluation)
+      costOpenAiInput: parseFloat(process.env.COST_OPENAI_GPT4O_INPUT || 0.00005),
+      costOpenAiOutput: parseFloat(process.env.COST_OPENAI_GPT4O_OUTPUT || 0.00015),
+      priceOpenAiInput: parseFloat(process.env.PRICE_OPENAI_GPT4O_INPUT || 0.0000625),
+      priceOpenAiOutput: parseFloat(process.env.PRICE_OPENAI_GPT4O_OUTPUT || 0.0001875),
+      
+      // AI Context Generator rates
+      costAiContextGenerator: parseFloat(process.env.COST_AI_CONTEXT_GENERATOR || 0.00025),
+      priceAiContextGenerator: parseFloat(process.env.PRICE_AI_CONTEXT_GENERATOR || 0.0003125),
+      
+      // Current provider configuration
+      currentProvider: process.env.TRANSCRIPTION_PROVIDER || 'assemblyai'
+    };
+
+    res.json(rates);
+  } catch (error) {
+    console.error('Error getting billing rates:', error);
+    res.status(500).json({ message: 'Error getting billing rates' });
+  }
+});
+
+// NOTE: Replace the existing router.get('/rates', ...) endpoint in routes/billing.js with the code above
   
 module.exports = router;

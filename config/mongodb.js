@@ -70,6 +70,14 @@ const evaluationSchema = new mongoose.Schema({
   whatTheAgentDidWell: [String], 
   totalScore: Number,
   maxScore: Number,
+  scoringMechanism: String, 
+  totalDeductions: Number,      // NEW - for deduct mode
+  deductionDetails: [{          // NEW - detailed deductions
+    paramName: String,
+    paramMaxScore: Number,
+    scored: Number,
+    deduction: Number
+  }],
   customerSentiment: [String],
   agentSentiment: [String],
   problemAreas: [String]
@@ -85,11 +93,13 @@ const sectionScoresSchema = new mongoose.Schema({
       maxScore: Number,
       adjustedScore: Number,
       percentage: Number,
+      deductions: Number,
       parameters: [
         new mongoose.Schema({
           name: String,
           score: Number,
           maxScore: Number,
+          deductions: Number,
           classification: String
         }, { _id: false, strict: false })
       ],
@@ -106,7 +116,9 @@ const sectionScoresSchema = new mongoose.Schema({
     rawScore: Number,
     adjustedScore: Number,
     maxScore: Number,
-    percentage: Number
+    percentage: Number,
+    scoringMechanism: String,     // NEW
+    totalDeductions: Number 
   }
 }, { _id: false, strict: false });
 
@@ -301,7 +313,11 @@ const enhancedTranscriptionSchema = new mongoose.Schema({
     default: 'realtime' 
   },
   transcription: [mongoose.Schema.Types.Mixed],
-  
+  transcriptionMetadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
+    description: 'Metadata about the transcription provider and process'
+  },
   // New fields for message-based interactions
   metadata: {
     totalMessages: {
@@ -664,6 +680,15 @@ const interactionAIQASchema = new mongoose.Schema({
   interactionId: { type: String, required: true },
   qaFormName: { type: String, required: true },
   qaFormId: { type: String, required: true },
+  scoringMechanism: {
+    type: String,
+    enum: ['award', 'deduct'],
+    default: 'award'
+  },
+  formTotalScore: {
+    type: Number,
+    default: 100
+  },
   evaluator: {     // Add this new field
     id: String,
     name: String

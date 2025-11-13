@@ -129,7 +129,7 @@ router.get('/by-interaction/:interactionId', async (req, res) => {
       'customer', 'company', 'channel', 'tags', 'workflow',
       'noOfActivities', 'firstResponseTill', 'dueDate', 'slaBreach', 'slaBreachLabel',
       'ticketLife', 'ticketLifeFormatted', 'createdAt', 'updatedAt', 'closedAt',
-      'createdBy', 'updatedBy', 'closedBy, slaId'
+      'createdBy', 'updatedBy', 'closedBy, slaId, slaName'
     ];
     
     // Extract custom/dynamic fields (any field not in the standard list)
@@ -164,6 +164,7 @@ router.get('/by-interaction/:interactionId', async (req, res) => {
       dueDate: ticket.dueDate,
       slaBreach: ticket.slaBreachLabel,
       ticketLife: ticket.ticketLifeFormatted,
+      slaName: ticket.slaName,
       timestamps: {
         createdAt: ticket.createdAt,
         createdBy: ticket.createdBy,

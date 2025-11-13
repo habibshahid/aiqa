@@ -11,6 +11,9 @@ const mkdirAsync = promisify(fs.mkdir);
 const { InteractionTranscription, QAForm, Interactions, InteractionAIQA } = require('../config/mongodb');
 const { calculateEvaluationCost } = require('./costProcessor');
 const mongoose = require('mongoose');
+const { AssemblyAITranscriptionService, ASSEMBLYAI_MODELS } = require('./transcription-service-assemblyai');
+const { OpenAITranscriptionService, OPENAI_MODELS } = require('./transcription-service-openai');
+const { SonioxTranscriptionService, SONIOX_MODELS } = require('./transcription-service-soniox');
 
 const TEXT_CHANNELS = ['whatsapp', 'fb_messenger', 'facebook', 'instagram_dm', 'chat', 'email', 'sms'];
 
@@ -164,7 +167,7 @@ async function getSentiment(text) {
     
     return response.data;
   } catch (error) {
-    console.error(`Error getting sentiment for text: ${text.substring(0, 30)}...`, error.message);
+    console.error(`************* Error getting sentiment for text: ${text.substring(0, 30)}...`, error.message);
     // Return default values if sentiment API fails
     return {
       sentiment: {
@@ -195,6 +198,406 @@ async function getSentiment(text) {
       }
     };
   }
+}
+
+/**
+ * Transcribe audio with provider fallback - respects TRANSCRIPTION_PROVIDER setting
+ * Now includes Soniox support
+ * All providers use sentiment API for translation (consistent behavior)
+ */
+async function transcribeAudioWithFallback(audioFilePath, agent, caller, interactionStartTime) {
+  const preferredProvider = (process.env.TRANSCRIPTION_PROVIDER || 'assemblyai').toLowerCase();
+  
+  console.log(`\n=== Starting Transcription (Preferred Provider: ${preferredProvider}) ===\n`);
+  console.log(`Audio file: ${audioFilePath}`);
+  
+  // Define provider order based on preference
+  let providerOrder = [];
+  
+  switch (preferredProvider) {
+    case 'soniox':
+      providerOrder = ['soniox', 'assemblyai', 'openai', 'deepgram'];
+      break;
+    case 'openai':
+      providerOrder = ['openai', 'soniox', 'assemblyai', 'deepgram'];
+      break;
+    case 'deepgram':
+      providerOrder = ['deepgram', 'soniox', 'assemblyai', 'openai'];
+      break;
+    case 'assemblyai':
+    default:
+      providerOrder = ['soniox', 'assemblyai', 'openai', 'deepgram'];
+      break;
+  }
+  
+  console.log(`Provider fallback order: ${providerOrder.join(' → ')}`);
+  
+  // Try each provider in order
+  for (const provider of providerOrder) {
+    try {
+      if (provider === 'soniox') {
+        console.log('\n📍 Attempting transcription with Soniox...');
+        const result = await trySoniox(audioFilePath, agent, caller, interactionStartTime);
+        if (result) return result;
+      } else if (provider === 'assemblyai') {
+        console.log('\n📍 Attempting transcription with AssemblyAI...');
+        const result = await tryAssemblyAI(audioFilePath, agent, caller, interactionStartTime);
+        if (result) return result;
+      } else if (provider === 'openai') {
+        console.log('\n📍 Attempting transcription with OpenAI...');
+        const result = await tryOpenAI(audioFilePath, agent, caller, interactionStartTime);
+        if (result) return result;
+      } else if (provider === 'deepgram') {
+        console.log('\n📍 Attempting transcription with Deepgram...');
+        const result = await tryDeepgram(audioFilePath, agent, caller, interactionStartTime);
+        if (result) return result;
+      }
+    } catch (error) {
+      console.error(`❌ ${provider} failed:`, error.message);
+      // Continue to next provider
+    }
+  }
+  
+  // If all providers failed
+  throw new Error('All transcription providers failed');
+}
+
+/**
+ * Try AssemblyAI transcription - WITHOUT built-in translation
+ * Translation handled by sentiment API (same as OpenAI/Deepgram)
+ */
+async function tryAssemblyAI(audioFilePath, agent, caller, interactionStartTime) {
+  try {
+    const assemblyAI = new AssemblyAITranscriptionService();
+    
+    // Transcribe WITHOUT translation - sentiment API will handle it
+    const result = await assemblyAI.transcribe(audioFilePath, {
+      model: process.env.ASSEMBLYAI_MODEL || ASSEMBLYAI_MODELS.UNIVERSAL,
+      language_detection: true,
+      punctuate: true,
+      format_text: true,
+      // NO speech_understanding - translation via sentiment API
+      cleanup: true
+    });
+    
+    if (!result.success) {
+      throw new Error(result.error || 'AssemblyAI transcription failed');
+    }
+    
+    console.log('✅ AssemblyAI transcription successful');
+    
+    // Convert AssemblyAI format to our application format
+    const processedTranscript = await convertAssemblyAIToAppFormat(
+      result, 
+      agent, 
+      caller, 
+      interactionStartTime
+    );
+    
+    return {
+      success: true,
+      provider: 'assemblyai',
+      model: result.model,
+      transcript: processedTranscript,
+      metadata: {
+        provider: 'assemblyai',
+        model: result.model,
+        audioType: result.audioType,
+        duration: result.duration,
+        language: result.language,
+        confidence: result.confidence || result.agentConfidence,
+        transcribedAt: new Date()
+      }
+    };
+  } catch (error) {
+    console.error('AssemblyAI error:', error.message);
+    return null; // Return null to try next provider
+  }
+}
+
+/**
+ * Try OpenAI transcription
+ */
+async function tryOpenAI(audioFilePath, agent, caller, interactionStartTime) {
+  try {
+    const openAI = new OpenAITranscriptionService();
+    
+    const result = await openAI.transcribe(audioFilePath, {
+      model: process.env.OPENAI_WHISPER_MODEL || OPENAI_MODELS.WHISPER,
+      language: 'hi',
+      temperature: 0,
+      cleanup: true
+    });
+    
+    if (!result.success) {
+      throw new Error(result.error || 'OpenAI transcription failed');
+    }
+    
+    console.log('✅ OpenAI transcription successful');
+    
+    // Convert OpenAI format to our application format
+    const processedTranscript = await convertOpenAIToAppFormat(
+      result, 
+      agent, 
+      caller, 
+      interactionStartTime
+    );
+    
+    return {
+      success: true,
+      provider: 'openai',
+      model: result.model,
+      transcript: processedTranscript,
+      metadata: {
+        provider: 'openai',
+        model: result.model,
+        audioType: result.audioType,
+        duration: result.duration,
+        language: result.language,
+        transcribedAt: new Date()
+      }
+    };
+  } catch (error) {
+    console.error('OpenAI error:', error.message);
+    return null; // Return null to try next provider
+  }
+}
+
+/**
+ * Try Deepgram transcription
+ */
+async function tryDeepgram(audioFilePath, agent, caller, interactionStartTime) {
+  try {
+    // Need to upload to public storage for Deepgram
+    const publicUrl = await uploadToPublicStorage(audioFilePath, 'temp-' + Date.now());
+    
+    const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
+    
+    if (!deepgramApiKey) {
+      throw new Error('Deepgram API key not configured');
+    }
+    
+    const deepgramResponse = await axios.post(
+      'https://api.deepgram.com/v1/listen',
+      { url: publicUrl },
+      {
+        headers: {
+          'Authorization': `Token ${deepgramApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        params: {
+          smart_format: true,
+          punctuate: true,
+          diarize: true,
+          language: 'hi-latn',
+          model: 'nova-2',
+          multichannel: true,
+          utterances: true
+        }
+      }
+    );
+    
+    console.log('✅ Deepgram transcription successful');
+    
+    // Process with existing Deepgram logic
+    const processedTranscript = await processTranscriptV2(
+      deepgramResponse.data, 
+      agent, 
+      caller,
+      interactionStartTime
+    );
+    
+    // Clean up public URL
+    try {
+      await deleteFromPublicStorage(publicUrl, 'temp-cleanup');
+    } catch (cleanupError) {
+      console.warn('Failed to cleanup Deepgram public URL:', cleanupError.message);
+    }
+    
+    return {
+      success: true,
+      provider: 'deepgram',
+      model: 'nova-2',
+      transcript: processedTranscript,
+      metadata: {
+        provider: 'deepgram',
+        model: 'nova-2',
+        duration: deepgramResponse.data.results?.channels?.[0]?.alternatives?.[0]?.transcript?.length || 0,
+        language: 'hi-latn',
+        transcribedAt: new Date()
+      }
+    };
+  } catch (error) {
+    console.error('Deepgram error:', error.message);
+    return null; // Return null to indicate failure
+  }
+}
+
+
+/**
+ * Convert AssemblyAI response to application format - WITHOUT built-in translation
+ * Uses sentiment API for translation (same as OpenAI/Deepgram)
+ * @param {Object} assemblyAIResult - AssemblyAI transcription result
+ * @param {Object} agent - Agent information
+ * @param {Object} caller - Caller information
+ * @param {Date} interactionStartTime - Interaction start time
+ * @returns {Object} Processed transcript in application format
+ */
+async function convertAssemblyAIToAppFormat(assemblyAIResult, agent, caller, interactionStartTime) {
+  const output = { transcription: [] };
+  
+  const agentId = agent?.id || "Agent";
+  const agentName = agent?.name || "Agent";
+  const callerId = caller?.id || "Customer";
+  
+  const agentSpeakerId = `agent_${agentName.replace(/\s+/g, '.')}`;
+  const callerSpeakerId = `customer_${callerId}`;
+  
+  const baseTimestamp = interactionStartTime ? new Date(interactionStartTime).getTime() : Date.now();
+  
+  // AssemblyAI provides conversation array with speaker_id and original_text
+  const conversation = assemblyAIResult.conversation || [];
+  
+  console.log(`Processing ${conversation.length} conversation segments from AssemblyAI...`);
+  
+  for (const segment of conversation) {
+    // Calculate timestamp
+    const timestamp = baseTimestamp + Math.round(segment.timestamp * 1000);
+    
+    // Map speaker_id: 'agent' or 'customer' from AssemblyAI
+    const speaker_id = segment.speaker_id === 'agent' ? agentSpeakerId : callerSpeakerId;
+    
+    // Use sentiment API for translation (same as OpenAI/Deepgram)
+    const sentimentAnalysis = await getSentiment(segment.original_text);
+	
+    const entry = {
+      [timestamp.toString()]: {
+        speaker_id: speaker_id,
+        original_text: segment.original_text,
+        // Translation from sentiment API (not from AssemblyAI)
+        translated_text: sentimentAnalysis.translationInEnglish || sentimentAnalysis.tranlationInEnglish || segment.original_text,
+        sentiment: sentimentAnalysis.sentiment || {
+          sentiment: "neutral",
+          score: 0.5
+        },
+        profanity: sentimentAnalysis.profanity || {
+          words: [],
+          score: 0
+        },
+        intent: sentimentAnalysis.intents || [],
+        language: assemblyAIResult.language || "hi",
+        usage: sentimentAnalysis.usage || {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0,
+          prompt_tokens_details: {
+            cached_tokens: 0,
+            audio_tokens: 0
+          },
+          completion_tokens_details: {
+            reasoning_tokens: 0,
+            audio_tokens: 0,
+            accepted_prediction_tokens: 0,
+            rejected_prediction_tokens: 0
+          }
+        },
+        port: 10000 + Math.floor(Math.random() * 10000),
+        confidence: segment.confidence || 0.8
+      }
+    };
+    
+    output.transcription.push(entry);
+  }
+  
+  console.log(`Converted ${output.transcription.length} segments to application format`);
+  
+  return output;
+}
+
+/**
+ * Convert OpenAI response to application format
+ * Uses sentiment API for translation
+ * @param {Object} openAIResult - OpenAI transcription result
+ * @param {Object} agent - Agent information
+ * @param {Object} caller - Caller information
+ * @param {Date} interactionStartTime - Interaction start time
+ * @returns {Object} Processed transcript in application format
+ */
+async function convertOpenAIToAppFormat(openAIResult, agent, caller, interactionStartTime) {
+  const output = { transcription: [] };
+  
+  const agentId = agent?.id || "Agent";
+  const agentName = agent?.name || "Agent";
+  const callerId = caller?.id || "Customer";
+  
+  const agentSpeakerId = `agent_${agentName.replace(/\s+/g, '.')}`;
+  const callerSpeakerId = `customer_${callerId}`;
+  
+  const baseTimestamp = interactionStartTime ? new Date(interactionStartTime).getTime() : Date.now();
+  
+  // OpenAI provides conversation array with speaker_id and original_text
+  const conversation = openAIResult.conversation || [];
+  
+  console.log(`Processing ${conversation.length} conversation segments from OpenAI...`);
+  
+  for (const segment of conversation) {
+    // Calculate timestamp
+    const timestamp = baseTimestamp + Math.round(segment.timestamp * 1000);
+    
+    // Map speaker_id
+    let speaker_id;
+    if (segment.speaker_id === 'agent') {
+      speaker_id = agentSpeakerId;
+    } else if (segment.speaker_id === 'customer') {
+      speaker_id = callerSpeakerId;
+    } else {
+      // Unknown speaker - alternate based on index
+      speaker_id = output.transcription.length % 2 === 0 ? agentSpeakerId : callerSpeakerId;
+    }
+    
+    // Use sentiment API for translation
+    const sentimentAnalysis = await getSentiment(segment.original_text);
+    
+    const entry = {
+      [timestamp.toString()]: {
+        speaker_id: speaker_id,
+        original_text: segment.original_text,
+        translated_text: sentimentAnalysis.translationInEnglish || segment.original_text,
+        sentiment: sentimentAnalysis.sentiment || {
+          sentiment: "neutral",
+          score: 0.5
+        },
+        profanity: sentimentAnalysis.profanity || {
+          words: [],
+          score: 0
+        },
+        intent: sentimentAnalysis.intents || [],
+        language: openAIResult.language || "hi",
+        usage: sentimentAnalysis.usage || {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0,
+          prompt_tokens_details: {
+            cached_tokens: 0,
+            audio_tokens: 0
+          },
+          completion_tokens_details: {
+            reasoning_tokens: 0,
+            audio_tokens: 0,
+            accepted_prediction_tokens: 0,
+            rejected_prediction_tokens: 0
+          }
+        },
+        port: 10000 + Math.floor(Math.random() * 10000)
+      }
+    };
+    
+    output.transcription.push(entry);
+  }
+  
+  console.log(`Converted ${output.transcription.length} segments to application format`);
+  
+  return output;
 }
 
 //----------------------------------------------------------------
@@ -787,47 +1190,41 @@ const processEvaluation = async (evaluation) => {
       localFilePath = await downloadRecording(recordingUrl, interactionId);
       
       // Step 2: Upload to democc for public access
-      publicUrl = await uploadToPublicStorage(localFilePath, interactionId);
+      //publicUrl = await uploadToPublicStorage(localFilePath, interactionId);
       
       // Step 3: Process with Deepgram
-      console.log(`Sending to Deepgram: ${publicUrl}`);
-      const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
-      
-      const deepgramResponse = await axios.post(
-        'https://api.deepgram.com/v1/listen',
-        {
-          url: publicUrl
-        },
-        {
-          headers: {
-            'Authorization': `Token ${deepgramApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          params: {
-            smart_format: true,
-            punctuate: true,
-            diarize: true,
-            language: 'hi-latn',
-            model: 'nova-2',
-            multichannel: true,
-            utterances: true
-          }
-        }
-      );
-      
-      // Step 4: Process transcription
-      const processedTranscription = await processTranscriptV2(
-        deepgramResponse.data, 
-        agent, 
+      console.log(`Transcribing audio file: ${localFilePath}`);
+
+      const transcriptionResult = await transcribeAudioWithFallback(
+        localFilePath,
+        agent,
         caller,
         interactionStartTime
       );
+
+      if (!transcriptionResult.success) {
+        throw new Error('Transcription failed with all providers');
+      }
+
+      console.log(`✅ Transcription successful using ${transcriptionResult.provider}`);
+
+      // Step 4: Use the processed transcription
+      const processedTranscription = transcriptionResult.transcript;
       
       // Step 5: Save to database
       const transcriptionDoc = {
         interactionId,
         transcriptionVersion: 'recorded',
-        transcription: processedTranscription.transcription
+        transcription: processedTranscription.transcription,
+        transcriptionMetadata: {
+          provider: transcriptionResult.provider,
+          model: transcriptionResult.model,
+          audioType: transcriptionResult.metadata?.audioType,
+          duration: transcriptionResult.metadata?.duration,
+          language: transcriptionResult.metadata?.language,
+          confidence: transcriptionResult.metadata?.confidence,
+          transcribedAt: transcriptionResult.metadata?.transcribedAt || new Date()
+        }
       };
 
       // Check if a transcription already exists
@@ -839,8 +1236,9 @@ const processEvaluation = async (evaluation) => {
           { interactionId },
           { 
             $set: { 
-            transcriptionVersion: 'recorded',
-              transcription: processedTranscription.transcription 
+              transcriptionVersion: 'recorded',
+              transcription: processedTranscription.transcription,
+              transcriptionMetadata: transcriptionDoc.transcriptionMetadata
             }
           }
         );
@@ -1467,7 +1865,7 @@ function formatInstructions(form) {
   
   instructions += process.env.AIQA_SAMPLE_RESPONSE;
   
-  console.log('Formatted Instructions:', instructions);
+  //console.log('Formatted Instructions:', instructions);
   return instructions;
 }
 
@@ -1571,6 +1969,271 @@ async function callQAEvaluationApi(transcription, instructions, interactionId) {
     console.error(`Error calling QA evaluation API for interaction ${interactionId}:`, error.message);
     throw error;
   }
+}
+
+/**
+ * Try Soniox transcription - CORRECTED speaker labeling
+ * Soniox uses STRING speaker IDs: '1', '2', '3' etc.
+ * Translation handled by sentiment API (same as other providers)
+ */
+async function trySoniox(audioFilePath, agent, caller, interactionStartTime) {
+  let fileId = null;
+  let transcriptionId = null;
+
+  try {
+    const soniox = new SonioxTranscriptionService();
+    
+    console.log('Uploading audio to Soniox...');
+    const duration = await soniox.getAudioDuration(audioFilePath);
+    console.log(`Duration: ${duration.toFixed(2)}s`);
+    
+    // Step 1: Upload the audio file
+    fileId = await soniox.uploadAudio(audioFilePath);
+    
+    // Step 2: Create transcription config
+    const config = {
+      model: process.env.SONIOX_MODEL || SONIOX_MODELS.ASYNC_V3,
+      file_id: fileId,
+      
+      // Language hints: English, Hindi, Urdu
+      language_hints: ['en', 'hi', 'ur'],
+      enable_language_identification: true,
+      
+      // Speaker diarization
+      enable_speaker_diarization: true,
+      
+      // Optional: Add context for better accuracy
+      context: {
+        terms: ['AIVA', 'Intellicon', 'Contegris']
+      }
+    };
+    
+    // Step 3: Create transcription job
+    transcriptionId = await soniox.createTranscription(config);
+    
+    // Step 4: Wait for completion
+    await soniox.waitForCompletion(transcriptionId);
+    
+    // Step 5: Get results
+    console.log('Fetching transcription results...');
+    const result = await soniox.getTranscriptionResult(transcriptionId);
+    
+    if (!result || !result.tokens || result.tokens.length === 0) {
+      throw new Error('No transcription results returned');
+    }
+    
+    console.log('✅ Soniox transcription successful');
+    
+    // Step 6: Process tokens into conversation segments (CORRECTED speaker mapping)
+    const conversation = buildConversationFromTokens(result.tokens);
+    
+    // Step 7: Convert to our application format
+    const processedTranscript = await convertSonioxToAppFormat(
+      {
+        conversation: conversation,
+        duration: duration,
+        language: result.language || 'en'
+      },
+      agent,
+      caller,
+      interactionStartTime
+    );
+    
+    // Step 8: Cleanup
+    console.log('Cleaning up Soniox resources...');
+    await soniox.deleteTranscription(transcriptionId);
+    await soniox.deleteFile(fileId);
+    
+    return {
+      success: true,
+      provider: 'soniox',
+      model: config.model,
+      transcript: processedTranscript,
+      metadata: {
+        provider: 'soniox',
+        model: config.model,
+        audioType: 'auto-detected',
+        duration: duration,
+        language: result.language || 'en',
+        transcribedAt: new Date()
+      }
+    };
+    
+  } catch (error) {
+    console.error('Soniox error:', error.message);
+    
+    // Cleanup on error
+    if (transcriptionId) {
+      try {
+        const soniox = new SonioxTranscriptionService();
+        await soniox.deleteTranscription(transcriptionId);
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup transcription:', cleanupError.message);
+      }
+    }
+    
+    if (fileId) {
+      try {
+        const soniox = new SonioxTranscriptionService();
+        await soniox.deleteFile(fileId);
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup file:', cleanupError.message);
+      }
+    }
+    
+    return null;
+  }
+}
+
+/**
+ * Build conversation segments from Soniox tokens - CORRECTED
+ * Groups tokens by speaker and sentence boundaries
+ * 
+ * IMPORTANT: Soniox speaker IDs are STRINGS: '1', '2', '3', etc.
+ * Mapping: '1' → agent, '2' → customer
+ * 
+ * @param {Array} tokens - Soniox token array
+ * @returns {Array} Conversation segments
+ */
+function buildConversationFromTokens(tokens) {
+  const conversation = [];
+  let currentSpeaker = null;
+  let currentText = '';
+  let currentStart = 0;
+  let currentEnd = 0;
+  let currentLanguage = null;
+
+  tokens.forEach((token) => {
+    // CRITICAL: Speaker is a STRING: '1', '2', '3', etc. (not number)
+    const speaker = token.speaker || '1';
+    
+    // Check if we should start a new segment:
+    // 1. Speaker changed
+    // 2. End of sentence (punctuation)
+    const speakerChanged = speaker !== currentSpeaker;
+    const endOfSentence = token.text.match(/[.!?]$/);
+    
+    if (speakerChanged || (endOfSentence && currentText)) {
+      // Save previous segment
+      if (currentText) {
+        // Map speaker STRING '1' to 'agent', '2' to 'customer'
+        const speakerId = currentSpeaker === '1' ? 'agent' : 'customer';
+        
+        conversation.push({
+          timestamp: currentStart,
+          speaker_id: speakerId,
+          speaker_number: currentSpeaker, // Keep original for reference
+          original_text: currentText.trim(),
+          end_time: currentEnd,
+          duration: currentEnd - currentStart,
+          segment_id: `${speakerId}_${conversation.length}`,
+          language: currentLanguage
+        });
+      }
+      
+      // Start new segment
+      currentSpeaker = speaker;
+      currentText = token.text;
+      currentStart = token.start_ms / 1000;
+      currentEnd = token.end_ms / 1000;
+      currentLanguage = token.language || 'en';
+    } else {
+      // Continue current segment
+      currentText += token.text;
+      currentEnd = token.end_ms / 1000;
+      if (token.language) {
+        currentLanguage = token.language;
+      }
+    }
+  });
+
+  // Add final segment
+  if (currentText) {
+    // Map speaker STRING '1' to 'agent', '2' to 'customer'
+    const speakerId = currentSpeaker === '1' ? 'agent' : 'customer';
+    
+    conversation.push({
+      timestamp: currentStart,
+      speaker_id: speakerId,
+      speaker_number: currentSpeaker, // Keep original for reference
+      original_text: currentText.trim(),
+      end_time: currentEnd,
+      duration: currentEnd - currentStart,
+      segment_id: `${speakerId}_${conversation.length}`,
+      language: currentLanguage
+    });
+  }
+
+  return conversation;
+}
+
+/**
+ * Convert Soniox response to application format
+ * Uses sentiment API for translation (same as other providers)
+ */
+async function convertSonioxToAppFormat(sonioxResult, agent, caller, interactionStartTime) {
+  const output = { transcription: [] };
+  
+  const agentId = agent?.id || "Agent";
+  const agentName = agent?.name || "Agent";
+  const callerId = caller?.id || "Customer";
+  
+  const agentSpeakerId = `agent_${agentName.replace(/\s+/g, '.')}`;
+  const callerSpeakerId = `customer_${callerId}`;
+  
+  const baseTimestamp = interactionStartTime ? new Date(interactionStartTime).getTime() : Date.now();
+  
+  const conversation = sonioxResult.conversation || [];
+  
+  console.log(`Processing ${conversation.length} conversation segments from Soniox...`);
+  
+  for (const segment of conversation) {
+    const timestamp = baseTimestamp + Math.round(segment.timestamp * 1000);
+    const speaker_id = segment.speaker_id === 'agent' ? agentSpeakerId : callerSpeakerId;
+    
+    // Use sentiment API for translation
+    const sentimentAnalysis = await getSentiment(segment.original_text);
+    
+    const entry = {
+      [timestamp.toString()]: {
+        speaker_id: speaker_id,
+        original_text: segment.original_text,
+        translated_text: sentimentAnalysis.translationInEnglish || segment.original_text,
+        sentiment: sentimentAnalysis.sentiment || {
+          sentiment: "neutral",
+          score: 0.5
+        },
+        profanity: sentimentAnalysis.profanity || {
+          words: [],
+          score: 0
+        },
+        intent: sentimentAnalysis.intents || [],
+        language: segment.language || sonioxResult.language || "en",
+        usage: sentimentAnalysis.usage || {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0,
+          prompt_tokens_details: {
+            cached_tokens: 0,
+            audio_tokens: 0
+          },
+          completion_tokens_details: {
+            reasoning_tokens: 0,
+            audio_tokens: 0,
+            accepted_prediction_tokens: 0,
+            rejected_prediction_tokens: 0
+          }
+        },
+        port: 10000 + Math.floor(Math.random() * 10000)
+      }
+    };
+    
+    output.transcription.push(entry);
+  }
+  
+  console.log(`Converted ${output.transcription.length} segments to application format`);
+  
+  return output;
 }
 
 module.exports = {
