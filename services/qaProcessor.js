@@ -2001,7 +2001,7 @@ async function trySoniox(audioFilePath, agent, caller, interactionStartTime) {
       file_id: fileId,
       
       // Language hints: English, Hindi, Urdu
-      language_hints: ['en', 'hi', 'ur'],
+      language_hints: ['en', 'ur'],
       enable_language_identification: true,
       
       // Speaker diarization
