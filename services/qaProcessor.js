@@ -40,8 +40,13 @@ async function downloadRecording(url, interactionId) {
     // Determine protocol
     const protocol = url.startsWith('https') ? require('https') : require('http');
     
+    // FIXED: Configure options for HTTPS requests to bypass SSL verification for internal URLs
+    const options = url.startsWith('https') ? {
+      rejectUnauthorized: false  // Disable SSL certificate verification for self-signed/internal certificates
+    } : {};
+    
     return new Promise((resolve, reject) => {
-      protocol.get(url, response => {
+      protocol.get(url, options, response => {
         if (response.statusCode !== 200) {
           reject(new Error(`Failed to download file, status code: ${response.statusCode}`));
           return;
