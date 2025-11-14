@@ -79,17 +79,23 @@ app.get('/api/audio-proxy', async (req, res) => {
     if (!audioUrl) {
       return res.status(400).json({ message: 'URL parameter is required' });
     }
-
     console.log('Proxying audio from:', audioUrl);
-
+    
     // Validate URL format
     if (!audioUrl.startsWith('http://') && !audioUrl.startsWith('https://')) {
       return res.status(400).json({ message: 'Invalid URL format' });
     }
 
+    // FIXED: Add HTTPS agent to bypass SSL verification for internal URLs
+    const https = require('https');
+    const agent = audioUrl.startsWith('https://') 
+      ? new https.Agent({ rejectUnauthorized: false })
+      : undefined;
+
     const response = await fetch(audioUrl, {
       method: 'GET',
       timeout: 30000, // 30 second timeout
+      agent: agent  // FIXED: Add agent for HTTPS requests
     });
     
     if (!response.ok) {
@@ -98,11 +104,11 @@ app.get('/api/audio-proxy', async (req, res) => {
         message: `Audio file not available: ${response.statusText}` 
       });
     }
-
+    
     // Get content type from the original response
     const contentType = response.headers.get('content-type') || 'audio/mpeg';
     const contentLength = response.headers.get('content-length');
-
+    
     // Set appropriate headers for audio streaming
     res.set({
       'Content-Type': contentType,
@@ -112,11 +118,11 @@ app.get('/api/audio-proxy', async (req, res) => {
       'Access-Control-Allow-Methods': 'GET',
       'Access-Control-Allow-Headers': 'Range'
     });
-
+    
     if (contentLength) {
       res.set('Content-Length', contentLength);
     }
-
+    
     // Handle range requests for audio seeking
     const range = req.headers.range;
     if (range && contentLength) {
@@ -124,17 +130,17 @@ app.get('/api/audio-proxy', async (req, res) => {
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : parseInt(contentLength) - 1;
       const chunksize = (end - start) + 1;
-
+      
       res.status(206);
       res.set({
         'Content-Range': `bytes ${start}-${end}/${contentLength}`,
         'Content-Length': chunksize.toString()
       });
     }
-
+    
     // Stream the audio data
     response.body.pipe(res);
-
+    
     // Handle stream errors
     response.body.on('error', (error) => {
       console.error('Audio stream error:', error);
@@ -142,7 +148,7 @@ app.get('/api/audio-proxy', async (req, res) => {
         res.status(500).json({ message: 'Error streaming audio file' });
       }
     });
-
+    
   } catch (error) {
     console.error('Audio proxy error:', error);
     
